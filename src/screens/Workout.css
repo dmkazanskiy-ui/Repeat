@@ -1,0 +1,250 @@
+.wk__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0 var(--space-4);
+}
+
+.wk__date {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.wk__title {
+  margin-bottom: var(--space-5);
+}
+
+.wk__day {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.wk__subtitle {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+
+.wk__stats {
+  margin: var(--space-2) 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ex {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.ex__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ex__name {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.ex__remove,
+.set__remove {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.ex__muscle {
+  margin: 2px 0 var(--space-3);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.set {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+/* Подход, который ещё не подтверждён и показывает план из прошлого раза. */
+.set--planned .stepper__value {
+  color: var(--text-muted);
+}
+
+.set--done {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-raised));
+}
+
+.set__index {
+  flex: none;
+  width: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.stepper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.stepper button {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.stepper__value {
+  flex: 1;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stepper__unit {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.set__check {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.set--done .set__check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.ex__add {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.wk__finish {
+  margin-top: var(--space-4);
+}
+
+.wk__delete {
+  display: block;
+  width: 100%;
+  margin: var(--space-5) 0 var(--space-6);
+  padding: var(--space-3);
+  border: none;
+  background: none;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.picker {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+}
+
+.picker__sheet {
+  width: 100%;
+  max-height: 75vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-4);
+}
+
+.picker__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.picker__title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.picker__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+}
+
+.picker__muscle {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+}

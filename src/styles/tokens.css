@@ -1,0 +1,44 @@
+/* Семантические токены. Тёмная тема — основная: приложение открывают в зале,
+   часто в полутьме. Переключение темы будет ставить data-theme на <html>. */
+
+:root {
+  --bg: #0e1116;
+  --surface: #171c24;
+  --surface-raised: #212832;
+  --border: #2b3441;
+
+  --text: #eef2f7;
+  --text-muted: #94a3b3;
+
+  --accent: #4ade80;
+  --accent-text: #06210f;
+
+  --danger: #f87171;
+  --warning: #fbbf24;
+
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f8fa;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --border: #e2e8f0;
+
+  --text: #0f172a;
+  --text-muted: #64748b;
+
+  --accent: #16a34a;
+  --accent-text: #ffffff;
+}
