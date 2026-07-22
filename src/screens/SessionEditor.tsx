@@ -15,6 +15,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
+import NumberField from "../components/NumberField";
 import { newSessionExercise, newSet } from "../lib/store";
 import { formatDateFull, formatPace } from "../lib/format";
 import { CARDIO_LABELS, cardioLabel, distanceUnit } from "../lib/types";
@@ -35,13 +36,6 @@ interface Props {
   cardioKinds: string[];
   onCreateExercise: (name: string, group: MuscleGroup) => Exercise;
   onCopyTo: (date: string) => void;
-}
-
-/** Пустая строка должна очищать поле, а не превращаться в 0. */
-function toNumber(value: string): number | null {
-  if (value.trim() === "") return null;
-  const parsed = Number(value.replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export default function SessionEditor({
@@ -139,61 +133,60 @@ export default function SessionEditor({
           </TextField>
 
           <Stack direction="row" spacing={1}>
-            <TextField
+            <NumberField
               label={`Дистанция, ${unit}`}
               fullWidth
-              slotProps={{ htmlInput: { inputMode: "decimal" } }}
               value={
                 session.cardio?.distanceM == null
-                  ? ""
+                  ? null
                   : unit === "км"
                     ? session.cardio.distanceM / 1000
                     : session.cardio.distanceM
               }
-              onChange={(event) => {
-                const value = toNumber(event.target.value);
+              onChange={(value) =>
                 onChange({
                   ...session,
                   cardio: {
                     ...session.cardio!,
+                    // Округляем до метра: 6,08 км это 6080 м, а не 6080.0000001.
                     distanceM:
-                      value == null ? null : unit === "км" ? value * 1000 : value,
+                      value == null
+                        ? null
+                        : Math.round(unit === "км" ? value * 1000 : value),
                   },
-                });
-              }}
+                })
+              }
             />
-            <TextField
+            <NumberField
               label="Время, мин"
               fullWidth
-              slotProps={{ htmlInput: { inputMode: "decimal" } }}
               value={
                 session.cardio?.durationSec == null
-                  ? ""
-                  : Math.round(session.cardio.durationSec / 60)
+                  ? null
+                  : Math.round((session.cardio.durationSec / 60) * 100) / 100
               }
-              onChange={(event) => {
-                const value = toNumber(event.target.value);
+              onChange={(value) =>
                 onChange({
                   ...session,
                   cardio: {
                     ...session.cardio!,
-                    durationSec: value == null ? null : value * 60,
+                    durationSec: value == null ? null : Math.round(value * 60),
                   },
-                });
-              }}
+                })
+              }
             />
           </Stack>
 
           <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: "center" }}>
-            <TextField
+            <NumberField
               label="Средний пульс"
               fullWidth
-              slotProps={{ htmlInput: { inputMode: "numeric" } }}
-              value={session.cardio?.avgHr ?? ""}
-              onChange={(event) =>
+              integer
+              value={session.cardio?.avgHr ?? null}
+              onChange={(value) =>
                 onChange({
                   ...session,
-                  cardio: { ...session.cardio!, avgHr: toNumber(event.target.value) },
+                  cardio: { ...session.cardio!, avgHr: value },
                 })
               }
             />
@@ -250,33 +243,28 @@ export default function SessionEditor({
                       >
                         {index + 1}
                       </Typography>
-                      <TextField
+                      <NumberField
                         placeholder="кг"
-                        slotProps={{ htmlInput: { inputMode: "decimal" } }}
-                        value={set.weight ?? ""}
-                        onChange={(event) =>
+                        value={set.weight}
+                        onChange={(value) =>
                           patchExercise(item.id, (ex) => ({
                             ...ex,
                             sets: ex.sets.map((s) =>
-                              s.id === set.id
-                                ? { ...s, weight: toNumber(event.target.value) }
-                                : s,
+                              s.id === set.id ? { ...s, weight: value } : s,
                             ),
                           }))
                         }
                         sx={{ flex: 1 }}
                       />
-                      <TextField
+                      <NumberField
                         placeholder="повт"
-                        slotProps={{ htmlInput: { inputMode: "numeric" } }}
-                        value={set.reps ?? ""}
-                        onChange={(event) =>
+                        integer
+                        value={set.reps}
+                        onChange={(value) =>
                           patchExercise(item.id, (ex) => ({
                             ...ex,
                             sets: ex.sets.map((s) =>
-                              s.id === set.id
-                                ? { ...s, reps: toNumber(event.target.value) }
-                                : s,
+                              s.id === set.id ? { ...s, reps: value } : s,
                             ),
                           }))
                         }
