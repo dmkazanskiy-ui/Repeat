@@ -14,9 +14,7 @@ import AddIcon from "@mui/icons-material/Add";
 import SwipeToDelete from "../components/SwipeToDelete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
-import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
-import SelfImprovementIcon from "@mui/icons-material/SelfImprovement";
+import { ActivityIcon } from "../lib/icons";
 import {
   WEEKDAYS_SHORT,
   addDays,
@@ -31,7 +29,7 @@ import {
   toDateKey,
 } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
-import { SESSION_LABELS, cardioLabel } from "../lib/types";
+import { SESSION_LABELS, activityIcon, activityLabel } from "../lib/types";
 import type { Exercise, Session } from "../lib/types";
 
 interface Props {
@@ -45,17 +43,12 @@ interface Props {
 }
 
 export function sessionIcon(session: Session) {
-  if (session.kind === "cardio") return <DirectionsRunIcon fontSize="small" />;
-  if (session.kind === "mobility") return <SelfImprovementIcon fontSize="small" />;
-  return <FitnessCenterIcon fontSize="small" />;
+  return <ActivityIcon icon={activityIcon(session)} />;
 }
 
 export function sessionTitle(session: Session): string {
   if (session.title) return session.title;
-  if (session.kind === "cardio") {
-    return cardioLabel(session) ?? SESSION_LABELS.cardio;
-  }
-  return SESSION_LABELS[session.kind];
+  return activityLabel(session) ?? SESSION_LABELS[session.kind];
 }
 
 function sessionSummary(session: Session, exercises: Exercise[]): string {
@@ -241,7 +234,7 @@ export default function CalendarScreen({
           <Paper
             variant="outlined"
             onClick={() => onOpen(session.id)}
-            sx={{ p: 1.5, cursor: "pointer" }}
+            sx={{ p: 1.5, cursor: "pointer", borderRadius: 1 }}
           >
             <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start" }}>
               <Box sx={{ color: "primary.main", mt: "2px" }}>

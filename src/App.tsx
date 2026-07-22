@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Box, Button, Container, CssBaseline, Snackbar, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  Container,
+  CssBaseline,
+  Snackbar,
+  Typography,
+} from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import {
@@ -8,6 +15,7 @@ import {
   newSession,
   saveCardioKinds,
   saveCustomExercises,
+  saveMobilityKinds,
   saveSessions,
 } from "./lib/store";
 import { newId } from "./lib/id";
@@ -15,8 +23,9 @@ import { today } from "./lib/format";
 import CalendarScreen from "./screens/CalendarScreen";
 import SessionEditor from "./screens/SessionEditor";
 import NewSessionDialog from "./components/NewSessionDialog";
+import type { CreateOptions } from "./components/NewSessionDialog";
 import type {
-  CardioKind,
+  CustomActivity,
   Exercise,
   MuscleGroup,
   Session,
@@ -27,18 +36,23 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [cardioKinds, setCardioKinds] = useState<string[]>([]);
+  const [cardioKinds, setCardioKinds] = useState<CustomActivity[]>([]);
+  const [mobilityKinds, setMobilityKinds] = useState<CustomActivity[]>([]);
   const [selected, setSelected] = useState(today);
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  // Удалённая свайпом тренировка живёт здесь, пока висит плашка «Отменить».
+  // Удалённая тренировка живёт здесь, пока висит плашка «Отменить».
   const [undo, setUndo] = useState<Session | null>(null);
+  // Скопированная тренировка — её можно вставить в любой другой день.
+  const [clipboard, setClipboard] = useState<Session | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     load().then((data) => {
       setSessions(data.sessions);
       setExercises(data.exercises);
       setCardioKinds(data.cardioKinds);
+      setMobilityKinds(data.mobilityKinds);
       setReady(true);
     });
   }, []);
@@ -58,12 +72,21 @@ export default function App() {
   );
 
   const createSession = useCallback(
-    (kind: SessionKind, cardioKind: CardioKind | null, cardioCustom: string | null) => {
-      const session = newSession(selected, kind, cardioKind, cardioCustom);
+    (kind: SessionKind, options: CreateOptions) => {
+      const session = newSession(selected, kind, options);
       commit([...sessions, session]);
       setOpenId(session.id);
     },
     [selected, sessions, commit],
+  );
+
+  const deleteSession = useCallback(
+    (id: string) => {
+      const victim = sessions.find((s) => s.id === id) ?? null;
+      commit(sessions.filter((s) => s.id !== id));
+      setUndo(victim);
+    },
+    [sessions, commit],
   );
 
   const createExercise = useCallback(
@@ -82,24 +105,28 @@ export default function App() {
     [exercises],
   );
 
-  const addCardioKind = useCallback(
-    (name: string) => {
-      if (cardioKinds.includes(name)) return;
-      const next = [...cardioKinds, name];
-      setCardioKinds(next);
-      void saveCardioKinds(next);
+  const addCustomActivity = useCallback(
+    (kind: "cardio" | "mobility", activity: CustomActivity) => {
+      const list = kind === "cardio" ? cardioKinds : mobilityKinds;
+      if (list.some((item) => item.name === activity.name)) return;
+      const next = [...list, activity];
+      if (kind === "cardio") {
+        setCardioKinds(next);
+        void saveCardioKinds(next);
+      } else {
+        setMobilityKinds(next);
+        void saveMobilityKinds(next);
+      }
     },
-    [cardioKinds],
+    [cardioKinds, mobilityKinds],
   );
 
-  const deleteSession = useCallback(
-    (id: string) => {
-      const victim = sessions.find((s) => s.id === id) ?? null;
-      commit(sessions.filter((s) => s.id !== id));
-      setUndo(victim);
-    },
-    [sessions, commit],
-  );
+  const pasteSession = useCallback(() => {
+    if (!clipboard) return;
+    const copy = copySessionTo(clipboard, selected);
+    commit([...sessions, copy]);
+    setOpenId(copy.id);
+  }, [clipboard, selected, sessions, commit]);
 
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
 
@@ -112,6 +139,7 @@ export default function App() {
             session={open}
             exercises={exercises}
             cardioKinds={cardioKinds}
+            mobilityKinds={mobilityKinds}
             onChange={updateSession}
             onBack={() => setOpenId(null)}
             onDelete={() => {
@@ -124,6 +152,10 @@ export default function App() {
               commit([...sessions, copy]);
               setSelected(date);
               setOpenId(null);
+            }}
+            onCopyToClipboard={() => {
+              setClipboard(open);
+              setToast("Скопировано — вставь через «Добавить тренировку»");
             }}
           />
         ) : (
@@ -143,9 +175,12 @@ export default function App() {
             <NewSessionDialog
               open={creating}
               cardioKinds={cardioKinds}
+              mobilityKinds={mobilityKinds}
+              hasClipboard={Boolean(clipboard)}
               onClose={() => setCreating(false)}
               onCreate={createSession}
-              onAddCardioKind={addCardioKind}
+              onAddCustom={addCustomActivity}
+              onPaste={pasteSession}
             />
           </>
         )}
@@ -168,6 +203,14 @@ export default function App() {
               Отменить
             </Button>
           }
+        />
+
+        <Snackbar
+          open={Boolean(toast)}
+          autoHideDuration={4000}
+          onClose={() => setToast(null)}
+          message={toast ?? ""}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         />
       </Container>
     </ThemeProvider>

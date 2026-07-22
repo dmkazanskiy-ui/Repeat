@@ -1,8 +1,12 @@
 import * as db from "./db";
 import { newId } from "./id";
 import { CATALOG } from "./catalog";
+import type { IconKey } from "./icons";
 import type {
   CardioKind,
+  CardioSegment,
+  CustomActivity,
+  MobilityKind,
   Exercise,
   Session,
   SessionExercise,
@@ -13,11 +17,13 @@ import type {
 const KEY_SESSIONS = "sessions";
 const KEY_CUSTOM = "custom_exercises";
 const KEY_CARDIO = "custom_cardio";
+const KEY_MOBILITY = "custom_mobility";
 
 export interface AppData {
   sessions: Session[];
   exercises: Exercise[];
-  cardioKinds: string[];
+  cardioKinds: CustomActivity[];
+  mobilityKinds: CustomActivity[];
 }
 
 /**
@@ -34,15 +40,21 @@ function baseExercises(): Exercise[] {
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom, cardioKinds] = await Promise.all([
+  const [sessions, custom, cardio, mobility] = await Promise.all([
     db.get<Session[]>(KEY_SESSIONS),
     db.get<Exercise[]>(KEY_CUSTOM),
-    db.get<string[]>(KEY_CARDIO),
+    db.get<Array<CustomActivity | string>>(KEY_CARDIO),
+    db.get<CustomActivity[]>(KEY_MOBILITY),
   ]);
   return {
     sessions: sessions ?? [],
     exercises: [...baseExercises(), ...(custom ?? [])],
-    cardioKinds: cardioKinds ?? [],
+    // Раньше свои виды хранились просто строками — поднимаем их до объекта
+    // с иконкой, чтобы уже заведённые виды не пропали.
+    cardioKinds: (cardio ?? []).map((item) =>
+      typeof item === "string" ? { name: item, icon: "bolt" as const } : item,
+    ),
+    mobilityKinds: mobility ?? [],
   };
 }
 
@@ -57,8 +69,12 @@ export function saveCustomExercises(exercises: Exercise[]): Promise<void> {
   );
 }
 
-export function saveCardioKinds(kinds: string[]): Promise<void> {
+export function saveCardioKinds(kinds: CustomActivity[]): Promise<void> {
   return db.set(KEY_CARDIO, kinds);
+}
+
+export function saveMobilityKinds(kinds: CustomActivity[]): Promise<void> {
+  return db.set(KEY_MOBILITY, kinds);
 }
 
 export function newSet(previous?: WorkoutSet): WorkoutSet {
@@ -84,20 +100,29 @@ export function newSessionExercise(exerciseId: string): SessionExercise {
 export function newSession(
   date: string,
   kind: SessionKind,
-  cardioKind: CardioKind | null,
-  cardioCustom: string | null = null,
+  options: {
+    cardioKind?: CardioKind | null;
+    mobilityKind?: MobilityKind | null;
+    customKind?: string | null;
+    icon?: IconKey | null;
+  } = {},
 ): Session {
   return {
     id: newId(),
     date,
     kind,
-    cardioKind: kind === "cardio" ? cardioKind : null,
-    cardioCustom: kind === "cardio" ? cardioCustom : null,
+    cardioKind: kind === "cardio" ? (options.cardioKind ?? null) : null,
+    mobilityKind: kind === "mobility" ? (options.mobilityKind ?? null) : null,
+    customKind: options.customKind ?? null,
+    icon: options.icon ?? null,
     title: null,
     notes: null,
     createdAt: new Date().toISOString(),
     exercises: [],
-    cardio: kind === "cardio" ? { durationSec: null, distanceM: null, avgHr: null } : null,
+    cardio:
+      kind === "cardio"
+        ? { durationSec: null, distanceM: null, avgHr: null, segments: [] }
+        : null,
   };
 }
 
@@ -116,6 +141,16 @@ export function datesWithSessions(sessions: Session[]): Set<string> {
  * Скопировать сессию на другую дату — основа планирования наперёд.
  * Веса переносятся как ориентир, отметки «сделано» сбрасываются.
  */
+export function newSegment(): CardioSegment {
+  return {
+    id: newId(),
+    repeat: 1,
+    distanceM: null,
+    durationSec: null,
+    restSec: null,
+  };
+}
+
 export function copySessionTo(session: Session, date: string): Session {
   return {
     ...session,
@@ -131,6 +166,11 @@ export function copySessionTo(session: Session, date: string): Session {
         done: false,
       })),
     })),
-    cardio: session.cardio ? { ...session.cardio } : null,
+    cardio: session.cardio
+      ? {
+          ...session.cardio,
+          segments: session.cardio.segments?.map((s) => ({ ...s, id: newId() })),
+        }
+      : null,
   };
 }

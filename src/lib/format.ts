@@ -106,6 +106,14 @@ export function formatDuration(seconds: number | null): string {
   return minutes === 0 ? `${hours} ч` : `${hours} ч ${minutes} мин`;
 }
 
+/** Короткие отрезки в виде 1:30 — «2 мин» для интервала бесполезно. */
+export function formatClock(seconds: number | null): string {
+  if (!seconds) return "—";
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return `${minutes}:${`${rest}`.padStart(2, "0")}`;
+}
+
 export function formatDistance(
   meters: number | null,
   kind: CardioKind | null,

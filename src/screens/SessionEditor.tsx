@@ -14,14 +14,29 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import AddIcon from "@mui/icons-material/Add";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
-import { newSessionExercise, newSet } from "../lib/store";
-import { formatDateFull, formatPace } from "../lib/format";
-import { CARDIO_LABELS, cardioLabel, distanceUnit } from "../lib/types";
+import { newSegment, newSessionExercise, newSet } from "../lib/store";
+import {
+  formatDateFull,
+  formatClock,
+  formatDistance,
+  formatDuration,
+  formatPace,
+} from "../lib/format";
+import {
+  CARDIO_LABELS,
+  MOBILITY_LABELS,
+  activityLabel,
+  distanceUnit,
+  segmentTotals,
+} from "../lib/types";
 import type {
   CardioKind,
+  CustomActivity,
   Exercise,
+  MobilityKind,
   MuscleGroup,
   Session,
   SessionExercise,
@@ -30,26 +45,34 @@ import type {
 interface Props {
   session: Session;
   exercises: Exercise[];
+  cardioKinds: CustomActivity[];
+  mobilityKinds: CustomActivity[];
   onChange: (session: Session) => void;
   onDelete: () => void;
   onBack: () => void;
-  cardioKinds: string[];
   onCreateExercise: (name: string, group: MuscleGroup) => Exercise;
   onCopyTo: (date: string) => void;
+  onCopyToClipboard: () => void;
 }
 
 export default function SessionEditor({
   session,
   exercises,
+  cardioKinds,
+  mobilityKinds,
   onChange,
   onDelete,
   onBack,
-  cardioKinds,
   onCreateExercise,
   onCopyTo,
+  onCopyToClipboard,
 }: Props) {
   const [picking, setPicking] = useState(false);
   const [copyDate, setCopyDate] = useState("");
+
+  const unit = distanceUnit(session.cardioKind);
+  const segments = session.cardio?.segments ?? [];
+  const totals = segmentTotals(segments);
 
   function patchExercise(
     id: string,
@@ -61,7 +84,44 @@ export default function SessionEditor({
     });
   }
 
-  const unit = distanceUnit(session.cardioKind);
+  function patchCardio(patch: Partial<NonNullable<Session["cardio"]>>) {
+    onChange({ ...session, cardio: { ...session.cardio!, ...patch } });
+  }
+
+  function patchSegment(id: string, patch: Partial<(typeof segments)[number]>) {
+    patchCardio({
+      segments: segments.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+    });
+  }
+
+  /** Значение селекта вида: свои виды помечаем префиксом. */
+  const kindValue = session.customKind
+    ? `custom:${session.customKind}`
+    : session.kind === "cardio"
+      ? (session.cardioKind ?? "run")
+      : (session.mobilityKind ?? "yoga");
+
+  function pickKind(value: string) {
+    if (value.startsWith("custom:")) {
+      const name = value.slice("custom:".length);
+      const list = session.kind === "cardio" ? cardioKinds : mobilityKinds;
+      onChange({
+        ...session,
+        cardioKind: null,
+        mobilityKind: null,
+        customKind: name,
+        icon: list.find((item) => item.name === name)?.icon ?? "bolt",
+      });
+      return;
+    }
+    onChange({
+      ...session,
+      customKind: null,
+      icon: null,
+      cardioKind: session.kind === "cardio" ? (value as CardioKind) : null,
+      mobilityKind: session.kind === "mobility" ? (value as MobilityKind) : null,
+    });
+  }
 
   return (
     <Box sx={{ pb: 6 }}>
@@ -77,10 +137,7 @@ export default function SessionEditor({
       <TextField
         fullWidth
         variant="standard"
-        placeholder={
-          (session.kind === "cardio" ? cardioLabel(session) : null) ??
-          "Название тренировки"
-        }
+        placeholder={activityLabel(session) ?? "Название тренировки"}
         value={session.title ?? ""}
         onChange={(event) =>
           onChange({ ...session, title: event.target.value || null })
@@ -89,121 +146,227 @@ export default function SessionEditor({
         sx={{ mb: 3 }}
       />
 
-      {session.kind === "cardio" && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-          {/* Свои виды кардио живут в том же списке, с префиксом в значении,
-              чтобы не спутать «Гребля» пользователя с готовым видом. */}
-          <TextField
-            select
-            label="Вид"
-            fullWidth
-            value={
-              session.cardioCustom
-                ? `custom:${session.cardioCustom}`
-                : (session.cardioKind ?? "run")
-            }
-            onChange={(event) => {
-              const value = event.target.value;
-              onChange(
-                value.startsWith("custom:")
-                  ? {
-                      ...session,
-                      cardioKind: null,
-                      cardioCustom: value.slice("custom:".length),
-                    }
-                  : {
-                      ...session,
-                      cardioKind: value as CardioKind,
-                      cardioCustom: null,
-                    },
-              );
-            }}
-            sx={{ mb: 2 }}
-          >
-            {(Object.keys(CARDIO_LABELS) as CardioKind[]).map((kind) => (
-              <MenuItem key={kind} value={kind}>
-                {CARDIO_LABELS[kind]}
-              </MenuItem>
-            ))}
-            {cardioKinds.map((custom) => (
-              <MenuItem key={custom} value={`custom:${custom}`}>
-                {custom}
-              </MenuItem>
-            ))}
-          </TextField>
+      {session.kind !== "strength" && (
+        <TextField
+          select
+          label="Вид"
+          fullWidth
+          value={kindValue}
+          onChange={(event) => pickKind(event.target.value)}
+          sx={{ mb: 2 }}
+        >
+          {session.kind === "cardio"
+            ? (Object.keys(CARDIO_LABELS) as CardioKind[]).map((kind) => (
+                <MenuItem key={kind} value={kind}>
+                  {CARDIO_LABELS[kind]}
+                </MenuItem>
+              ))
+            : (Object.keys(MOBILITY_LABELS) as MobilityKind[]).map((kind) => (
+                <MenuItem key={kind} value={kind}>
+                  {MOBILITY_LABELS[kind]}
+                </MenuItem>
+              ))}
+          {(session.kind === "cardio" ? cardioKinds : mobilityKinds).map((custom) => (
+            <MenuItem key={custom.name} value={`custom:${custom.name}`}>
+              {custom.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      )}
 
-          <Stack direction="row" spacing={1}>
-            <NumberField
-              label={`Дистанция, ${unit}`}
-              fullWidth
-              value={
-                session.cardio?.distanceM == null
-                  ? null
-                  : unit === "км"
-                    ? session.cardio.distanceM / 1000
-                    : session.cardio.distanceM
-              }
-              onChange={(value) =>
-                onChange({
-                  ...session,
-                  cardio: {
-                    ...session.cardio!,
+      {session.kind === "cardio" && (
+        <>
+          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+            <Stack direction="row" spacing={1}>
+              <NumberField
+                label={`Дистанция, ${unit}`}
+                fullWidth
+                value={
+                  session.cardio?.distanceM == null
+                    ? null
+                    : unit === "км"
+                      ? session.cardio.distanceM / 1000
+                      : session.cardio.distanceM
+                }
+                onChange={(value) =>
+                  patchCardio({
                     // Округляем до метра: 6,08 км это 6080 м, а не 6080.0000001.
                     distanceM:
                       value == null
                         ? null
                         : Math.round(unit === "км" ? value * 1000 : value),
-                  },
-                })
-              }
-            />
-            <NumberField
-              label="Время, мин"
-              fullWidth
-              value={
-                session.cardio?.durationSec == null
-                  ? null
-                  : Math.round((session.cardio.durationSec / 60) * 100) / 100
-              }
-              onChange={(value) =>
-                onChange({
-                  ...session,
-                  cardio: {
-                    ...session.cardio!,
+                  })
+                }
+              />
+              <NumberField
+                label="Время, мин"
+                fullWidth
+                value={
+                  session.cardio?.durationSec == null
+                    ? null
+                    : Math.round((session.cardio.durationSec / 60) * 100) / 100
+                }
+                onChange={(value) =>
+                  patchCardio({
                     durationSec: value == null ? null : Math.round(value * 60),
-                  },
-                })
-              }
-            />
-          </Stack>
+                  })
+                }
+              />
+            </Stack>
 
-          <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: "center" }}>
-            <NumberField
-              label="Средний пульс"
-              fullWidth
-              integer
-              value={session.cardio?.avgHr ?? null}
-              onChange={(value) =>
-                onChange({
-                  ...session,
-                  cardio: { ...session.cardio!, avgHr: value },
-                })
-              }
-            />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                Темп
-              </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                {formatPace(
-                  session.cardio?.distanceM ?? null,
-                  session.cardio?.durationSec ?? null,
-                  session.cardioKind,
-                )}
-              </Typography>
-            </Box>
+            <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: "center" }}>
+              <NumberField
+                label="Средний пульс"
+                fullWidth
+                integer
+                value={session.cardio?.avgHr ?? null}
+                onChange={(value) => patchCardio({ avgHr: value })}
+              />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Темп
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                  {formatPace(
+                    session.cardio?.distanceM ?? null,
+                    session.cardio?.durationSec ?? null,
+                    session.cardioKind,
+                  )}
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
+
+          {/* Интервалы. Одна строка — это блок, повторённый N раз, поэтому
+              «10 × 400 м через 90 с» вводится один раз, а не десять. */}
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Интервалы
+          </Typography>
+
+          {segments.map((segment, index) => {
+            const repeat = Math.max(1, segment.repeat || 1);
+            return (
+              <Paper key={segment.id} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
+                <Stack
+                  direction="row"
+                  sx={{
+                    mb: 1,
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Блок {index + 1}
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    aria-label="Убрать блок"
+                    onClick={() =>
+                      patchCardio({
+                        segments: segments.filter((s) => s.id !== segment.id),
+                      })
+                    }
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+
+                <Stack direction="row" spacing={1}>
+                  <NumberField
+                    label="Повторов"
+                    integer
+                    value={segment.repeat}
+                    sx={{ width: 100 }}
+                    onChange={(value) => patchSegment(segment.id, { repeat: value ?? 1 })}
+                  />
+                  <NumberField
+                    label={`Отрезок, ${unit}`}
+                    fullWidth
+                    value={
+                      segment.distanceM == null
+                        ? null
+                        : unit === "км"
+                          ? segment.distanceM / 1000
+                          : segment.distanceM
+                    }
+                    onChange={(value) =>
+                      patchSegment(segment.id, {
+                        distanceM:
+                          value == null
+                            ? null
+                            : Math.round(unit === "км" ? value * 1000 : value),
+                      })
+                    }
+                  />
+                </Stack>
+
+                <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                  <NumberField
+                    label="Время, мин"
+                    fullWidth
+                    value={
+                      segment.durationSec == null
+                        ? null
+                        : Math.round((segment.durationSec / 60) * 100) / 100
+                    }
+                    onChange={(value) =>
+                      patchSegment(segment.id, {
+                        durationSec: value == null ? null : Math.round(value * 60),
+                      })
+                    }
+                  />
+                  <NumberField
+                    label="Отдых, с"
+                    fullWidth
+                    integer
+                    value={segment.restSec}
+                    onChange={(value) => patchSegment(segment.id, { restSec: value })}
+                  />
+                </Stack>
+
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 1 }}
+                >
+                  {repeat} × {formatDistance(segment.distanceM, session.cardioKind)}
+                  {segment.durationSec ? ` за ${formatClock(segment.durationSec)}` : ""}
+                  {" · темп "}
+                  {formatPace(segment.distanceM, segment.durationSec, session.cardioKind)}
+                </Typography>
+              </Paper>
+            );
+          })}
+
+          <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: "center" }}>
+            <Button
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => patchCardio({ segments: [...segments, newSegment()] })}
+            >
+              Блок
+            </Button>
+            {segments.length > 0 && (
+              <>
+                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                  Итого {formatDistance(totals.distanceM, session.cardioKind)} ·{" "}
+                  {formatDuration(totals.durationSec)}
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    patchCardio({
+                      distanceM: totals.distanceM || null,
+                      durationSec: totals.durationSec || null,
+                    })
+                  }
+                >
+                  В итог
+                </Button>
+              </>
+            )}
           </Stack>
-        </Paper>
+        </>
       )}
 
       {session.kind === "strength" && (
@@ -214,7 +377,11 @@ export default function SessionEditor({
               <Paper key={item.id} variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
                 <Stack
                   direction="row"
-                  sx={{ mb: 1, alignItems: "center", justifyContent: "space-between" }}
+                  sx={{
+                    mb: 1,
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
                 >
                   <Typography variant="subtitle2">
                     {exercise?.name ?? "Упражнение"}
@@ -235,7 +402,12 @@ export default function SessionEditor({
 
                 <Stack spacing={1}>
                   {item.sets.map((set, index) => (
-                    <Stack key={set.id} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    <Stack
+                      key={set.id}
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: "center" }}
+                    >
                       <Typography
                         variant="caption"
                         color="text.secondary"
@@ -348,12 +520,14 @@ export default function SessionEditor({
       <Typography variant="caption" color="text.secondary">
         Повторить эту тренировку в другой день
       </Typography>
-      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+      {/* Поле даты тянется, кнопка занимает ровно своё — иначе инпут
+          оказывался уже кнопки и выглядел сломанным. */}
+      <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: "center" }}>
         <TextField
           type="date"
-          fullWidth
           value={copyDate}
           onChange={(event) => setCopyDate(event.target.value)}
+          sx={{ flex: 1 }}
         />
         <Button
           variant="outlined"
@@ -362,12 +536,23 @@ export default function SessionEditor({
             onCopyTo(copyDate);
             setCopyDate("");
           }}
+          sx={{ flexShrink: 0, whiteSpace: "nowrap" }}
         >
           Повторить
         </Button>
       </Stack>
 
-      <Button fullWidth color="error" onClick={onDelete} sx={{ mt: 3 }}>
+      <Button
+        fullWidth
+        variant="outlined"
+        startIcon={<ContentCopyIcon />}
+        onClick={onCopyToClipboard}
+        sx={{ mt: 2 }}
+      >
+        Скопировать тренировку
+      </Button>
+
+      <Button fullWidth color="error" onClick={onDelete} sx={{ mt: 1 }}>
         Удалить тренировку
       </Button>
 

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Box } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 
 interface Props {
@@ -7,17 +7,20 @@ interface Props {
   onDelete: () => void;
 }
 
-/** Сколько нужно протянуть, чтобы смах засчитался как удаление. */
-const THRESHOLD = 96;
+/** Ширина красной панели, которая выезжает из-под карточки. */
+const ACTION_WIDTH = 108;
 /** До этого порога направление жеста ещё не определено. */
 const AXIS_LOCK = 10;
 
 /**
- * Свайп по карточке в любую сторону удаляет её.
+ * Свайп влево вытягивает из-под карточки кнопку «Удалить»; удаление
+ * происходит по нажатию на неё, а не по самому свайпу.
  *
- * Жест намеренно уступает вертикальной прокрутке: пока палец не ушёл
- * по горизонтали дальше, чем по вертикали, карточка не двигается —
- * иначе список невозможно листать, не задевая карточки.
+ * Так сделано намеренно: смах — жест лёгкий и случайный, а тренировку
+ * терять обидно. Одно движение открывает, второе подтверждает.
+ *
+ * Жест уступает вертикальной прокрутке: пока палец не ушёл по горизонтали
+ * дальше, чем по вертикали, карточка не двигается.
  */
 export default function SwipeToDelete({ children, onDelete }: Props) {
   const [offset, setOffset] = useState(0);
@@ -25,13 +28,21 @@ export default function SwipeToDelete({ children, onDelete }: Props) {
 
   const start = useRef<{ x: number; y: number } | null>(null);
   const axis = useRef<"none" | "x" | "y">("none");
+  const openAtStart = useRef(0);
   /** Свайп не должен превращаться в открытие карточки по клику. */
   const swiped = useRef(false);
 
+  const open = offset <= -ACTION_WIDTH / 2;
+
+  function close() {
+    setAnimating(true);
+    setOffset(0);
+  }
+
   function onPointerDown(event: React.PointerEvent) {
-    // Мышиный правый клик и продолжение уже идущего жеста игнорируем.
     if (event.button !== 0) return;
     start.current = { x: event.clientX, y: event.clientY };
+    openAtStart.current = offset;
     axis.current = "none";
     swiped.current = false;
     setAnimating(false);
@@ -52,7 +63,9 @@ export default function SwipeToDelete({ children, onDelete }: Props) {
 
     if (axis.current !== "x") return;
     swiped.current = true;
-    setOffset(dx);
+    // Влево — до ширины панели, вправо — не дальше исходного положения.
+    const next = Math.min(0, Math.max(-ACTION_WIDTH, openAtStart.current + dx));
+    setOffset(next);
   }
 
   function finish(event: React.PointerEvent) {
@@ -66,34 +79,33 @@ export default function SwipeToDelete({ children, onDelete }: Props) {
     if (!wasHorizontal) return;
 
     setAnimating(true);
-    if (Math.abs(offset) >= THRESHOLD) {
-      // Досылаем карточку за край экрана, потом отдаём удаление наверх.
-      setOffset(offset > 0 ? window.innerWidth : -window.innerWidth);
-      setTimeout(onDelete, 180);
-      return;
-    }
-    setOffset(0);
+    setOffset(offset <= -ACTION_WIDTH / 2 ? -ACTION_WIDTH : 0);
   }
 
-  const progress = Math.min(Math.abs(offset) / THRESHOLD, 1);
-
   return (
-    <Box sx={{ position: "relative", overflow: "hidden", borderRadius: 3.5 }}>
+    <Box sx={{ position: "relative", overflow: "hidden", borderRadius: 1 }}>
       <Box
+        onClick={onDelete}
         sx={{
           position: "absolute",
-          inset: 0,
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: ACTION_WIDTH,
           bgcolor: "error.main",
-          opacity: 0.25 + progress * 0.75,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: offset > 0 ? "flex-start" : "flex-end",
-          px: 2.5,
           color: "#fff",
-          pointerEvents: "none",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 0.25,
+          cursor: "pointer",
+          // Пока панель закрыта, она не должна перехватывать нажатия.
+          pointerEvents: open ? "auto" : "none",
         }}
       >
-        <DeleteOutlineIcon />
+        <DeleteOutlineIcon fontSize="small" />
+        <Typography variant="caption">Удалить</Typography>
       </Box>
 
       <Box
@@ -102,16 +114,19 @@ export default function SwipeToDelete({ children, onDelete }: Props) {
         onPointerUp={finish}
         onPointerCancel={finish}
         onClickCapture={(event) => {
-          if (swiped.current) {
+          // После свайпа — гасим клик. Когда панель открыта, тап по карточке
+          // закрывает её, а не проваливается в редактор.
+          if (swiped.current || open) {
             event.preventDefault();
             event.stopPropagation();
             swiped.current = false;
+            if (open) close();
           }
         }}
         sx={{
           position: "relative",
           transform: `translateX(${offset}px)`,
-          transition: animating ? "transform 180ms ease-out" : "none",
+          transition: animating ? "transform 200ms ease-out" : "none",
           touchAction: "pan-y",
         }}
       >
