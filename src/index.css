@@ -1,24 +1,6 @@
-@import "./styles/tokens.css";
-
-* {
-  box-sizing: border-box;
-}
-
+/* Базовые стили; всё остальное задаёт тема MUI (src/theme.ts). */
 html,
 body,
 #root {
   height: 100%;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  -webkit-font-smoothing: antialiased;
-}
-
-button {
-  font-family: inherit;
-  cursor: pointer;
 }

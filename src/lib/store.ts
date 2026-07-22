@@ -1,163 +1,126 @@
 import * as db from "./db";
 import { newId } from "./id";
-import { today } from "./format";
-import { seedExercises, SEED_DAY_MAP } from "./exercises";
+import { CATALOG } from "./catalog";
 import type {
+  CardioKind,
   Exercise,
-  SplitCode,
-  Workout,
-  WorkoutExercise,
+  Session,
+  SessionExercise,
+  SessionKind,
   WorkoutSet,
 } from "./types";
 
-const KEY_WORKOUTS = "workouts";
-const KEY_EXERCISES = "exercises";
+const KEY_SESSIONS = "sessions";
+const KEY_CUSTOM = "custom_exercises";
 
 export interface AppData {
-  workouts: Workout[];
+  sessions: Session[];
   exercises: Exercise[];
 }
 
-/** Первая загрузка засевает справочник, дальше он живёт своей жизнью. */
+/**
+ * Базовый справочник живёт в коде, а не в хранилище: так он обновляется
+ * вместе с приложением и не требует миграций. В хранилище — только своё.
+ */
+function baseExercises(): Exercise[] {
+  return CATALOG.map((item) => ({
+    id: `base:${item.name}`,
+    name: item.name,
+    muscleGroup: item.muscleGroup,
+    custom: false,
+  }));
+}
+
 export async function load(): Promise<AppData> {
-  const [workouts, exercises] = await Promise.all([
-    db.get<Workout[]>(KEY_WORKOUTS),
-    db.get<Exercise[]>(KEY_EXERCISES),
+  const [sessions, custom] = await Promise.all([
+    db.get<Session[]>(KEY_SESSIONS),
+    db.get<Exercise[]>(KEY_CUSTOM),
   ]);
-
-  if (!exercises) {
-    const seeded = seedExercises(newId);
-    await db.set(KEY_EXERCISES, seeded);
-    return { workouts: workouts ?? [], exercises: seeded };
-  }
-
-  return { workouts: workouts ?? [], exercises };
+  return {
+    sessions: sessions ?? [],
+    exercises: [...baseExercises(), ...(custom ?? [])],
+  };
 }
 
-export function saveWorkouts(workouts: Workout[]): Promise<void> {
-  return db.set(KEY_WORKOUTS, workouts);
+export function saveSessions(sessions: Session[]): Promise<void> {
+  return db.set(KEY_SESSIONS, sessions);
 }
 
-export function saveExercises(exercises: Exercise[]): Promise<void> {
-  return db.set(KEY_EXERCISES, exercises);
+export function saveCustomExercises(exercises: Exercise[]): Promise<void> {
+  return db.set(
+    KEY_CUSTOM,
+    exercises.filter((e) => e.custom),
+  );
+}
+
+export function newSet(previous?: WorkoutSet): WorkoutSet {
+  return {
+    id: newId(),
+    weight: previous?.weight ?? null,
+    reps: previous?.reps ?? null,
+    done: false,
+  };
 }
 
 const DEFAULT_SETS = 3;
 
-function makeSet(
-  setIndex: number,
-  targetWeight: number | null,
-  targetReps: number | null,
-): WorkoutSet {
+export function newSessionExercise(exerciseId: string): SessionExercise {
   return {
     id: newId(),
-    setIndex,
-    targetWeight,
-    targetReps,
-    weight: null,
-    reps: null,
-    rpe: null,
-    isWarmup: false,
-    completedAt: null,
+    exerciseId,
+    sets: Array.from({ length: DEFAULT_SETS }, () => newSet()),
+    notes: null,
   };
 }
 
-/** Последняя завершённая тренировка этого же дня сплита — она и есть шаблон. */
-export function lastWorkoutOfDay(
-  workouts: Workout[],
-  code: SplitCode,
-): Workout | null {
-  const matching = workouts
-    .filter((w) => w.splitDayCode === code && w.status === "done")
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  return matching[0] ?? null;
+export function newSession(
+  date: string,
+  kind: SessionKind,
+  cardioKind: CardioKind | null,
+): Session {
+  return {
+    id: newId(),
+    date,
+    kind,
+    cardioKind: kind === "cardio" ? cardioKind : null,
+    title: null,
+    notes: null,
+    createdAt: new Date().toISOString(),
+    exercises: [],
+    cardio: kind === "cardio" ? { durationSec: null, distanceM: null, avgHr: null } : null,
+  };
+}
+
+export function sessionsOn(sessions: Session[], date: string): Session[] {
+  return sessions
+    .filter((s) => s.date === date)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+}
+
+/** Даты, на которые что-то запланировано или сделано — для точек в календаре. */
+export function datesWithSessions(sessions: Session[]): Set<string> {
+  return new Set(sessions.map((s) => s.date));
 }
 
 /**
- * Новая тренировка дня сплита.
- *
- * Если такой день уже делался — план берётся из прошлого раза: фактические
- * веса и повторы становятся целевыми. Это и есть предзаполнение из SPEC.md §2.3,
- * только шаблон не заводится вручную, а вырастает из истории.
- *
- * Если день делается впервые — подставляем заготовку из справочника
- * с пустыми целями, их проще заполнить по ходу, чем выдумывать заранее.
+ * Скопировать сессию на другую дату — основа планирования наперёд.
+ * Веса переносятся как ориентир, отметки «сделано» сбрасываются.
  */
-export function buildWorkout(
-  code: SplitCode,
-  exercises: Exercise[],
-  workouts: Workout[],
-): Workout {
-  const previous = lastWorkoutOfDay(workouts, code);
-
-  const workoutExercises: WorkoutExercise[] = previous
-    ? previous.exercises.map((exercise, index) => ({
-        id: newId(),
-        exerciseId: exercise.exerciseId,
-        orderIndex: index,
-        notes: null,
-        sets: exercise.sets
-          .filter((set) => !set.isWarmup)
-          .map((set, setIndex) =>
-            // Цель на сегодня = что реально сделал в прошлый раз.
-            makeSet(setIndex, set.weight ?? set.targetWeight, set.reps ?? set.targetReps),
-          ),
-      }))
-    : SEED_DAY_MAP[code]
-        .map((name) => exercises.find((e) => e.name === name))
-        .filter((e): e is Exercise => Boolean(e))
-        .map((exercise, index) => ({
-          id: newId(),
-          exerciseId: exercise.id,
-          orderIndex: index,
-          notes: null,
-          sets: Array.from({ length: DEFAULT_SETS }, (_, i) =>
-            makeSet(i, null, null),
-          ),
-        }));
-
+export function copySessionTo(session: Session, date: string): Session {
   return {
+    ...session,
     id: newId(),
-    date: today(),
-    splitDayCode: code,
-    mesocycleId: null,
-    status: "in_progress",
-    durationSec: null,
-    notes: null,
-    exercises: workoutExercises,
-  };
-}
-
-export function addSet(exercise: WorkoutExercise): WorkoutExercise {
-  const last = exercise.sets[exercise.sets.length - 1];
-  return {
-    ...exercise,
-    sets: [
-      ...exercise.sets,
-      makeSet(
-        exercise.sets.length,
-        last?.weight ?? last?.targetWeight ?? null,
-        last?.reps ?? last?.targetReps ?? null,
-      ),
-    ],
-  };
-}
-
-export function addExercise(
-  workout: Workout,
-  exerciseId: string,
-): Workout {
-  return {
-    ...workout,
-    exercises: [
-      ...workout.exercises,
-      {
+    date,
+    createdAt: new Date().toISOString(),
+    exercises: session.exercises.map((exercise) => ({
+      ...exercise,
+      id: newId(),
+      sets: exercise.sets.map((set) => ({
+        ...set,
         id: newId(),
-        exerciseId,
-        orderIndex: workout.exercises.length,
-        notes: null,
-        sets: Array.from({ length: DEFAULT_SETS }, (_, i) => makeSet(i, null, null)),
-      },
-    ],
+        done: false,
+      })),
+    })),
+    cardio: session.cardio ? { ...session.cardio } : null,
   };
 }

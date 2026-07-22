@@ -1,137 +1,128 @@
 import { useCallback, useEffect, useState } from "react";
-import { load, saveExercises, saveWorkouts, buildWorkout } from "./lib/store";
-import type { Exercise, SplitCode, Workout } from "./lib/types";
-import Home from "./screens/Home";
-import WorkoutScreen from "./screens/Workout";
-import History from "./screens/History";
-import ExerciseDetail from "./screens/ExerciseDetail";
-import Exercises from "./screens/Exercises";
-import "./App.css";
-
-type Screen =
-  | { name: "home" }
-  | { name: "workout"; id: string }
-  | { name: "history" }
-  | { name: "exercise"; id: string }
-  | { name: "exercises" };
+import { Box, Container, CssBaseline, Typography } from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
+import { theme } from "./theme";
+import {
+  copySessionTo,
+  load,
+  newSession,
+  saveCustomExercises,
+  saveSessions,
+} from "./lib/store";
+import { newId } from "./lib/id";
+import { today } from "./lib/format";
+import CalendarScreen from "./screens/CalendarScreen";
+import SessionEditor from "./screens/SessionEditor";
+import NewSessionDialog from "./components/NewSessionDialog";
+import type {
+  CardioKind,
+  Exercise,
+  MuscleGroup,
+  Session,
+  SessionKind,
+} from "./lib/types";
 
 export default function App() {
   const [ready, setReady] = useState(false);
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [screen, setScreen] = useState<Screen>({ name: "home" });
+  const [selected, setSelected] = useState(today);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     load().then((data) => {
-      setWorkouts(data.workouts);
+      setSessions(data.sessions);
       setExercises(data.exercises);
       setReady(true);
     });
   }, []);
 
-  // Пишем в хранилище на каждое изменение: тренировка может оборваться
-  // в любой момент — телефон сел, Telegram свернулся, сеть пропала.
-  const commitWorkouts = useCallback((next: Workout[]) => {
-    setWorkouts(next);
-    void saveWorkouts(next);
+  // Пишем на каждое изменение: тренировка правится в зале, где приложение
+  // могут закрыть в любой момент. Отдельной кнопки «сохранить» по сути нет.
+  const commit = useCallback((next: Session[]) => {
+    setSessions(next);
+    void saveSessions(next);
   }, []);
 
-  const commitExercises = useCallback((next: Exercise[]) => {
-    setExercises(next);
-    void saveExercises(next);
-  }, []);
-
-  const updateWorkout = useCallback(
-    (updated: Workout) => {
-      commitWorkouts(
-        workouts.map((w) => (w.id === updated.id ? updated : w)),
-      );
+  const updateSession = useCallback(
+    (updated: Session) => {
+      commit(sessions.map((s) => (s.id === updated.id ? updated : s)));
     },
-    [workouts, commitWorkouts],
+    [sessions, commit],
   );
 
-  const startWorkout = useCallback(
-    (code: SplitCode) => {
-      const workout = buildWorkout(code, exercises, workouts);
-      commitWorkouts([...workouts, workout]);
-      setScreen({ name: "workout", id: workout.id });
+  const createSession = useCallback(
+    (kind: SessionKind, cardioKind: CardioKind | null) => {
+      const session = newSession(selected, kind, cardioKind);
+      commit([...sessions, session]);
+      setOpenId(session.id);
     },
-    [exercises, workouts, commitWorkouts],
+    [selected, sessions, commit],
   );
 
-  const deleteWorkout = useCallback(
-    (id: string) => {
-      commitWorkouts(workouts.filter((w) => w.id !== id));
-      setScreen({ name: "home" });
+  const createExercise = useCallback(
+    (name: string, group: MuscleGroup): Exercise => {
+      const exercise: Exercise = {
+        id: newId(),
+        name,
+        muscleGroup: group,
+        custom: true,
+      };
+      const next = [...exercises, exercise];
+      setExercises(next);
+      void saveCustomExercises(next);
+      return exercise;
     },
-    [workouts, commitWorkouts],
+    [exercises],
   );
 
-  if (!ready) return <div className="app" />;
+  const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
 
-  const active = workouts.find((w) => w.status === "in_progress") ?? null;
-
-  switch (screen.name) {
-    case "workout": {
-      const workout = workouts.find((w) => w.id === screen.id);
-      if (!workout) {
-        setScreen({ name: "home" });
-        return <div className="app" />;
-      }
-      return (
-        <WorkoutScreen
-          workout={workout}
-          exercises={exercises}
-          workouts={workouts}
-          onChange={updateWorkout}
-          onDelete={() => deleteWorkout(workout.id)}
-          onBack={() => setScreen({ name: "home" })}
-          onOpenExercise={(id) => setScreen({ name: "exercise", id })}
-        />
-      );
-    }
-
-    case "history":
-      return (
-        <History
-          workouts={workouts}
-          exercises={exercises}
-          onBack={() => setScreen({ name: "home" })}
-          onOpen={(id) => setScreen({ name: "workout", id })}
-        />
-      );
-
-    case "exercise":
-      return (
-        <ExerciseDetail
-          exerciseId={screen.id}
-          exercises={exercises}
-          workouts={workouts}
-          onBack={() => setScreen({ name: "home" })}
-        />
-      );
-
-    case "exercises":
-      return (
-        <Exercises
-          exercises={exercises}
-          onChange={commitExercises}
-          onBack={() => setScreen({ name: "home" })}
-          onOpen={(id) => setScreen({ name: "exercise", id })}
-        />
-      );
-
-    default:
-      return (
-        <Home
-          workouts={workouts}
-          exercises={exercises}
-          active={active}
-          onStart={startWorkout}
-          onResume={(id) => setScreen({ name: "workout", id })}
-          onOpenHistory={() => setScreen({ name: "history" })}
-          onOpenExercises={() => setScreen({ name: "exercises" })}
-        />
-      );
-  }
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Container maxWidth="sm" sx={{ py: 2 }}>
+        {!ready ? null : open ? (
+          <SessionEditor
+            session={open}
+            exercises={exercises}
+            onChange={updateSession}
+            onBack={() => setOpenId(null)}
+            onDelete={() => {
+              commit(sessions.filter((s) => s.id !== open.id));
+              setOpenId(null);
+            }}
+            onCreateExercise={createExercise}
+            onCopyTo={(date) => {
+              const copy = copySessionTo(open, date);
+              commit([...sessions, copy]);
+              setSelected(date);
+              setOpenId(null);
+            }}
+          />
+        ) : (
+          <>
+            <Typography variant="h1" sx={{ mb: 2 }}>
+              Repeat
+            </Typography>
+            <CalendarScreen
+              sessions={sessions}
+              exercises={exercises}
+              selected={selected}
+              onSelect={setSelected}
+              onOpen={setOpenId}
+              onCreate={() => setCreating(true)}
+            />
+            <NewSessionDialog
+              open={creating}
+              onClose={() => setCreating(false)}
+              onCreate={createSession}
+            />
+          </>
+        )}
+        <Box sx={{ height: 24 }} />
+      </Container>
+    </ThemeProvider>
+  );
 }

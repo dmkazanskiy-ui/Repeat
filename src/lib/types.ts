@@ -1,155 +1,90 @@
-// Доменная модель Repeat. Зеркалит схему из SPEC.md §4 —
-// при правках держать оба места в согласии.
-
-export type SplitCode = "A" | "B" | "C" | "D";
-
-export type MesocycleGoal =
-  | "accumulation" // накопление объёма
-  | "intensification"
-  | "deload"
-  | "peak";
-
-export type TrackingType =
-  | "weight_reps" // штанга, гантели, тренажёры
-  | "bodyweight_reps" // подтягивания, отжимания
-  | "time" // планка, вис
-  | "distance";
+// Доменная модель Repeat.
+//
+// Главная сущность — «сессия»: одна тренировка в конкретный день.
+// В одном дне их может быть сколько угодно (утром бег, вечером зал),
+// поэтому календарь строится вокруг сессий, а не вокруг дня.
 
 export type MuscleGroup =
-  | "back"
   | "chest"
+  | "back"
   | "shoulders"
-  | "quads"
-  | "hamstrings"
+  | "legs"
   | "glutes"
-  | "biceps"
-  | "triceps"
-  | "core";
+  | "arms"
+  | "core"
+  | "other";
+
+export type SessionKind = "strength" | "cardio" | "mobility";
+
+export type CardioKind =
+  | "run"
+  | "bike"
+  | "swim"
+  | "treadmill"
+  | "elliptical"
+  | "stairs";
 
 export interface Exercise {
   id: string;
   name: string;
-  /** Синонимы для разбора ввода: «жим», «жим лёжа», «скамья». */
-  aliases: string[];
   muscleGroup: MuscleGroup;
-  trackingType: TrackingType;
-}
-
-export interface SplitDay {
-  code: SplitCode;
-  title: string;
-  /** Порядок в цикле; следующий день считается по нему, а не по календарю. */
-  orderIndex: number;
-  muscleGroups: MuscleGroup[];
-}
-
-export interface Mesocycle {
-  id: string;
-  name: string;
-  goal: MesocycleGoal;
-  startDate: string; // YYYY-MM-DD
-  endDate: string | null;
+  /** Своё упражнение пользователя — его можно удалить, базовое нельзя. */
+  custom: boolean;
 }
 
 /**
- * Один подход. Плановые и фактические значения живут рядом:
- * план предзаполняет факт, поэтому «сделал как задумано» — это один тап.
+ * Подход. Плановых и фактических значений больше нет: сессия просто
+ * сохраняется и в любой момент правится — «завершения» не существует.
  */
 export interface WorkoutSet {
   id: string;
-  setIndex: number;
-  targetWeight: number | null;
-  targetReps: number | null;
   weight: number | null;
   reps: number | null;
-  rpe: number | null;
-  isWarmup: boolean;
-  completedAt: string | null; // ISO
+  done: boolean;
 }
 
-export interface WorkoutExercise {
+export interface SessionExercise {
   id: string;
   exerciseId: string;
-  orderIndex: number;
-  notes: string | null;
   sets: WorkoutSet[];
-}
-
-export type WorkoutStatus = "planned" | "in_progress" | "done";
-
-export interface Workout {
-  id: string;
-  date: string; // YYYY-MM-DD
-  splitDayCode: SplitCode;
-  mesocycleId: string | null;
-  status: WorkoutStatus;
-  durationSec: number | null;
   notes: string | null;
-  exercises: WorkoutExercise[];
 }
 
-export type CardioType = "run" | "bike" | "swim";
-export type EntrySource = "manual" | "text" | "screenshot" | "voice";
-
-export interface CardioActivity {
-  id: string;
-  type: CardioType;
-  date: string;
-  durationSec: number;
+export interface CardioData {
+  durationSec: number | null;
   distanceM: number | null;
   avgHr: number | null;
-  maxHr: number | null;
-  elevationM: number | null;
-  /** Плавание: гребки и длина бассейна нужны для SWOLF. */
-  strokes: number | null;
-  poolLengthM: number | null;
-  source: EntrySource;
 }
 
-export interface BodyMetric {
+export interface Session {
   id: string;
-  date: string;
-  weightKg: number | null;
-  bodyFatPct: number | null;
-}
-
-/** Поля опциональны: у разных часов разный набор. */
-export interface SleepRecovery {
-  id: string;
-  date: string;
-  sleepMinutes: number | null;
-  deepMinutes: number | null;
-  remMinutes: number | null;
-  restingHr: number | null;
-  hrv: number | null;
-  bodyBattery: number | null;
-  stressAvg: number | null;
-  source: EntrySource;
-}
-
-export interface DailyCheckin {
-  id: string;
-  date: string;
-  soreness: number | null; // 1-5
-  energy: number | null;
-  stress: number | null;
-  mood: number | null;
-  note: string | null;
-}
-
-export type IngestStatus = "pending" | "confirmed" | "rejected" | "failed";
-
-/**
- * Сырой ввод и то, что из него получилось. Без этого невозможно понять,
- * почему модель ошиблась, и невозможно переобработать записи после
- * улучшения промпта. См. SPEC.md §4.
- */
-export interface IngestLogEntry {
-  id: string;
+  date: string; // YYYY-MM-DD
+  kind: SessionKind;
+  /** Только для kind === "cardio". */
+  cardioKind: CardioKind | null;
+  title: string | null;
+  notes: string | null;
   createdAt: string; // ISO
-  inputType: "text" | "image" | "voice";
-  rawText: string | null;
-  rawRef: string | null; // ключ в хранилище для изображения/аудио
-  modelOutput: unknown;
-  status: IngestStatus;
+  exercises: SessionExercise[];
+  cardio: CardioData | null;
+}
+
+export const SESSION_LABELS: Record<SessionKind, string> = {
+  strength: "Силовая",
+  cardio: "Кардио",
+  mobility: "Мобилити",
+};
+
+export const CARDIO_LABELS: Record<CardioKind, string> = {
+  run: "Бег",
+  bike: "Велосипед",
+  swim: "Плавание",
+  treadmill: "Дорожка",
+  elliptical: "Эллипс",
+  stairs: "Ступеньки",
+};
+
+/** У плавания дистанция удобнее в метрах, у остального — в километрах. */
+export function distanceUnit(kind: CardioKind | null): "м" | "км" {
+  return kind === "swim" ? "м" : "км";
 }
