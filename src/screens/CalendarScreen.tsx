@@ -11,6 +11,7 @@ import {
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import AddIcon from "@mui/icons-material/Add";
+import SwipeToDelete from "../components/SwipeToDelete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
@@ -40,6 +41,7 @@ interface Props {
   onSelect: (date: string) => void;
   onOpen: (id: string) => void;
   onCreate: () => void;
+  onDelete: (id: string) => void;
 }
 
 export function sessionIcon(session: Session) {
@@ -80,6 +82,7 @@ export default function CalendarScreen({
   onSelect,
   onOpen,
   onCreate,
+  onDelete,
 }: Props) {
   const [cursor, setCursor] = useState(() => parseDateKey(selected));
   // По умолчанию календарь свёрнут в одну неделю: на экране телефона
@@ -234,8 +237,8 @@ export default function CalendarScreen({
         )}
 
         {dayList.map((session) => (
+          <SwipeToDelete key={session.id} onDelete={() => onDelete(session.id)}>
           <Paper
-            key={session.id}
             variant="outlined"
             onClick={() => onOpen(session.id)}
             sx={{ p: 1.5, cursor: "pointer" }}
@@ -266,6 +269,7 @@ export default function CalendarScreen({
               </Box>
             </Stack>
           </Paper>
+          </SwipeToDelete>
         ))}
       </Stack>
 

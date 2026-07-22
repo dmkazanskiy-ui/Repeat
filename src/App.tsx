@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Box, Container, CssBaseline, Typography } from "@mui/material";
+import { Box, Button, Container, CssBaseline, Snackbar, Typography } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import {
@@ -31,6 +31,8 @@ export default function App() {
   const [selected, setSelected] = useState(today);
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Удалённая свайпом тренировка живёт здесь, пока висит плашка «Отменить».
+  const [undo, setUndo] = useState<Session | null>(null);
 
   useEffect(() => {
     load().then((data) => {
@@ -90,6 +92,15 @@ export default function App() {
     [cardioKinds],
   );
 
+  const deleteSession = useCallback(
+    (id: string) => {
+      const victim = sessions.find((s) => s.id === id) ?? null;
+      commit(sessions.filter((s) => s.id !== id));
+      setUndo(victim);
+    },
+    [sessions, commit],
+  );
+
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
 
   return (
@@ -104,7 +115,7 @@ export default function App() {
             onChange={updateSession}
             onBack={() => setOpenId(null)}
             onDelete={() => {
-              commit(sessions.filter((s) => s.id !== open.id));
+              deleteSession(open.id);
               setOpenId(null);
             }}
             onCreateExercise={createExercise}
@@ -127,6 +138,7 @@ export default function App() {
               onSelect={setSelected}
               onOpen={setOpenId}
               onCreate={() => setCreating(true)}
+              onDelete={deleteSession}
             />
             <NewSessionDialog
               open={creating}
@@ -138,6 +150,25 @@ export default function App() {
           </>
         )}
         <Box sx={{ height: 24 }} />
+
+        <Snackbar
+          open={Boolean(undo)}
+          autoHideDuration={6000}
+          onClose={() => setUndo(null)}
+          message="Тренировка удалена"
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                if (undo) commit([...sessions, undo]);
+                setUndo(null);
+              }}
+            >
+              Отменить
+            </Button>
+          }
+        />
       </Container>
     </ThemeProvider>
   );
