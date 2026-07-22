@@ -6,6 +6,7 @@ import {
   copySessionTo,
   load,
   newSession,
+  saveCardioKinds,
   saveCustomExercises,
   saveSessions,
 } from "./lib/store";
@@ -26,6 +27,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [cardioKinds, setCardioKinds] = useState<string[]>([]);
   const [selected, setSelected] = useState(today);
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -34,6 +36,7 @@ export default function App() {
     load().then((data) => {
       setSessions(data.sessions);
       setExercises(data.exercises);
+      setCardioKinds(data.cardioKinds);
       setReady(true);
     });
   }, []);
@@ -53,8 +56,8 @@ export default function App() {
   );
 
   const createSession = useCallback(
-    (kind: SessionKind, cardioKind: CardioKind | null) => {
-      const session = newSession(selected, kind, cardioKind);
+    (kind: SessionKind, cardioKind: CardioKind | null, cardioCustom: string | null) => {
+      const session = newSession(selected, kind, cardioKind, cardioCustom);
       commit([...sessions, session]);
       setOpenId(session.id);
     },
@@ -77,6 +80,16 @@ export default function App() {
     [exercises],
   );
 
+  const addCardioKind = useCallback(
+    (name: string) => {
+      if (cardioKinds.includes(name)) return;
+      const next = [...cardioKinds, name];
+      setCardioKinds(next);
+      void saveCardioKinds(next);
+    },
+    [cardioKinds],
+  );
+
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
 
   return (
@@ -87,6 +100,7 @@ export default function App() {
           <SessionEditor
             session={open}
             exercises={exercises}
+            cardioKinds={cardioKinds}
             onChange={updateSession}
             onBack={() => setOpenId(null)}
             onDelete={() => {
@@ -116,8 +130,10 @@ export default function App() {
             />
             <NewSessionDialog
               open={creating}
+              cardioKinds={cardioKinds}
               onClose={() => setCreating(false)}
               onCreate={createSession}
+              onAddCardioKind={addCardioKind}
             />
           </>
         )}

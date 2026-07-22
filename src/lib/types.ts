@@ -62,6 +62,8 @@ export interface Session {
   kind: SessionKind;
   /** Только для kind === "cardio". */
   cardioKind: CardioKind | null;
+  /** Свой вид кардио вместо готового — например «Гребля» или «Сайкл». */
+  cardioCustom?: string | null;
   title: string | null;
   notes: string | null;
   createdAt: string; // ISO
@@ -87,4 +89,10 @@ export const CARDIO_LABELS: Record<CardioKind, string> = {
 /** У плавания дистанция удобнее в метрах, у остального — в километрах. */
 export function distanceUnit(kind: CardioKind | null): "м" | "км" {
   return kind === "swim" ? "м" : "км";
+}
+
+/** Название вида кардио: своё важнее готового. */
+export function cardioLabel(session: Session): string | null {
+  if (session.cardioCustom) return session.cardioCustom;
+  return session.cardioKind ? CARDIO_LABELS[session.cardioKind] : null;
 }

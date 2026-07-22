@@ -17,7 +17,7 @@ import AddIcon from "@mui/icons-material/Add";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import { newSessionExercise, newSet } from "../lib/store";
 import { formatDateFull, formatPace } from "../lib/format";
-import { CARDIO_LABELS, distanceUnit } from "../lib/types";
+import { CARDIO_LABELS, cardioLabel, distanceUnit } from "../lib/types";
 import type {
   CardioKind,
   Exercise,
@@ -32,6 +32,7 @@ interface Props {
   onChange: (session: Session) => void;
   onDelete: () => void;
   onBack: () => void;
+  cardioKinds: string[];
   onCreateExercise: (name: string, group: MuscleGroup) => Exercise;
   onCopyTo: (date: string) => void;
 }
@@ -49,6 +50,7 @@ export default function SessionEditor({
   onChange,
   onDelete,
   onBack,
+  cardioKinds,
   onCreateExercise,
   onCopyTo,
 }: Props) {
@@ -82,9 +84,8 @@ export default function SessionEditor({
         fullWidth
         variant="standard"
         placeholder={
-          session.kind === "cardio" && session.cardioKind
-            ? CARDIO_LABELS[session.cardioKind]
-            : "Название тренировки"
+          (session.kind === "cardio" ? cardioLabel(session) : null) ??
+          "Название тренировки"
         }
         value={session.title ?? ""}
         onChange={(event) =>
@@ -96,19 +97,43 @@ export default function SessionEditor({
 
       {session.kind === "cardio" && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          {/* Свои виды кардио живут в том же списке, с префиксом в значении,
+              чтобы не спутать «Гребля» пользователя с готовым видом. */}
           <TextField
             select
             label="Вид"
             fullWidth
-            value={session.cardioKind ?? "run"}
-            onChange={(event) =>
-              onChange({ ...session, cardioKind: event.target.value as CardioKind })
+            value={
+              session.cardioCustom
+                ? `custom:${session.cardioCustom}`
+                : (session.cardioKind ?? "run")
             }
+            onChange={(event) => {
+              const value = event.target.value;
+              onChange(
+                value.startsWith("custom:")
+                  ? {
+                      ...session,
+                      cardioKind: null,
+                      cardioCustom: value.slice("custom:".length),
+                    }
+                  : {
+                      ...session,
+                      cardioKind: value as CardioKind,
+                      cardioCustom: null,
+                    },
+              );
+            }}
             sx={{ mb: 2 }}
           >
             {(Object.keys(CARDIO_LABELS) as CardioKind[]).map((kind) => (
               <MenuItem key={kind} value={kind}>
                 {CARDIO_LABELS[kind]}
+              </MenuItem>
+            ))}
+            {cardioKinds.map((custom) => (
+              <MenuItem key={custom} value={`custom:${custom}`}>
+                {custom}
               </MenuItem>
             ))}
           </TextField>

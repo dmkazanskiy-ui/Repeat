@@ -11,11 +11,15 @@ import {
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import AddIcon from "@mui/icons-material/Add";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
 import SelfImprovementIcon from "@mui/icons-material/SelfImprovement";
 import {
   WEEKDAYS_SHORT,
+  addDays,
+  weekGrid,
   formatDateFull,
   formatDistance,
   formatDuration,
@@ -26,7 +30,7 @@ import {
   toDateKey,
 } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
-import { CARDIO_LABELS, SESSION_LABELS } from "../lib/types";
+import { SESSION_LABELS, cardioLabel } from "../lib/types";
 import type { Exercise, Session } from "../lib/types";
 
 interface Props {
@@ -46,8 +50,8 @@ export function sessionIcon(session: Session) {
 
 export function sessionTitle(session: Session): string {
   if (session.title) return session.title;
-  if (session.kind === "cardio" && session.cardioKind) {
-    return CARDIO_LABELS[session.cardioKind];
+  if (session.kind === "cardio") {
+    return cardioLabel(session) ?? SESSION_LABELS.cardio;
   }
   return SESSION_LABELS[session.kind];
 }
@@ -78,16 +82,28 @@ export default function CalendarScreen({
   onCreate,
 }: Props) {
   const [cursor, setCursor] = useState(() => parseDateKey(selected));
+  // По умолчанию календарь свёрнут в одну неделю: на экране телефона
+  // это оставляет место списку тренировок, а месяц нужен реже.
+  const [expanded, setExpanded] = useState(false);
 
-  const grid = useMemo(() => monthGrid(cursor), [cursor]);
+  const grid = useMemo(
+    () => (expanded ? monthGrid(cursor) : weekGrid(selected)),
+    [expanded, cursor, selected],
+  );
   const marked = useMemo(() => datesWithSessions(sessions), [sessions]);
   const dayList = sessionsOn(sessions, selected);
   const todayKey = today();
   const cursorMonth = cursor.getMonth();
 
-  function shiftMonth(delta: number) {
-    const next = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
-    setCursor(next);
+  /** Свёрнутый календарь листается неделями, развёрнутый — месяцами. */
+  function shift(delta: number) {
+    if (expanded) {
+      setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
+      return;
+    }
+    const next = addDays(selected, delta * 7);
+    setCursor(parseDateKey(next));
+    onSelect(next);
   }
 
   function goToday() {
@@ -101,11 +117,25 @@ export default function CalendarScreen({
         direction="row"
         sx={{ mb: 1, alignItems: "center", justifyContent: "space-between" }}
       >
-        <IconButton onClick={() => shiftMonth(-1)} aria-label="Предыдущий месяц">
+        <IconButton
+          onClick={() => shift(-1)}
+          aria-label={expanded ? "Предыдущий месяц" : "Предыдущая неделя"}
+        >
           <ChevronLeftIcon />
         </IconButton>
-        <Typography variant="h2">{monthTitle(cursor)}</Typography>
-        <IconButton onClick={() => shiftMonth(1)} aria-label="Следующий месяц">
+
+        <Button
+          onClick={() => setExpanded((value) => !value)}
+          endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          sx={{ color: "text.primary", fontSize: 18, fontWeight: 600, py: 0.5 }}
+        >
+          {monthTitle(expanded ? cursor : parseDateKey(selected))}
+        </Button>
+
+        <IconButton
+          onClick={() => shift(1)}
+          aria-label={expanded ? "Следующий месяц" : "Следующая неделя"}
+        >
           <ChevronRightIcon />
         </IconButton>
       </Stack>
@@ -128,7 +158,9 @@ export default function CalendarScreen({
           const date = parseDateKey(key);
           const isSelected = key === selected;
           const isToday = key === todayKey;
-          const outside = date.getMonth() !== cursorMonth;
+          // В свёрнутом виде соседние месяцы приглушать не надо —
+          // неделя на стыке месяцев это нормальная неделя.
+          const outside = expanded && date.getMonth() !== cursorMonth;
 
           return (
             <Box
@@ -136,6 +168,7 @@ export default function CalendarScreen({
               component="button"
               onClick={() => onSelect(key)}
               sx={{
+                position: "relative",
                 aspectRatio: "1",
                 border: isToday ? "1px solid" : "1px solid transparent",
                 borderColor: isToday ? "primary.main" : "transparent",
@@ -146,11 +179,11 @@ export default function CalendarScreen({
                   : outside
                     ? "text.disabled"
                     : "text.primary",
+                // Число центрируется по всей ячейке; точка вынесена из потока,
+                // иначе она смещала цифру вверх.
                 display: "flex",
-                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: "2px",
                 fontSize: 14,
                 fontFamily: "inherit",
                 cursor: "pointer",
@@ -160,6 +193,10 @@ export default function CalendarScreen({
               {date.getDate()}
               <Box
                 sx={{
+                  position: "absolute",
+                  bottom: 5,
+                  left: "50%",
+                  transform: "translateX(-50%)",
                   width: 4,
                   height: 4,
                   borderRadius: "50%",

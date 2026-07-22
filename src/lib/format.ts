@@ -79,6 +79,19 @@ export function monthGrid(date: Date): string[] {
   return cells;
 }
 
+/** Неделя (Пн–Вс), в которую попадает дата — для свёрнутого календаря. */
+export function weekGrid(key: string): string[] {
+  const date = parseDateKey(key);
+  const offset = (date.getDay() + 6) % 7; // 0 = понедельник
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - offset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const cell = new Date(monday);
+    cell.setDate(monday.getDate() + i);
+    return toDateKey(cell);
+  });
+}
+
 export function formatWeight(value: number | null): string {
   if (value == null) return "—";
   return String(Number(value.toFixed(2))).replace(".", ",");

@@ -12,10 +12,12 @@ import type {
 
 const KEY_SESSIONS = "sessions";
 const KEY_CUSTOM = "custom_exercises";
+const KEY_CARDIO = "custom_cardio";
 
 export interface AppData {
   sessions: Session[];
   exercises: Exercise[];
+  cardioKinds: string[];
 }
 
 /**
@@ -32,13 +34,15 @@ function baseExercises(): Exercise[] {
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom] = await Promise.all([
+  const [sessions, custom, cardioKinds] = await Promise.all([
     db.get<Session[]>(KEY_SESSIONS),
     db.get<Exercise[]>(KEY_CUSTOM),
+    db.get<string[]>(KEY_CARDIO),
   ]);
   return {
     sessions: sessions ?? [],
     exercises: [...baseExercises(), ...(custom ?? [])],
+    cardioKinds: cardioKinds ?? [],
   };
 }
 
@@ -51,6 +55,10 @@ export function saveCustomExercises(exercises: Exercise[]): Promise<void> {
     KEY_CUSTOM,
     exercises.filter((e) => e.custom),
   );
+}
+
+export function saveCardioKinds(kinds: string[]): Promise<void> {
+  return db.set(KEY_CARDIO, kinds);
 }
 
 export function newSet(previous?: WorkoutSet): WorkoutSet {
@@ -77,12 +85,14 @@ export function newSession(
   date: string,
   kind: SessionKind,
   cardioKind: CardioKind | null,
+  cardioCustom: string | null = null,
 ): Session {
   return {
     id: newId(),
     date,
     kind,
     cardioKind: kind === "cardio" ? cardioKind : null,
+    cardioCustom: kind === "cardio" ? cardioCustom : null,
     title: null,
     notes: null,
     createdAt: new Date().toISOString(),
