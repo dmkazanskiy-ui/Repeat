@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import ContentPasteIcon from "@mui/icons-material/ContentPaste";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { ActivityIcon, ICON_KEYS } from "../lib/icons";
 import type { IconKey } from "../lib/icons";
 import {
@@ -23,6 +24,7 @@ import type {
   CustomActivity,
   MobilityKind,
   SessionKind,
+  TrainingProgram,
 } from "../lib/types";
 
 export interface CreateOptions {
@@ -36,11 +38,14 @@ interface Props {
   open: boolean;
   cardioKinds: CustomActivity[];
   mobilityKinds: CustomActivity[];
+  programs: TrainingProgram[];
   /** Скопированная тренировка — если есть, показываем «Вставить». */
   hasClipboard: boolean;
   onClose: () => void;
   onCreate: (kind: SessionKind, options: CreateOptions) => void;
   onAddCustom: (kind: "cardio" | "mobility", activity: CustomActivity) => void;
+  /** Начать тренировку дня программы на выбранной дате. */
+  onStartProgram: (program: TrainingProgram, workoutIndex: number) => void;
   onPaste: () => void;
 }
 
@@ -73,19 +78,22 @@ const KINDS: Array<{
 const CARDIO_KEYS = Object.keys(CARDIO_LABELS) as CardioKind[];
 const MOBILITY_KEYS = Object.keys(MOBILITY_LABELS) as MobilityKind[];
 
-type Step = "kind" | "cardio" | "mobility" | "custom";
+type Step = "kind" | "program" | "cardio" | "mobility" | "custom";
 
 export default function NewSessionDialog({
   open,
   cardioKinds,
   mobilityKinds,
+  programs,
   hasClipboard,
   onClose,
   onCreate,
   onAddCustom,
+  onStartProgram,
   onPaste,
 }: Props) {
   const [step, setStep] = useState<Step>("kind");
+  const activeProgram = programs.find((p) => !p.archivedAt) ?? null;
   const [name, setName] = useState("");
   const [icon, setIcon] = useState<IconKey>("bolt");
 
@@ -119,7 +127,9 @@ export default function NewSessionDialog({
         ? "Какое кардио?"
         : step === "mobility"
           ? "Какое мобилити?"
-          : "Новая тренировка";
+          : step === "program"
+            ? "Тренировка дня"
+            : "Новая тренировка";
 
   function renderGrid(
     items: Array<{ label: string; icon: IconKey; onPick: () => void }>,
@@ -278,8 +288,70 @@ export default function NewSessionDialog({
           </>
         )}
 
+        {step === "program" && activeProgram && (
+          <Stack spacing={1}>
+            <Typography variant="caption" color="text.secondary">
+              {activeProgram.name} · круг {activeProgram.cycleNumber}
+            </Typography>
+            {[...activeProgram.workouts]
+              .sort((a, b) => a.order - b.order)
+              .map((workout, index) => (
+                <Button
+                  key={workout.id}
+                  variant="outlined"
+                  startIcon={<FitnessCenterIcon />}
+                  onClick={() => {
+                    onStartProgram(activeProgram, index);
+                    close();
+                  }}
+                  sx={{
+                    justifyContent: "flex-start",
+                    px: 2,
+                    py: 1.5,
+                    borderColor:
+                      index === activeProgram.currentWorkoutIndex
+                        ? "primary.main"
+                        : undefined,
+                  }}
+                >
+                  <Box sx={{ textAlign: "left", ml: 1 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {workout.name}
+                      {index === activeProgram.currentWorkoutIndex ? " · следующая" : ""}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {workout.exercises.length === 0
+                        ? "Пусто — добавь упражнения"
+                        : `${workout.exercises.length} упр., веса подтянутся с прошлого раза`}
+                    </Typography>
+                  </Box>
+                </Button>
+              ))}
+            <Button onClick={() => setStep("kind")} sx={{ mt: 0.5 }}>
+              Назад
+            </Button>
+          </Stack>
+        )}
+
         {step === "kind" && (
           <Stack spacing={1}>
+            {activeProgram && (
+              <Button
+                variant="outlined"
+                startIcon={<FitnessCenterIcon />}
+                onClick={() => setStep("program")}
+                sx={{ justifyContent: "flex-start", px: 2, py: 1.5 }}
+              >
+                <Box sx={{ textAlign: "left", ml: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    Программа
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Тренировка дня из твоего сплита
+                  </Typography>
+                </Box>
+              </Button>
+            )}
             {KINDS.map((item) => (
               <Button
                 key={item.kind}

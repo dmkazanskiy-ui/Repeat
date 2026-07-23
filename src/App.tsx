@@ -204,14 +204,14 @@ export default function App() {
   );
 
   const startProgramDay = useCallback(
-    (program: TrainingProgram, index: number, deload: boolean) => {
+    (program: TrainingProgram, index: number, deload: boolean, date = today()) => {
       const workout = [...program.workouts].sort((a, b) => a.order - b.order)[index];
       if (!workout) return;
       const last = lastSessionOfWorkout(sessions, workout.id);
       const session = startProgramWorkout(
         { ...program, currentWorkoutIndex: index },
         workout,
-        today(),
+        date,
         last,
       );
       session.deload = deload;
@@ -224,7 +224,7 @@ export default function App() {
             : p,
         ),
       );
-      setSelected(today());
+      setSelected(date);
       setTab("calendar");
       setOpenId(session.id);
       setEditing(true);
@@ -324,10 +324,14 @@ export default function App() {
                   open={creating}
                   cardioKinds={cardioKinds}
                   mobilityKinds={mobilityKinds}
+                  programs={programs}
                   hasClipboard={Boolean(clipboard)}
                   onClose={() => setCreating(false)}
                   onCreate={createSession}
                   onAddCustom={addCustomActivity}
+                  onStartProgram={(program, index) =>
+                    startProgramDay(program, index, false, selected)
+                  }
                   onPaste={pasteSession}
                 />
               </>
