@@ -43,6 +43,17 @@ export interface CustomActivity {
 }
 
 /**
+ * Ступень дроп-сета: сразу после основного подхода вес сбрасывается
+ * и работа продолжается без отдыха. «85×5 → 70×6 → 55×8» — это один
+ * подход с двумя ступенями сброса, а не три отдельных подхода.
+ */
+export interface DropStage {
+  id: string;
+  weight: number | null;
+  reps: number | null;
+}
+
+/**
  * Подход. Плановых и фактических значений больше нет: сессия просто
  * сохраняется и в любой момент правится — «завершения» не существует.
  */
@@ -51,6 +62,8 @@ export interface WorkoutSet {
   weight: number | null;
   reps: number | null;
   done: boolean;
+  /** Ступени сброса веса внутри этого же подхода (дроп-сет). */
+  drops?: DropStage[];
 }
 
 export interface SessionExercise {
@@ -58,6 +71,12 @@ export interface SessionExercise {
   exerciseId: string;
   sets: WorkoutSet[];
   notes: string | null;
+  /**
+   * Упражнения с одинаковым `groupId` — супер-сет или круговая: их делают
+   * без отдыха по кругу. Рисуются связанными скобкой A1/A2. `null` —
+   * обычное самостоятельное упражнение.
+   */
+  groupId?: string | null;
 }
 
 /**
@@ -91,6 +110,13 @@ export interface Session {
   customKind?: string | null;
   /** Иконка своего вида. У готовых видов иконка зашита в код. */
   icon?: IconKey | null;
+  /** Время начала тренировки, «HH:MM». Раскладывает день по времени:
+      «Бег 6:00 · Вел 8:00 · Плавание 9:00». Можно поправить вручную. */
+  time?: string | null;
+  /** Момент нажатия «Начать» (ISO). Пока идёт — тикает таймер. */
+  startedAt?: string | null;
+  /** Момент нажатия «Завершить» (ISO). Есть — тренировка закрыта и read-only. */
+  endedAt?: string | null;
   title: string | null;
   notes: string | null;
   createdAt: string; // ISO
@@ -163,6 +189,126 @@ export function activityIcon(session: Session): IconKey {
     return session.mobilityKind ? MOBILITY_ICONS[session.mobilityKind] : "yoga";
   }
   return "gym";
+}
+
+/**
+ * Тоннаж подхода: вес × повторы плюс то же по каждой ступени дропа.
+ * Пустые значения считаем нулём, чтобы недозаполненный подход не ломал сумму.
+ */
+export function setVolume(set: WorkoutSet): number {
+  let volume = (set.weight ?? 0) * (set.reps ?? 0);
+  for (const drop of set.drops ?? []) {
+    volume += (drop.weight ?? 0) * (drop.reps ?? 0);
+  }
+  return volume;
+}
+
+/** Тоннаж упражнения — сумма по всем его подходам. */
+export function exerciseVolume(exercise: SessionExercise): number {
+  return exercise.sets.reduce((total, set) => total + setVolume(set), 0);
+}
+
+/** Тоннаж всей силовой тренировки. */
+export function sessionVolume(session: Session): number {
+  return session.exercises.reduce((total, ex) => total + exerciseVolume(ex), 0);
+}
+
+/** Сколько всего подходов в силовой (дропы не считаем отдельными подходами). */
+export function sessionSetCount(session: Session): number {
+  return session.exercises.reduce((total, ex) => total + ex.sets.length, 0);
+}
+
+/** Тренировка закрыта: нажали «Завершить». Такую показываем read-only. */
+export function isDone(session: Session): boolean {
+  return Boolean(session.endedAt);
+}
+
+/**
+ * Длительность тренировки в секундах: по таймеру (старт→финиш), а если
+ * его не запускали — из времени кардио. Иначе неизвестна.
+ */
+export function sessionDurationSec(session: Session): number | null {
+  if (session.startedAt && session.endedAt) {
+    const ms = Date.parse(session.endedAt) - Date.parse(session.startedAt);
+    if (ms > 0) return Math.round(ms / 1000);
+  }
+  if (session.kind === "cardio") return session.cardio?.durationSec ?? null;
+  return null;
+}
+
+/**
+ * Расчётный разовый максимум по Эпли: вес × (1 + повторы/30). Формула
+ * завирает на высоких повторах, поэтому подходы больше 12 в тренд не берём
+ * (SPEC §5.1). Недозаполненный подход даёт null.
+ */
+export function epley(weight: number | null, reps: number | null): number | null {
+  if (!weight || !reps || reps > 12) return null;
+  return weight * (1 + reps / 30);
+}
+
+/** Лучший e1RM упражнения в тренировке — по верхним подходам. */
+export function bestE1rm(exercise: SessionExercise): number | null {
+  let best: number | null = null;
+  for (const set of exercise.sets) {
+    const value = epley(set.weight, set.reps);
+    if (value != null && (best == null || value > best)) best = value;
+  }
+  return best;
+}
+
+/**
+ * Упражнения, сгруппированные для рендера: подряд идущие с одним groupId
+ * собираются в один блок (супер-сет). Одиночные — блок из одного элемента.
+ */
+export function groupExercises(
+  exercises: SessionExercise[],
+): SessionExercise[][] {
+  const groups: SessionExercise[][] = [];
+  for (const ex of exercises) {
+    const last = groups[groups.length - 1];
+    if (ex.groupId && last && last[0].groupId === ex.groupId) {
+      last.push(ex);
+    } else {
+      groups.push([ex]);
+    }
+  }
+  return groups;
+}
+
+/** Один замер тела: вес и обхваты в сантиметрах. Любое поле может пустовать. */
+export interface BodyEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  weightKg: number | null;
+  chest: number | null;
+  waist: number | null;
+  hips: number | null;
+  biceps: number | null;
+  thigh: number | null;
+  neck: number | null;
+  notes: string | null;
+}
+
+/** Поля замеров в порядке показа: ключ, подпись, единица. */
+export const BODY_METRICS = [
+  { key: "weightKg", label: "Вес", unit: "кг" },
+  { key: "chest", label: "Грудь", unit: "см" },
+  { key: "waist", label: "Талия", unit: "см" },
+  { key: "hips", label: "Бёдра", unit: "см" },
+  { key: "biceps", label: "Бицепс", unit: "см" },
+  { key: "thigh", label: "Бедро", unit: "см" },
+  { key: "neck", label: "Шея", unit: "см" },
+] as const satisfies ReadonlyArray<{
+  key: keyof BodyEntry;
+  label: string;
+  unit: string;
+}>;
+
+/** Фото прогресса. Картинка лежит как dataURL прямо в IndexedDB. */
+export interface ProgressPhoto {
+  id: string;
+  date: string; // YYYY-MM-DD
+  dataUrl: string;
 }
 
 /** Суммарные дистанция и время интервалов с учётом повторов. */

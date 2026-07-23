@@ -92,6 +92,20 @@ export function weekGrid(key: string): string[] {
   });
 }
 
+/** Текущее время «HH:MM» — время старта по умолчанию у новой тренировки. */
+export function nowTime(): string {
+  const now = new Date();
+  const h = `${now.getHours()}`.padStart(2, "0");
+  const m = `${now.getMinutes()}`.padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+/** Тоннаж: «4 820 кг» с неразрывными пробелами в разрядах. */
+export function formatVolume(kg: number): string {
+  if (!kg) return "—";
+  return `${Math.round(kg).toLocaleString("ru-RU")} кг`;
+}
+
 export function formatWeight(value: number | null): string {
   if (value == null) return "—";
   return String(Number(value.toFixed(2))).replace(".", ",");

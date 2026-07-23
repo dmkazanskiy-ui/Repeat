@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
   Checkbox,
+  Chip,
   Divider,
   IconButton,
   MenuItem,
@@ -15,31 +16,50 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import StopIcon from "@mui/icons-material/Stop";
+import LinkOffIcon from "@mui/icons-material/LinkOff";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
-import { newSegment, newSessionExercise, newSet } from "../lib/store";
+import {
+  linkExercises,
+  newDrop,
+  newSegment,
+  newSessionExercise,
+  newSet,
+  unlinkGroup,
+} from "../lib/store";
 import {
   formatDateFull,
   formatClock,
   formatDistance,
   formatDuration,
   formatPace,
+  formatVolume,
+  nowTime,
 } from "../lib/format";
 import {
   CARDIO_LABELS,
   MOBILITY_LABELS,
   activityLabel,
   distanceUnit,
+  exerciseVolume,
+  groupExercises,
   segmentTotals,
+  sessionDurationSec,
+  sessionSetCount,
+  sessionVolume,
 } from "../lib/types";
 import type {
   CardioKind,
   CustomActivity,
+  DropStage,
   Exercise,
   MobilityKind,
   MuscleGroup,
   Session,
   SessionExercise,
+  WorkoutSet,
 } from "../lib/types";
 
 interface Props {
@@ -53,6 +73,18 @@ interface Props {
   onCreateExercise: (name: string, group: MuscleGroup) => Exercise;
   onCopyTo: (date: string) => void;
   onCopyToClipboard: () => void;
+  /** Выйти из режима правки завершённой тренировки — обратно в read-only. */
+  onExitEditing?: () => void;
+}
+
+/** Секунды в «1:23:45» или «12:07» — для тикающего таймера тренировки. */
+function formatTimer(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mm = `${m}`.padStart(h ? 2 : 1, "0");
+  const ss = `${s}`.padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 export default function SessionEditor({
@@ -66,9 +98,53 @@ export default function SessionEditor({
   onCreateExercise,
   onCopyTo,
   onCopyToClipboard,
+  onExitEditing,
 }: Props) {
   const [picking, setPicking] = useState(false);
   const [copyDate, setCopyDate] = useState("");
+  // Источник объединения в супер-сет: включается по long-press на упражнении.
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const pressTimer = useRef<number | null>(null);
+  const suppressClick = useRef(false);
+
+  // Тикаем раз в секунду, только пока тренировка идёт (запущена, не завершена).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const running = Boolean(session.startedAt && !session.endedAt);
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  function startPress(id: string) {
+    if (pressTimer.current) window.clearTimeout(pressTimer.current);
+    pressTimer.current = window.setTimeout(() => {
+      suppressClick.current = true;
+      setLinkingId(id);
+    }, 450);
+  }
+  function cancelPress() {
+    if (pressTimer.current) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  }
+  function headerClick(id: string) {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    if (linkingId == null) return;
+    if (linkingId === id) {
+      setLinkingId(null);
+      return;
+    }
+    onChange({
+      ...session,
+      exercises: linkExercises(session.exercises, linkingId, id),
+    });
+    setLinkingId(null);
+  }
 
   const unit = distanceUnit(session.cardioKind);
   const segments = session.cardio?.segments ?? [];
@@ -82,6 +158,34 @@ export default function SessionEditor({
       ...session,
       exercises: session.exercises.map((e) => (e.id === id ? patch(e) : e)),
     });
+  }
+
+  function patchSet(exId: string, setId: string, patch: Partial<WorkoutSet>) {
+    patchExercise(exId, (ex) => ({
+      ...ex,
+      sets: ex.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)),
+    }));
+  }
+
+  function patchDrop(
+    exId: string,
+    setId: string,
+    dropId: string,
+    patch: Partial<DropStage>,
+  ) {
+    patchExercise(exId, (ex) => ({
+      ...ex,
+      sets: ex.sets.map((s) =>
+        s.id === setId
+          ? {
+              ...s,
+              drops: (s.drops ?? []).map((d) =>
+                d.id === dropId ? { ...d, ...patch } : d,
+              ),
+            }
+          : s,
+      ),
+    }));
   }
 
   function patchCardio(patch: Partial<NonNullable<Session["cardio"]>>) {
@@ -129,9 +233,21 @@ export default function SessionEditor({
         <IconButton onClick={onBack} edge="start" aria-label="Назад">
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
           {formatDateFull(session.date)}
         </Typography>
+        {/* Время старта: раскладывает несколько тренировок в дне по порядку
+            и подписывает карточку. По умолчанию — момент создания. */}
+        <TextField
+          type="time"
+          variant="standard"
+          value={session.time ?? ""}
+          onChange={(event) =>
+            onChange({ ...session, time: event.target.value || null })
+          }
+          slotProps={{ input: { disableUnderline: true } }}
+          sx={{ width: 68, "& input": { textAlign: "right", fontSize: 14 } }}
+        />
       </Stack>
 
       <TextField
@@ -145,6 +261,63 @@ export default function SessionEditor({
         slotProps={{ input: { style: { fontSize: 24, fontWeight: 700 } } }}
         sx={{ mb: 3 }}
       />
+
+      {/* Таймер тренировки: «Начать» → тикает → «Завершить». Завершённую
+          App показывает read-only; сюда попадаем уже в режиме правки. */}
+      {session.endedAt ? (
+        <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
+          <Chip label="Завершена" size="small" color="primary" variant="outlined" />
+          <Typography variant="body2" color="text.secondary">
+            {formatDuration(sessionDurationSec(session))}
+          </Typography>
+          {onExitEditing && (
+            <Button size="small" sx={{ ml: "auto" }} onClick={onExitEditing}>
+              Готово
+            </Button>
+          )}
+        </Stack>
+      ) : running ? (
+        <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
+          <Typography
+            variant="h1"
+            sx={{ fontVariantNumeric: "tabular-nums" }}
+          >
+            {formatTimer(
+              session.startedAt
+                ? Math.max(0, Math.floor((nowMs - Date.parse(session.startedAt)) / 1000))
+                : 0,
+            )}
+          </Typography>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<StopIcon />}
+            sx={{ ml: "auto" }}
+            onClick={() => {
+              onChange({ ...session, endedAt: new Date().toISOString() });
+              onExitEditing?.();
+            }}
+          >
+            Завершить
+          </Button>
+        </Stack>
+      ) : (
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<PlayArrowIcon />}
+          sx={{ mb: 3 }}
+          onClick={() =>
+            onChange({
+              ...session,
+              startedAt: new Date().toISOString(),
+              time: session.time ?? nowTime(),
+            })
+          }
+        >
+          Начать тренировку
+        </Button>
+      )}
 
       {session.kind !== "strength" && (
         <TextField
@@ -371,21 +544,150 @@ export default function SessionEditor({
 
       {session.kind === "strength" && (
         <>
-          {session.exercises.map((item) => {
-            const exercise = exercises.find((e) => e.id === item.exerciseId);
-            return (
-              <Paper key={item.id} variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-                <Stack
-                  direction="row"
-                  sx={{
-                    mb: 1,
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
+          {session.exercises.length > 0 && (
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ mb: 1.5, alignItems: "baseline" }}
+            >
+              <Typography variant="subtitle2">
+                Тоннаж {formatVolume(sessionVolume(session))}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                · {sessionSetCount(session)} подх.
+              </Typography>
+            </Stack>
+          )}
+
+          {linkingId && (
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ mb: 1.5, alignItems: "center" }}
+            >
+              <Typography variant="caption" sx={{ color: "primary.main", flex: 1 }}>
+                Выберите упражнение, чтобы объединить в супер-сет
+              </Typography>
+              <Button size="small" onClick={() => setLinkingId(null)}>
+                Отмена
+              </Button>
+            </Stack>
+          )}
+
+          {(() => {
+            let superIndex = -1;
+            return groupExercises(session.exercises).map((group) => {
+              const isSuper = group.length > 1;
+              if (isSuper) superIndex += 1;
+              const letter = String.fromCharCode(65 + Math.max(0, superIndex));
+              return (
+                <Box
+                  key={group[0].id}
+                  sx={
+                    isSuper
+                      ? {
+                          mb: 1.5,
+                          pl: 1,
+                          borderLeft: "3px solid",
+                          borderColor: "primary.main",
+                        }
+                      : { mb: 1.5 }
+                  }
                 >
-                  <Typography variant="subtitle2">
-                    {exercise?.name ?? "Упражнение"}
-                  </Typography>
+                  {isSuper && (
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ mb: 0.5, alignItems: "center" }}
+                    >
+                      <Chip
+                        label="Супер-сет"
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                      <Button
+                        size="small"
+                        startIcon={<LinkOffIcon />}
+                        sx={{ ml: "auto" }}
+                        onClick={() =>
+                          onChange({
+                            ...session,
+                            exercises: unlinkGroup(
+                              session.exercises,
+                              group[0].groupId ?? "",
+                            ),
+                          })
+                        }
+                      >
+                        Разъединить
+                      </Button>
+                    </Stack>
+                  )}
+
+                  {group.map((item, gi) => {
+                    const exercise = exercises.find((e) => e.id === item.exerciseId);
+                    const volume = exerciseVolume(item);
+                    const isSource = linkingId === item.id;
+                    return (
+                      <Paper
+                        key={item.id}
+                        variant="outlined"
+                        sx={{
+                          p: 1.5,
+                          mb: isSuper ? 1 : 1.5,
+                          ...(isSource && {
+                            borderColor: "primary.main",
+                            borderWidth: 2,
+                          }),
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{ mb: 1, alignItems: "center" }}
+                        >
+                          <Box
+                            onPointerDown={() => startPress(item.id)}
+                            onPointerUp={cancelPress}
+                            onPointerLeave={cancelPress}
+                            onClick={() => headerClick(item.id)}
+                            sx={{
+                              flex: 1,
+                              minWidth: 0,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.75,
+                              cursor: linkingId ? "pointer" : "default",
+                              userSelect: "none",
+                            }}
+                          >
+                            {isSuper && (
+                              <Typography
+                                variant="caption"
+                                sx={{ color: "primary.main", fontWeight: 700 }}
+                              >
+                                {letter}
+                                {gi + 1}
+                              </Typography>
+                            )}
+                            <Typography
+                              variant="subtitle2"
+                              noWrap
+                              sx={{ minWidth: 0 }}
+                            >
+                              {exercise?.name ?? "Упражнение"}
+                            </Typography>
+                          </Box>
+                  {volume > 0 && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ whiteSpace: "nowrap" }}
+                    >
+                      {formatVolume(volume)}
+                    </Typography>
+                  )}
                   <IconButton
                     size="small"
                     aria-label="Убрать упражнение"
@@ -401,72 +703,127 @@ export default function SessionEditor({
                 </Stack>
 
                 <Stack spacing={1}>
-                  {item.sets.map((set, index) => (
-                    <Stack
-                      key={set.id}
-                      direction="row"
-                      spacing={1}
-                      sx={{ alignItems: "center" }}
-                    >
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ width: 14 }}
-                      >
-                        {index + 1}
-                      </Typography>
-                      <NumberField
-                        placeholder="кг"
-                        value={set.weight}
-                        onChange={(value) =>
-                          patchExercise(item.id, (ex) => ({
-                            ...ex,
-                            sets: ex.sets.map((s) =>
-                              s.id === set.id ? { ...s, weight: value } : s,
-                            ),
-                          }))
-                        }
-                        sx={{ flex: 1 }}
-                      />
-                      <NumberField
-                        placeholder="повт"
-                        integer
-                        value={set.reps}
-                        onChange={(value) =>
-                          patchExercise(item.id, (ex) => ({
-                            ...ex,
-                            sets: ex.sets.map((s) =>
-                              s.id === set.id ? { ...s, reps: value } : s,
-                            ),
-                          }))
-                        }
-                        sx={{ flex: 1 }}
-                      />
-                      <Checkbox
-                        checked={set.done}
-                        onChange={(event) =>
-                          patchExercise(item.id, (ex) => ({
-                            ...ex,
-                            sets: ex.sets.map((s) =>
-                              s.id === set.id ? { ...s, done: event.target.checked } : s,
-                            ),
-                          }))
-                        }
-                      />
-                      <IconButton
-                        size="small"
-                        aria-label="Убрать подход"
-                        onClick={() =>
-                          patchExercise(item.id, (ex) => ({
-                            ...ex,
-                            sets: ex.sets.filter((s) => s.id !== set.id),
-                          }))
-                        }
-                      >
-                        <DeleteOutlineIcon fontSize="small" />
-                      </IconButton>
-                    </Stack>
-                  ))}
+                  {item.sets.map((set, index) => {
+                    const drops = set.drops ?? [];
+                    return (
+                      <Box key={set.id}>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{ alignItems: "center" }}
+                        >
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ width: 14 }}
+                          >
+                            {index + 1}
+                          </Typography>
+                          <NumberField
+                            placeholder="кг"
+                            value={set.weight}
+                            onChange={(value) =>
+                              patchSet(item.id, set.id, { weight: value })
+                            }
+                            sx={{ flex: 1 }}
+                          />
+                          <NumberField
+                            placeholder="повт"
+                            integer
+                            value={set.reps}
+                            onChange={(value) =>
+                              patchSet(item.id, set.id, { reps: value })
+                            }
+                            sx={{ flex: 1 }}
+                          />
+                          <Checkbox
+                            checked={set.done}
+                            onChange={(event) =>
+                              patchSet(item.id, set.id, { done: event.target.checked })
+                            }
+                          />
+                          <IconButton
+                            size="small"
+                            aria-label="Убрать подход"
+                            onClick={() =>
+                              patchExercise(item.id, (ex) => ({
+                                ...ex,
+                                sets: ex.sets.filter((s) => s.id !== set.id),
+                              }))
+                            }
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+
+                        {/* Ступени дропа — с отступом под подходом. Колонки
+                            веса и повторов совпадают с основной строкой. */}
+                        {drops.map((drop) => (
+                          <Stack
+                            key={drop.id}
+                            direction="row"
+                            spacing={1}
+                            sx={{ alignItems: "center", mt: 1 }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ width: 14, textAlign: "center" }}
+                            >
+                              ↳
+                            </Typography>
+                            <NumberField
+                              placeholder="кг"
+                              value={drop.weight}
+                              onChange={(value) =>
+                                patchDrop(item.id, set.id, drop.id, { weight: value })
+                              }
+                              sx={{ flex: 1 }}
+                            />
+                            <NumberField
+                              placeholder="повт"
+                              integer
+                              value={drop.reps}
+                              onChange={(value) =>
+                                patchDrop(item.id, set.id, drop.id, { reps: value })
+                              }
+                              sx={{ flex: 1 }}
+                            />
+                            {/* Пустая колонка под чекбоксом — чтобы поля совпали. */}
+                            <Box sx={{ width: 42 }} />
+                            <IconButton
+                              size="small"
+                              aria-label="Убрать дроп"
+                              onClick={() =>
+                                patchSet(item.id, set.id, {
+                                  drops: drops.filter((d) => d.id !== drop.id),
+                                })
+                              }
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                        ))}
+
+                        <Button
+                          size="small"
+                          onClick={() =>
+                            patchSet(item.id, set.id, {
+                              drops: [
+                                ...drops,
+                                // Ступень стартует от веса предыдущей ступени
+                                // или самого подхода — дальше его снижают.
+                                newDrop(drops[drops.length - 1]?.weight ?? set.weight),
+                              ],
+                            })
+                          }
+                          sx={{ ml: 2.5, mt: 0.5, minWidth: 0, fontSize: 12 }}
+                        >
+                          + дроп
+                        </Button>
+                      </Box>
+                    );
+                  })}
                 </Stack>
 
                 <Button
@@ -484,9 +841,13 @@ export default function SessionEditor({
                 >
                   Подход
                 </Button>
-              </Paper>
-            );
-          })}
+                      </Paper>
+                    );
+                  })}
+                </Box>
+              );
+            });
+          })()}
 
           <Button
             fullWidth

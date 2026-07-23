@@ -1,13 +1,17 @@
 import * as db from "./db";
 import { newId } from "./id";
+import { nowTime } from "./format";
 import { CATALOG } from "./catalog";
 import type { IconKey } from "./icons";
 import type {
+  BodyEntry,
   CardioKind,
   CardioSegment,
   CustomActivity,
+  DropStage,
   MobilityKind,
   Exercise,
+  ProgressPhoto,
   Session,
   SessionExercise,
   SessionKind,
@@ -18,12 +22,16 @@ const KEY_SESSIONS = "sessions";
 const KEY_CUSTOM = "custom_exercises";
 const KEY_CARDIO = "custom_cardio";
 const KEY_MOBILITY = "custom_mobility";
+const KEY_BODY = "body_entries";
+const KEY_PHOTOS = "progress_photos";
 
 export interface AppData {
   sessions: Session[];
   exercises: Exercise[];
   cardioKinds: CustomActivity[];
   mobilityKinds: CustomActivity[];
+  bodyEntries: BodyEntry[];
+  photos: ProgressPhoto[];
 }
 
 /**
@@ -40,11 +48,13 @@ function baseExercises(): Exercise[] {
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom, cardio, mobility] = await Promise.all([
+  const [sessions, custom, cardio, mobility, body, photos] = await Promise.all([
     db.get<Session[]>(KEY_SESSIONS),
     db.get<Exercise[]>(KEY_CUSTOM),
     db.get<Array<CustomActivity | string>>(KEY_CARDIO),
     db.get<CustomActivity[]>(KEY_MOBILITY),
+    db.get<BodyEntry[]>(KEY_BODY),
+    db.get<ProgressPhoto[]>(KEY_PHOTOS),
   ]);
   return {
     sessions: sessions ?? [],
@@ -55,6 +65,8 @@ export async function load(): Promise<AppData> {
       typeof item === "string" ? { name: item, icon: "bolt" as const } : item,
     ),
     mobilityKinds: mobility ?? [],
+    bodyEntries: body ?? [],
+    photos: photos ?? [],
   };
 }
 
@@ -77,6 +89,83 @@ export function saveMobilityKinds(kinds: CustomActivity[]): Promise<void> {
   return db.set(KEY_MOBILITY, kinds);
 }
 
+export function saveBodyEntries(entries: BodyEntry[]): Promise<void> {
+  return db.set(KEY_BODY, entries);
+}
+
+export function savePhotos(photos: ProgressPhoto[]): Promise<void> {
+  return db.set(KEY_PHOTOS, photos);
+}
+
+export function newBodyEntry(date: string): BodyEntry {
+  return {
+    id: newId(),
+    date,
+    weightKg: null,
+    chest: null,
+    waist: null,
+    hips: null,
+    biceps: null,
+    thigh: null,
+    neck: null,
+    notes: null,
+  };
+}
+
+/** Общий идентификатор группы для супер-сета/круговой. */
+export function newGroupId(): string {
+  return newId();
+}
+
+/**
+ * Объединить два упражнения в супер-сет. Члены группы должны идти подряд
+ * (иначе скобка A1/A2 не соберётся), поэтому всю группу собираем на месте
+ * первого её члена. Если источник уже в группе — цель просто добавляется.
+ */
+export function linkExercises(
+  exercises: SessionExercise[],
+  sourceId: string,
+  targetId: string,
+): SessionExercise[] {
+  if (sourceId === targetId) return exercises;
+  const source = exercises.find((e) => e.id === sourceId);
+  if (!exercises.some((e) => e.id === targetId) || !source) return exercises;
+  const groupId = source.groupId ?? newGroupId();
+
+  const memberIds = new Set<string>();
+  const members: SessionExercise[] = [];
+  for (const e of exercises) {
+    if (e.groupId === groupId || e.id === sourceId || e.id === targetId) {
+      memberIds.add(e.id);
+      members.push({ ...e, groupId });
+    }
+  }
+
+  const result: SessionExercise[] = [];
+  let inserted = false;
+  for (const e of exercises) {
+    if (memberIds.has(e.id)) {
+      if (!inserted) {
+        result.push(...members);
+        inserted = true;
+      }
+    } else {
+      result.push(e);
+    }
+  }
+  return result;
+}
+
+/** Разъединить супер-сет — снять groupId со всех его членов. */
+export function unlinkGroup(
+  exercises: SessionExercise[],
+  groupId: string,
+): SessionExercise[] {
+  return exercises.map((e) =>
+    e.groupId === groupId ? { ...e, groupId: null } : e,
+  );
+}
+
 export function newSet(previous?: WorkoutSet): WorkoutSet {
   return {
     id: newId(),
@@ -84,6 +173,11 @@ export function newSet(previous?: WorkoutSet): WorkoutSet {
     reps: previous?.reps ?? null,
     done: false,
   };
+}
+
+/** Новая ступень дропа наследует вес предыдущей ступени/подхода как ориентир. */
+export function newDrop(weight?: number | null): DropStage {
+  return { id: newId(), weight: weight ?? null, reps: null };
 }
 
 const DEFAULT_SETS = 3;
@@ -115,6 +209,7 @@ export function newSession(
     mobilityKind: kind === "mobility" ? (options.mobilityKind ?? null) : null,
     customKind: options.customKind ?? null,
     icon: options.icon ?? null,
+    time: nowTime(),
     title: null,
     notes: null,
     createdAt: new Date().toISOString(),
@@ -126,10 +221,20 @@ export function newSession(
   };
 }
 
+/** Ключ сортировки внутри дня: явное время старта, иначе — час создания. */
+function timeKey(session: Session): string {
+  return session.time ?? session.createdAt.slice(11, 16);
+}
+
 export function sessionsOn(sessions: Session[], date: string): Session[] {
   return sessions
     .filter((s) => s.date === date)
-    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    .sort((a, b) => {
+      const ta = timeKey(a);
+      const tb = timeKey(b);
+      if (ta !== tb) return ta < tb ? -1 : 1;
+      return a.createdAt < b.createdAt ? -1 : 1;
+    });
 }
 
 /** Даты, на которые что-то запланировано или сделано — для точек в календаре. */
@@ -164,6 +269,7 @@ export function copySessionTo(session: Session, date: string): Session {
         ...set,
         id: newId(),
         done: false,
+        drops: set.drops?.map((drop) => ({ ...drop, id: newId() })),
       })),
     })),
     cardio: session.cardio

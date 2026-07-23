@@ -28,8 +28,14 @@ import {
   today,
   toDateKey,
 } from "../lib/format";
+import { formatVolume } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
-import { SESSION_LABELS, activityIcon, activityLabel } from "../lib/types";
+import {
+  SESSION_LABELS,
+  activityIcon,
+  activityLabel,
+  sessionVolume,
+} from "../lib/types";
 import type { Exercise, Session } from "../lib/types";
 
 interface Props {
@@ -51,7 +57,7 @@ export function sessionTitle(session: Session): string {
   return activityLabel(session) ?? SESSION_LABELS[session.kind];
 }
 
-function sessionSummary(session: Session, exercises: Exercise[]): string {
+export function sessionSummary(session: Session, exercises: Exercise[]): string {
   if (session.kind === "cardio" && session.cardio) {
     const parts = [
       formatDistance(session.cardio.distanceM, session.cardioKind),
@@ -65,7 +71,9 @@ function sessionSummary(session: Session, exercises: Exercise[]): string {
     .map((item) => exercises.find((e) => e.id === item.exerciseId)?.name)
     .filter(Boolean);
   const sets = session.exercises.reduce((n, e) => n + e.sets.length, 0);
-  return `${names.slice(0, 3).join(" · ")}${names.length > 3 ? "…" : ""} — ${sets} подх.`;
+  const volume = sessionVolume(session);
+  const tail = volume > 0 ? ` · ${formatVolume(volume)}` : "";
+  return `${names.slice(0, 3).join(" · ")}${names.length > 3 ? "…" : ""} — ${sets} подх.${tail}`;
 }
 
 export default function CalendarScreen({
@@ -254,6 +262,15 @@ export default function CalendarScreen({
                       variant="outlined"
                       sx={{ height: 20, fontSize: 11 }}
                     />
+                  )}
+                  {session.time && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ ml: "auto", pl: 1 }}
+                    >
+                      {session.time}
+                    </Typography>
                   )}
                 </Stack>
                 <Typography variant="caption" color="text.secondary">

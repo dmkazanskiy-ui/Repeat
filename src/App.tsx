@@ -1,36 +1,53 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Box,
+  BottomNavigation,
+  BottomNavigationAction,
   Button,
   Container,
   CssBaseline,
+  Paper,
   Snackbar,
-  Typography,
 } from "@mui/material";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import HistoryIcon from "@mui/icons-material/History";
+import InsightsIcon from "@mui/icons-material/Insights";
+import PersonIcon from "@mui/icons-material/Person";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import {
   copySessionTo,
   load,
   newSession,
+  saveBodyEntries,
   saveCardioKinds,
   saveCustomExercises,
   saveMobilityKinds,
+  savePhotos,
   saveSessions,
 } from "./lib/store";
 import { newId } from "./lib/id";
 import { today } from "./lib/format";
 import CalendarScreen from "./screens/CalendarScreen";
+import HistoryScreen from "./screens/HistoryScreen";
+import StatsScreen from "./screens/StatsScreen";
+import ProfileScreen from "./screens/ProfileScreen";
 import SessionEditor from "./screens/SessionEditor";
+import SessionView from "./screens/SessionView";
 import NewSessionDialog from "./components/NewSessionDialog";
 import type { CreateOptions } from "./components/NewSessionDialog";
+import { isDone } from "./lib/types";
 import type {
+  BodyEntry,
   CustomActivity,
   Exercise,
   MuscleGroup,
+  ProgressPhoto,
   Session,
   SessionKind,
 } from "./lib/types";
+
+type Tab = "calendar" | "history" | "stats" | "profile";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -38,12 +55,15 @@ export default function App() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [cardioKinds, setCardioKinds] = useState<CustomActivity[]>([]);
   const [mobilityKinds, setMobilityKinds] = useState<CustomActivity[]>([]);
+  const [bodyEntries, setBodyEntries] = useState<BodyEntry[]>([]);
+  const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
+  const [tab, setTab] = useState<Tab>("calendar");
   const [selected, setSelected] = useState(today);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Правим ли завершённую тренировку — иначе она показывается read-only.
+  const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
-  // Удалённая тренировка живёт здесь, пока висит плашка «Отменить».
   const [undo, setUndo] = useState<Session | null>(null);
-  // Скопированная тренировка — её можно вставить в любой другой день.
   const [clipboard, setClipboard] = useState<Session | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -53,12 +73,12 @@ export default function App() {
       setExercises(data.exercises);
       setCardioKinds(data.cardioKinds);
       setMobilityKinds(data.mobilityKinds);
+      setBodyEntries(data.bodyEntries);
+      setPhotos(data.photos);
       setReady(true);
     });
   }, []);
 
-  // Пишем на каждое изменение: тренировка правится в зале, где приложение
-  // могут закрыть в любой момент. Отдельной кнопки «сохранить» по сути нет.
   const commit = useCallback((next: Session[]) => {
     setSessions(next);
     void saveSessions(next);
@@ -71,11 +91,17 @@ export default function App() {
     [sessions, commit],
   );
 
+  const openSession = useCallback((id: string) => {
+    setOpenId(id);
+    setEditing(false);
+  }, []);
+
   const createSession = useCallback(
     (kind: SessionKind, options: CreateOptions) => {
       const session = newSession(selected, kind, options);
       commit([...sessions, session]);
       setOpenId(session.id);
+      setEditing(true);
     },
     [selected, sessions, commit],
   );
@@ -91,12 +117,7 @@ export default function App() {
 
   const createExercise = useCallback(
     (name: string, group: MuscleGroup): Exercise => {
-      const exercise: Exercise = {
-        id: newId(),
-        name,
-        muscleGroup: group,
-        custom: true,
-      };
+      const exercise: Exercise = { id: newId(), name, muscleGroup: group, custom: true };
       const next = [...exercises, exercise];
       setExercises(next);
       void saveCustomExercises(next);
@@ -121,70 +142,125 @@ export default function App() {
     [cardioKinds, mobilityKinds],
   );
 
+  const changeBody = useCallback((next: BodyEntry[]) => {
+    setBodyEntries(next);
+    void saveBodyEntries(next);
+  }, []);
+
+  const changePhotos = useCallback((next: ProgressPhoto[]) => {
+    setPhotos(next);
+    void savePhotos(next);
+  }, []);
+
   const pasteSession = useCallback(() => {
     if (!clipboard) return;
     const copy = copySessionTo(clipboard, selected);
     commit([...sessions, copy]);
     setOpenId(copy.id);
+    setEditing(true);
   }, [clipboard, selected, sessions, commit]);
 
+  const closeSession = useCallback(() => {
+    setOpenId(null);
+    setEditing(false);
+  }, []);
+
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
+  // Завершённую тренировку по умолчанию показываем read-only.
+  const showView = open && isDone(open) && !editing;
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Container maxWidth="sm" sx={{ py: 2 }}>
         {!ready ? null : open ? (
-          <SessionEditor
-            session={open}
-            exercises={exercises}
-            cardioKinds={cardioKinds}
-            mobilityKinds={mobilityKinds}
-            onChange={updateSession}
-            onBack={() => setOpenId(null)}
-            onDelete={() => {
-              deleteSession(open.id);
-              setOpenId(null);
-            }}
-            onCreateExercise={createExercise}
-            onCopyTo={(date) => {
-              const copy = copySessionTo(open, date);
-              commit([...sessions, copy]);
-              setSelected(date);
-              setOpenId(null);
-            }}
-            onCopyToClipboard={() => {
-              setClipboard(open);
-              setToast("Скопировано — вставь через «Добавить тренировку»");
-            }}
-          />
-        ) : (
-          <>
-            <Typography variant="h1" sx={{ mb: 2 }}>
-              Repeat
-            </Typography>
-            <CalendarScreen
-              sessions={sessions}
+          showView ? (
+            <SessionView
+              session={open}
               exercises={exercises}
-              selected={selected}
-              onSelect={setSelected}
-              onOpen={setOpenId}
-              onCreate={() => setCreating(true)}
-              onDelete={deleteSession}
+              onBack={closeSession}
+              onEdit={() => setEditing(true)}
+              onDelete={() => {
+                deleteSession(open.id);
+                closeSession();
+              }}
+              onCopyToClipboard={() => {
+                setClipboard(open);
+                setToast("Скопировано — вставь через «Добавить тренировку»");
+              }}
             />
-            <NewSessionDialog
-              open={creating}
+          ) : (
+            <SessionEditor
+              session={open}
+              exercises={exercises}
               cardioKinds={cardioKinds}
               mobilityKinds={mobilityKinds}
-              hasClipboard={Boolean(clipboard)}
-              onClose={() => setCreating(false)}
-              onCreate={createSession}
-              onAddCustom={addCustomActivity}
-              onPaste={pasteSession}
+              onChange={updateSession}
+              onBack={closeSession}
+              onExitEditing={() => setEditing(false)}
+              onDelete={() => {
+                deleteSession(open.id);
+                closeSession();
+              }}
+              onCreateExercise={createExercise}
+              onCopyTo={(date) => {
+                const copy = copySessionTo(open, date);
+                commit([...sessions, copy]);
+                setSelected(date);
+                closeSession();
+              }}
+              onCopyToClipboard={() => {
+                setClipboard(open);
+                setToast("Скопировано — вставь через «Добавить тренировку»");
+              }}
             />
-          </>
+          )
+        ) : (
+          <Box sx={{ pb: 7 }}>
+            {tab === "calendar" && (
+              <>
+                <CalendarScreen
+                  sessions={sessions}
+                  exercises={exercises}
+                  selected={selected}
+                  onSelect={setSelected}
+                  onOpen={openSession}
+                  onCreate={() => setCreating(true)}
+                  onDelete={deleteSession}
+                />
+                <NewSessionDialog
+                  open={creating}
+                  cardioKinds={cardioKinds}
+                  mobilityKinds={mobilityKinds}
+                  hasClipboard={Boolean(clipboard)}
+                  onClose={() => setCreating(false)}
+                  onCreate={createSession}
+                  onAddCustom={addCustomActivity}
+                  onPaste={pasteSession}
+                />
+              </>
+            )}
+            {tab === "history" && (
+              <HistoryScreen
+                sessions={sessions}
+                exercises={exercises}
+                onOpen={openSession}
+                onDelete={deleteSession}
+              />
+            )}
+            {tab === "stats" && (
+              <StatsScreen sessions={sessions} exercises={exercises} />
+            )}
+            {tab === "profile" && (
+              <ProfileScreen
+                bodyEntries={bodyEntries}
+                photos={photos}
+                onChangeBody={changeBody}
+                onChangePhotos={changePhotos}
+              />
+            )}
+          </Box>
         )}
-        <Box sx={{ height: 24 }} />
 
         <Snackbar
           open={Boolean(undo)}
@@ -192,6 +268,7 @@ export default function App() {
           onClose={() => setUndo(null)}
           message="Тренировка удалена"
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          sx={{ bottom: { xs: 72 } }}
           action={
             <Button
               size="small"
@@ -211,8 +288,54 @@ export default function App() {
           onClose={() => setToast(null)}
           message={toast ?? ""}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          sx={{ bottom: { xs: 72 } }}
         />
       </Container>
+
+      {/* Нижняя навигация прячется, пока открыта тренировка (она во весь экран). */}
+      {ready && !open && (
+        <Paper
+          elevation={0}
+          sx={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            borderTop: "1px solid",
+            borderColor: "divider",
+            zIndex: 10,
+          }}
+        >
+          <Container maxWidth="sm" disableGutters>
+            <BottomNavigation
+              value={tab}
+              onChange={(_, value: Tab) => setTab(value)}
+              showLabels
+            >
+              <BottomNavigationAction
+                label="Календарь"
+                value="calendar"
+                icon={<CalendarMonthIcon />}
+              />
+              <BottomNavigationAction
+                label="История"
+                value="history"
+                icon={<HistoryIcon />}
+              />
+              <BottomNavigationAction
+                label="Статистика"
+                value="stats"
+                icon={<InsightsIcon />}
+              />
+              <BottomNavigationAction
+                label="Профиль"
+                value="profile"
+                icon={<PersonIcon />}
+              />
+            </BottomNavigation>
+          </Container>
+        </Paper>
+      )}
     </ThemeProvider>
   );
 }
