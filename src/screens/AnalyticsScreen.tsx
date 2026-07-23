@@ -26,6 +26,7 @@ import {
   movementBalance,
   muscleLoads,
   newRecordsInPeriod,
+  periodSummary,
   programProgress,
   series,
   summarize,
@@ -86,6 +87,17 @@ export default function AnalyticsScreen({ sessions, exercises, programs }: Props
     [sessions, exercises, period],
   );
   const cons = useMemo(() => consistency(sessions, period), [sessions, period]);
+  const summaryLines = useMemo(
+    () =>
+      periodSummary(
+        sessions,
+        exercises,
+        programs,
+        period,
+        mode === "week" ? "За неделю" : mode === "month" ? "За месяц" : "За период",
+      ),
+    [sessions, exercises, programs, period, mode],
+  );
   // Нагрузка и heatmap — по текущей неделе / всей истории, не по периоду.
   const load = useMemo(() => loadBaseline(sessions), [sessions]);
   const heat = useMemo(() => heatmap(sessions, 12), [sessions]);
@@ -224,6 +236,21 @@ export default function AnalyticsScreen({ sessions, exercises, programs }: Props
         {formatDate(period.comparison.endDate)}
         {isOngoing(period) ? " · период ещё идёт" : ""}
       </Typography>
+
+      {/* Итоги периода — резюме по правилам */}
+      <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+        <Stack spacing={0.5}>
+          {summaryLines.map((line, i) => (
+            <Typography
+              key={i}
+              variant="body2"
+              color={i === 0 ? "text.primary" : "text.secondary"}
+            >
+              {line}
+            </Typography>
+          ))}
+        </Stack>
+      </Paper>
 
       {/* KPI-лента: горизонтальная прокрутка */}
       <Box

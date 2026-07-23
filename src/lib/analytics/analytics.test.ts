@@ -22,7 +22,9 @@ import {
   loadBaseline,
   movementBalance,
   muscleLoads,
+  periodSummary,
   programProgress,
+  summaryFacts,
 } from "./index";
 import type { Exercise, TrainingProgram } from "../types";
 
@@ -428,6 +430,36 @@ describe("нагрузка и baseline", () => {
     const cells = grid.flat();
     expect(cells.find((c) => c.date === "2026-07-22")?.level).toBeGreaterThan(0);
     expect(cells.find((c) => c.date === "2026-07-21")?.level).toBe(0);
+  });
+});
+
+describe("резюме периода", () => {
+  const bench: Exercise = {
+    id: "base:Жим",
+    name: "Жим штанги лёжа",
+    muscleGroup: "chest",
+    custom: false,
+  };
+
+  it("пустой период — короткая подсказка", () => {
+    const period = buildPeriod("week", "2026-07-22", undefined, undefined, "2026-07-26");
+    expect(periodSummary([], [], [], period, "За неделю")).toEqual([
+      "За неделю тренировок не было.",
+    ]);
+  });
+
+  it("факты и предложения по данным", () => {
+    const sessions = [strength("2026-07-22", [set(90, 5), set(90, 5), set(90, 5)])];
+    const period = buildPeriod("week", "2026-07-22", undefined, undefined, "2026-07-26");
+    const f = summaryFacts(sessions, [bench], [], period);
+    expect(f.workouts).toBe(1);
+    expect(f.volume).toBe(90 * 5 * 3);
+    expect(f.bestE1rm?.value).toBeCloseTo(105, 0);
+    expect(f.topMuscles).toContain("Грудь");
+
+    const lines = periodSummary(sessions, [bench], [], period, "За неделю");
+    expect(lines[0]).toContain("1 тренировка");
+    expect(lines.join(" ")).toContain("Жим штанги лёжа");
   });
 });
 
