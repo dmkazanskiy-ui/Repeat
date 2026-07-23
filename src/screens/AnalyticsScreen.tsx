@@ -21,6 +21,8 @@ import {
   consistency,
   isOngoing,
   distribution,
+  heatmap,
+  loadBaseline,
   movementBalance,
   muscleLoads,
   newRecordsInPeriod,
@@ -30,7 +32,12 @@ import {
   trainedExercises,
   averagePerActiveDay,
 } from "../lib/analytics";
-import type { BalanceRow, MuscleLoad, WorkoutComparison } from "../lib/analytics";
+import type {
+  BalanceRow,
+  HeatCell,
+  MuscleLoad,
+  WorkoutComparison,
+} from "../lib/analytics";
 import type { MetricComparison, MetricKey, PersonalRecord } from "../lib/analytics";
 import type { PeriodMode } from "../lib/analytics";
 import {
@@ -79,6 +86,9 @@ export default function AnalyticsScreen({ sessions, exercises, programs }: Props
     [sessions, exercises, period],
   );
   const cons = useMemo(() => consistency(sessions, period), [sessions, period]);
+  // Нагрузка и heatmap — по текущей неделе / всей истории, не по периоду.
+  const load = useMemo(() => loadBaseline(sessions), [sessions]);
+  const heat = useMemo(() => heatmap(sessions, 12), [sessions]);
   const dist = useMemo(
     () => distribution(sessions, period.startDate, period.endDate),
     [sessions, period],
@@ -368,6 +378,43 @@ export default function AnalyticsScreen({ sessions, exercises, programs }: Props
         <StatTile value={`${cons.workouts}`} label="Тренировок" />
       </Box>
 
+      {/* Календарная heatmap активности */}
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
+        Активность
+      </Typography>
+      <Heatmap grid={heat} />
+
+      {/* Персональная нагрузка недели */}
+      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+        Нагрузка недели
+      </Typography>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>
+            {load.currentSets} рабочих подходов
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              color:
+                load.level === "above" || load.level === "wellAbove"
+                  ? "warning.main"
+                  : "text.secondary",
+            }}
+          >
+            {load.levelLabel}
+          </Typography>
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          {load.ratio != null
+            ? `Твой обычный объём ≈ ${Math.round(load.baselineSets)} подх./нед (по ${load.weeksUsed} нед.)`
+            : "Персональная норма ещё копится — нужно несколько недель."}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+          Оценка по подходам. Данных о пульсе и RPE нет — предварительная.
+        </Typography>
+      </Paper>
+
       {sessions.length < 4 && (
         <Typography
           variant="caption"
@@ -478,6 +525,33 @@ function DistributionBar({
           }}
         />
       </Box>
+    </Box>
+  );
+}
+
+function Heatmap({ grid }: { grid: HeatCell[][] }) {
+  // Прозрачность зелёного по уровню; день без тренировки — нейтральная клетка.
+  const opacity = [0, 0.3, 0.55, 0.78, 1];
+  return (
+    <Box sx={{ display: "flex", gap: "3px", overflowX: "auto", pb: 0.5 }}>
+      {grid.map((col, i) => (
+        <Box key={i} sx={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          {col.map((cell) => (
+            <Box
+              key={cell.date}
+              title={`${cell.date}${cell.hasSession ? ` · ${cell.sets} подх.` : ""}`}
+              sx={{
+                width: 13,
+                height: 13,
+                borderRadius: "3px",
+                flex: "0 0 auto",
+                bgcolor: cell.level === 0 ? "action.hover" : "primary.main",
+                opacity: cell.level === 0 ? 1 : opacity[cell.level],
+              }}
+            />
+          ))}
+        </Box>
+      ))}
     </Box>
   );
 }

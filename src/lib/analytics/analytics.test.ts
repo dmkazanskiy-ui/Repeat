@@ -16,7 +16,14 @@ import {
   workingVolume,
 } from "./index";
 import { exercisePerformance, strengthTrend } from "./strength";
-import { classifyExercise, movementBalance, muscleLoads, programProgress } from "./index";
+import {
+  classifyExercise,
+  heatmap,
+  loadBaseline,
+  movementBalance,
+  muscleLoads,
+  programProgress,
+} from "./index";
 import type { Exercise, TrainingProgram } from "../types";
 
 let seq = 0;
@@ -374,6 +381,53 @@ describe("прогресс по программе A→A", () => {
   it("нужно ≥2 выполненных тренировки дня", () => {
     const progress = programProgress(program, [doneWorkout("2026-07-22", 80)], [bench]);
     expect(progress).toEqual([]);
+  });
+});
+
+describe("нагрузка и baseline", () => {
+  const three = () => [set(80, 5), set(80, 5), set(80, 5)];
+
+  it("baseline из активных недель, ratio и уровень", () => {
+    const sessions = [
+      strength("2026-07-20", three()),
+      strength("2026-07-22", three()), // текущая неделя: 6 подходов
+      strength("2026-07-15", three()), // −1 нед: 3
+      strength("2026-07-08", three()), // −2 нед: 3
+    ];
+    const b = loadBaseline(sessions, "2026-07-23");
+    expect(b.currentSets).toBe(6);
+    expect(b.baselineSets).toBe(3);
+    expect(b.ratio).toBeCloseTo(2);
+    expect(b.level).toBe("wellAbove");
+    expect(b.weeksUsed).toBe(2);
+  });
+
+  it("разгрузочная неделя исключается из baseline", () => {
+    const deloadWk = strength("2026-07-15", three());
+    deloadWk.deload = true;
+    const sessions = [
+      strength("2026-07-22", three()),
+      deloadWk, // −1 нед разгрузка → мимо baseline
+      strength("2026-07-08", [set(80, 5)]), // −2 нед: 1 подход
+    ];
+    const b = loadBaseline(sessions, "2026-07-23");
+    expect(b.baselineSets).toBe(1); // только неразгрузочная неделя
+    expect(b.weeksUsed).toBe(1);
+  });
+
+  it("нет истории — ratio null", () => {
+    const b = loadBaseline([strength("2026-07-22", three())], "2026-07-23");
+    expect(b.ratio).toBeNull();
+    expect(b.level).toBe("usual");
+  });
+
+  it("heatmap: сетка недель × 7, активный день подсвечен", () => {
+    const grid = heatmap([strength("2026-07-22", three())], 4, "2026-07-23");
+    expect(grid).toHaveLength(4);
+    expect(grid.every((col) => col.length === 7)).toBe(true);
+    const cells = grid.flat();
+    expect(cells.find((c) => c.date === "2026-07-22")?.level).toBeGreaterThan(0);
+    expect(cells.find((c) => c.date === "2026-07-21")?.level).toBe(0);
   });
 });
 
