@@ -18,18 +18,20 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import NumberField from "../components/NumberField";
 import MiniChart from "../components/MiniChart";
-import { newBodyEntry } from "../lib/store";
+import { newBodyEntry, newRecoveryEntry } from "../lib/store";
 import { fileToScaledDataUrl } from "../lib/image";
 import { newId } from "../lib/id";
 import { formatDate, today } from "../lib/format";
-import { BODY_METRICS } from "../lib/types";
-import type { BodyEntry, ProgressPhoto } from "../lib/types";
+import { BODY_METRICS, RECOVERY_METRICS, recoveryAverage } from "../lib/types";
+import type { BodyEntry, ProgressPhoto, RecoveryEntry } from "../lib/types";
 
 interface Props {
   bodyEntries: BodyEntry[];
   photos: ProgressPhoto[];
+  recovery: RecoveryEntry[];
   onChangeBody: (entries: BodyEntry[]) => void;
   onChangePhotos: (photos: ProgressPhoto[]) => void;
+  onChangeRecovery: (entries: RecoveryEntry[]) => void;
 }
 
 function sortByDate<T extends { date: string }>(items: T[], desc = false): T[] {
@@ -41,12 +43,25 @@ function sortByDate<T extends { date: string }>(items: T[], desc = false): T[] {
 export default function ProfileScreen({
   bodyEntries,
   photos,
+  recovery,
   onChangeBody,
   onChangePhotos,
+  onChangeRecovery,
 }: Props) {
   const [editing, setEditing] = useState<BodyEntry | null>(null);
+  const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
   const [viewPhoto, setViewPhoto] = useState<ProgressPhoto | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const todayCheckin = recovery.find((e) => e.date === today()) ?? null;
+
+  function saveCheckin(entry: RecoveryEntry) {
+    const exists = recovery.some((e) => e.id === entry.id);
+    onChangeRecovery(
+      exists ? recovery.map((e) => (e.id === entry.id ? entry : e)) : [...recovery, entry],
+    );
+    setCheckin(null);
+  }
 
   const asc = useMemo(() => sortByDate(bodyEntries), [bodyEntries]);
 
@@ -190,6 +205,41 @@ export default function ProfileScreen({
         </Stack>
       )}
 
+      {/* Самочувствие — субъективный чек-ин */}
+      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
+        Самочувствие
+      </Typography>
+      <Paper
+        variant="outlined"
+        onClick={() => setCheckin(todayCheckin ?? newRecoveryEntry(today()))}
+        sx={{ p: 2, borderRadius: 2, cursor: "pointer" }}
+      >
+        {todayCheckin && recoveryAverage(todayCheckin) != null ? (
+          <>
+            <Stack direction="row" sx={{ alignItems: "baseline" }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>
+                {recoveryAverage(todayCheckin)!.toFixed(1).replace(".", ",")} из 5
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                сегодня · изменить
+              </Typography>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {RECOVERY_METRICS.map(
+                (m) => `${m.label} ${todayCheckin[m.key] ?? "—"}`,
+              ).join(" · ")}
+            </Typography>
+          </>
+        ) : (
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <AddIcon color="primary" fontSize="small" />
+            <Typography variant="body2" color="primary">
+              Отметить самочувствие сегодня
+            </Typography>
+          </Stack>
+        )}
+      </Paper>
+
       {/* Фото прогресса */}
       <Stack
         direction="row"
@@ -285,6 +335,20 @@ export default function ProfileScreen({
         }
       />
 
+      <RecoveryDialog
+        entry={checkin}
+        onClose={() => setCheckin(null)}
+        onSave={saveCheckin}
+        onDelete={
+          checkin && recovery.some((e) => e.id === checkin.id)
+            ? () => {
+                onChangeRecovery(recovery.filter((e) => e.id !== checkin.id));
+                setCheckin(null);
+              }
+            : undefined
+        }
+      />
+
       {/* Просмотр фото */}
       <Dialog open={Boolean(viewPhoto)} onClose={() => setViewPhoto(null)} fullWidth>
         {viewPhoto && (
@@ -375,6 +439,110 @@ function MeasurementDialog({
           onChange={(e) => setDraft({ ...draft, notes: e.target.value || null })}
           sx={{ mt: 2 }}
         />
+      </DialogContent>
+      <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
+        {onDelete ? (
+          <Button color="error" onClick={onDelete}>
+            Удалить
+          </Button>
+        ) : (
+          <span />
+        )}
+        <Button variant="contained" onClick={() => onSave(draft)}>
+          Сохранить
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function ScoreSelector({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  return (
+    <Stack direction="row" spacing={1}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Box
+          key={n}
+          component="button"
+          onClick={() => onChange(value === n ? null : n)}
+          sx={{
+            flex: 1,
+            py: 1,
+            borderRadius: 2,
+            border: "1px solid",
+            borderColor: value === n ? "primary.main" : "divider",
+            bgcolor: value === n ? "primary.main" : "transparent",
+            color: value === n ? "primary.contrastText" : "text.primary",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: 16,
+            fontWeight: 600,
+          }}
+        >
+          {n}
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+function RecoveryDialog({
+  entry,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  entry: RecoveryEntry | null;
+  onClose: () => void;
+  onSave: (entry: RecoveryEntry) => void;
+  onDelete?: () => void;
+}) {
+  const [draft, setDraft] = useState<RecoveryEntry | null>(entry);
+  if (entry && draft?.id !== entry.id) setDraft(entry);
+  if (!draft) return <Dialog open={false} onClose={onClose} />;
+
+  return (
+    <Dialog open={Boolean(entry)} onClose={onClose} fullWidth>
+      <DialogTitle sx={{ pr: 6 }}>
+        Самочувствие
+        <IconButton
+          onClick={onClose}
+          sx={{ position: "absolute", right: 8, top: 8 }}
+          aria-label="Закрыть"
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent>
+        <TextField
+          type="date"
+          label="Дата"
+          fullWidth
+          value={draft.date}
+          onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+          sx={{ mb: 2, mt: 1 }}
+        />
+        <Stack spacing={2}>
+          {RECOVERY_METRICS.map((m) => (
+            <Box key={m.key}>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                {m.label}
+              </Typography>
+              <ScoreSelector
+                value={draft[m.key] as number | null}
+                onChange={(v) => setDraft({ ...draft, [m.key]: v })}
+              />
+            </Box>
+          ))}
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
+          1 — плохо, 5 — отлично. Свежесть: 1 забиты, 5 свежие.
+        </Typography>
       </DialogContent>
       <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
         {onDelete ? (

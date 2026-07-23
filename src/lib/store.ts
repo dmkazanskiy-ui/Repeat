@@ -14,6 +14,7 @@ import type {
   PlannedExercise,
   ProgramWorkout,
   ProgressPhoto,
+  RecoveryEntry,
   Session,
   SessionExercise,
   SessionKind,
@@ -28,6 +29,7 @@ const KEY_MOBILITY = "custom_mobility";
 const KEY_BODY = "body_entries";
 const KEY_PHOTOS = "progress_photos";
 const KEY_PROGRAMS = "programs";
+const KEY_RECOVERY = "recovery";
 
 export interface AppData {
   sessions: Session[];
@@ -37,6 +39,7 @@ export interface AppData {
   bodyEntries: BodyEntry[];
   photos: ProgressPhoto[];
   programs: TrainingProgram[];
+  recovery: RecoveryEntry[];
 }
 
 /**
@@ -53,7 +56,7 @@ function baseExercises(): Exercise[] {
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom, cardio, mobility, body, photos, programs] =
+  const [sessions, custom, cardio, mobility, body, photos, programs, recovery] =
     await Promise.all([
       db.get<Session[]>(KEY_SESSIONS),
       db.get<Exercise[]>(KEY_CUSTOM),
@@ -62,6 +65,7 @@ export async function load(): Promise<AppData> {
       db.get<BodyEntry[]>(KEY_BODY),
       db.get<ProgressPhoto[]>(KEY_PHOTOS),
       db.get<TrainingProgram[]>(KEY_PROGRAMS),
+      db.get<RecoveryEntry[]>(KEY_RECOVERY),
     ]);
   return {
     sessions: sessions ?? [],
@@ -75,6 +79,7 @@ export async function load(): Promise<AppData> {
     bodyEntries: body ?? [],
     photos: photos ?? [],
     programs: programs ?? [],
+    recovery: recovery ?? [],
   };
 }
 
@@ -103,6 +108,14 @@ export function saveBodyEntries(entries: BodyEntry[]): Promise<void> {
 
 export function savePhotos(photos: ProgressPhoto[]): Promise<void> {
   return db.set(KEY_PHOTOS, photos);
+}
+
+export function saveRecovery(entries: RecoveryEntry[]): Promise<void> {
+  return db.set(KEY_RECOVERY, entries);
+}
+
+export function newRecoveryEntry(date: string): RecoveryEntry {
+  return { id: newId(), date, wellbeing: null, sleep: null, freshness: null, motivation: null };
 }
 
 export function newBodyEntry(date: string): BodyEntry {

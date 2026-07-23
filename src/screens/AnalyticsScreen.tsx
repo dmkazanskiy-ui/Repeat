@@ -28,6 +28,7 @@ import {
   newRecordsInPeriod,
   periodSummary,
   programProgress,
+  readiness,
   series,
   summarize,
   trainedExercises,
@@ -58,15 +59,26 @@ import {
   parseDateKey,
   today,
 } from "../lib/format";
-import type { Exercise, Session, TrainingProgram } from "../lib/types";
+import type {
+  Exercise,
+  RecoveryEntry,
+  Session,
+  TrainingProgram,
+} from "../lib/types";
 
 interface Props {
   sessions: Session[];
   exercises: Exercise[];
   programs: TrainingProgram[];
+  recovery: RecoveryEntry[];
 }
 
-export default function AnalyticsScreen({ sessions, exercises, programs }: Props) {
+export default function AnalyticsScreen({
+  sessions,
+  exercises,
+  programs,
+  recovery,
+}: Props) {
   const [mode, setMode] = useState<PeriodMode>("week");
   const [anchor, setAnchor] = useState(today());
   const [from, setFrom] = useState(addDays(today(), -29));
@@ -101,6 +113,7 @@ export default function AnalyticsScreen({ sessions, exercises, programs }: Props
   // Нагрузка и heatmap — по текущей неделе / всей истории, не по периоду.
   const load = useMemo(() => loadBaseline(sessions), [sessions]);
   const heat = useMemo(() => heatmap(sessions, 12), [sessions]);
+  const ready = useMemo(() => readiness(sessions, recovery), [sessions, recovery]);
   const dist = useMemo(
     () => distribution(sessions, period.startDate, period.endDate),
     [sessions, period],
@@ -440,6 +453,36 @@ export default function AnalyticsScreen({ sessions, exercises, programs }: Props
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
           Оценка по подходам. Данных о пульсе и RPE нет — предварительная.
         </Typography>
+      </Paper>
+
+      {/* Готовность к нагрузке */}
+      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+        Готовность
+      </Typography>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 0.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>
+            {ready.hasSubjective
+              ? `${ready.subjective!.toFixed(1).replace(".", ",")} из 5`
+              : "Предварительная оценка"}
+          </Typography>
+          {ready.hasSubjective && ready.subjectiveDate && (
+            <Typography variant="caption" color="text.secondary">
+              по отметке {formatDate(ready.subjectiveDate)}
+            </Typography>
+          )}
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          {ready.daysSinceStrength != null
+            ? `Последняя силовая ${ready.daysSinceStrength === 0 ? "сегодня" : `${ready.daysSinceStrength} дн. назад`} · `
+            : ""}
+          нагрузка недели {ready.loadLevelLabel}.
+        </Typography>
+        {!ready.hasSubjective && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+            Субъективные данные не заполнены — отметь самочувствие в Профиле.
+          </Typography>
+        )}
       </Paper>
 
       {sessions.length < 4 && (

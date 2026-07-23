@@ -24,6 +24,7 @@ import {
   muscleLoads,
   periodSummary,
   programProgress,
+  readiness,
   summaryFacts,
 } from "./index";
 import type { Exercise, TrainingProgram } from "../types";
@@ -460,6 +461,44 @@ describe("резюме периода", () => {
     const lines = periodSummary(sessions, [bench], [], period, "За неделю");
     expect(lines[0]).toContain("1 тренировка");
     expect(lines.join(" ")).toContain("Жим штанги лёжа");
+  });
+});
+
+describe("готовность", () => {
+  it("без чек-ина — предварительная, по истории нагрузки", () => {
+    const sessions = [strength("2026-07-21", [set(80, 5)])];
+    const r = readiness(sessions, [], "2026-07-23");
+    expect(r.hasSubjective).toBe(false);
+    expect(r.confidence).toBe("preliminary");
+    expect(r.daysSinceStrength).toBe(2);
+    expect(r.subjective).toBeNull();
+  });
+
+  it("свежий чек-ин даёт субъективную оценку", () => {
+    const entry = {
+      id: "r1",
+      date: "2026-07-23",
+      wellbeing: 4,
+      sleep: 5,
+      freshness: 3,
+      motivation: 4,
+    };
+    const r = readiness([], [entry], "2026-07-23");
+    expect(r.hasSubjective).toBe(true);
+    expect(r.subjective).toBeCloseTo(4);
+    expect(r.confidence).toBe("medium");
+  });
+
+  it("старый чек-ин (>2 дней) не берётся", () => {
+    const entry = {
+      id: "r1",
+      date: "2026-07-19",
+      wellbeing: 4,
+      sleep: 4,
+      freshness: 4,
+      motivation: 4,
+    };
+    expect(readiness([], [entry], "2026-07-23").hasSubjective).toBe(false);
   });
 });
 

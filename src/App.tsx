@@ -29,6 +29,7 @@ import {
   saveMobilityKinds,
   savePhotos,
   savePrograms,
+  saveRecovery,
   saveSessions,
   startProgramWorkout,
 } from "./lib/store";
@@ -51,6 +52,7 @@ import type {
   Exercise,
   MuscleGroup,
   ProgressPhoto,
+  RecoveryEntry,
   Session,
   SessionKind,
   TrainingProgram,
@@ -67,6 +69,7 @@ export default function App() {
   const [bodyEntries, setBodyEntries] = useState<BodyEntry[]>([]);
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
+  const [recovery, setRecovery] = useState<RecoveryEntry[]>([]);
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("calendar");
   const [selected, setSelected] = useState(today);
@@ -87,6 +90,7 @@ export default function App() {
       setBodyEntries(data.bodyEntries);
       setPhotos(data.photos);
       setPrograms(data.programs);
+      setRecovery(data.recovery);
       setReady(true);
     });
   }, []);
@@ -162,6 +166,11 @@ export default function App() {
   const changePhotos = useCallback((next: ProgressPhoto[]) => {
     setPhotos(next);
     void savePhotos(next);
+  }, []);
+
+  const changeRecovery = useCallback((next: RecoveryEntry[]) => {
+    setRecovery(next);
+    void saveRecovery(next);
   }, []);
 
   const commitPrograms = useCallback((next: TrainingProgram[]) => {
@@ -345,14 +354,17 @@ export default function App() {
                 sessions={sessions}
                 exercises={exercises}
                 programs={programs}
+                recovery={recovery}
               />
             )}
             {tab === "profile" && (
               <ProfileScreen
                 bodyEntries={bodyEntries}
                 photos={photos}
+                recovery={recovery}
                 onChangeBody={changeBody}
                 onChangePhotos={changePhotos}
+                onChangeRecovery={changeRecovery}
               />
             )}
           </Box>

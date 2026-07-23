@@ -369,6 +369,37 @@ export interface ProgressPhoto {
   dataUrl: string;
 }
 
+/**
+ * Субъективный чек-ин самочувствия. Все шкалы 1–5 в единой ориентации
+ * «выше = лучше» (свежесть мышц вместо забитости) — чтобы среднее честно
+ * означало готовность. Любое поле может пустовать.
+ */
+export interface RecoveryEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  wellbeing: number | null; // самочувствие
+  sleep: number | null; // сон
+  freshness: number | null; // свежесть мышц (1 забиты … 5 свежие)
+  motivation: number | null; // желание тренироваться
+}
+
+/** Поля чек-ина в порядке показа. */
+export const RECOVERY_METRICS = [
+  { key: "wellbeing", label: "Самочувствие" },
+  { key: "sleep", label: "Сон" },
+  { key: "freshness", label: "Свежесть мышц" },
+  { key: "motivation", label: "Желание тренироваться" },
+] as const satisfies ReadonlyArray<{ key: keyof RecoveryEntry; label: string }>;
+
+/** Среднее заполненных шкал чек-ина (1–5), либо null. */
+export function recoveryAverage(entry: RecoveryEntry): number | null {
+  const values = [entry.wellbeing, entry.sleep, entry.freshness, entry.motivation].filter(
+    (v): v is number => v != null,
+  );
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
 /** Суммарные дистанция и время интервалов с учётом повторов. */
 export function segmentTotals(segments: CardioSegment[] | undefined): {
   distanceM: number;

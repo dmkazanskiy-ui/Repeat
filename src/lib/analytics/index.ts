@@ -10,5 +10,6 @@ export * from "./muscles";
 export * from "./muscle";
 export * from "./load";
 export * from "./program";
+export * from "./recovery";
 export * from "./summary";
 export * from "./nutrition";
