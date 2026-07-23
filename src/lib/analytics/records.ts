@@ -89,15 +89,17 @@ export function newRecordsInPeriod(
     }
   }
 
-  const globals: Array<[PrType, (s: Session) => number, string, string]> = [
-    ["sessionVolume", workingVolume, "Тоннаж тренировки", "кг"],
-    ["distance", (s) => (s.kind === "cardio" ? (s.cardio?.distanceM ?? 0) : 0), "Дистанция", "м"],
-    ["duration", (s) => sessionDurationSec(s) ?? 0, "Длительность", "с"],
+  // min — порог значимости: слишком короткие/мелкие результаты не рекорды.
+  // Длительность < 60 с (случайно оставленный таймер) рекордом не считаем.
+  const globals: Array<[PrType, (s: Session) => number, string, string, number]> = [
+    ["sessionVolume", workingVolume, "Тоннаж тренировки", "кг", 1],
+    ["distance", (s) => (s.kind === "cardio" ? (s.cardio?.distanceM ?? 0) : 0), "Дистанция", "м", 1],
+    ["duration", (s) => sessionDurationSec(s) ?? 0, "Длительность", "с", 60],
   ];
 
-  for (const [type, value, label, unit] of globals) {
+  for (const [type, value, label, unit, min] of globals) {
     const dur = globalPeak(during, value);
-    if (!dur) continue;
+    if (!dur || dur.value < min) continue;
     const prev = globalPeak(before, value)?.value ?? null;
     if (prev == null || dur.value > prev) {
       records.push({

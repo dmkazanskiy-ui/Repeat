@@ -11,10 +11,13 @@ import type {
   DropStage,
   MobilityKind,
   Exercise,
+  PlannedExercise,
+  ProgramWorkout,
   ProgressPhoto,
   Session,
   SessionExercise,
   SessionKind,
+  TrainingProgram,
   WorkoutSet,
 } from "./types";
 
@@ -24,6 +27,7 @@ const KEY_CARDIO = "custom_cardio";
 const KEY_MOBILITY = "custom_mobility";
 const KEY_BODY = "body_entries";
 const KEY_PHOTOS = "progress_photos";
+const KEY_PROGRAMS = "programs";
 
 export interface AppData {
   sessions: Session[];
@@ -32,6 +36,7 @@ export interface AppData {
   mobilityKinds: CustomActivity[];
   bodyEntries: BodyEntry[];
   photos: ProgressPhoto[];
+  programs: TrainingProgram[];
 }
 
 /**
@@ -48,14 +53,16 @@ function baseExercises(): Exercise[] {
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom, cardio, mobility, body, photos] = await Promise.all([
-    db.get<Session[]>(KEY_SESSIONS),
-    db.get<Exercise[]>(KEY_CUSTOM),
-    db.get<Array<CustomActivity | string>>(KEY_CARDIO),
-    db.get<CustomActivity[]>(KEY_MOBILITY),
-    db.get<BodyEntry[]>(KEY_BODY),
-    db.get<ProgressPhoto[]>(KEY_PHOTOS),
-  ]);
+  const [sessions, custom, cardio, mobility, body, photos, programs] =
+    await Promise.all([
+      db.get<Session[]>(KEY_SESSIONS),
+      db.get<Exercise[]>(KEY_CUSTOM),
+      db.get<Array<CustomActivity | string>>(KEY_CARDIO),
+      db.get<CustomActivity[]>(KEY_MOBILITY),
+      db.get<BodyEntry[]>(KEY_BODY),
+      db.get<ProgressPhoto[]>(KEY_PHOTOS),
+      db.get<TrainingProgram[]>(KEY_PROGRAMS),
+    ]);
   return {
     sessions: sessions ?? [],
     exercises: [...baseExercises(), ...(custom ?? [])],
@@ -67,6 +74,7 @@ export async function load(): Promise<AppData> {
     mobilityKinds: mobility ?? [],
     bodyEntries: body ?? [],
     photos: photos ?? [],
+    programs: programs ?? [],
   };
 }
 
@@ -163,6 +171,131 @@ export function unlinkGroup(
 ): SessionExercise[] {
   return exercises.map((e) =>
     e.groupId === groupId ? { ...e, groupId: null } : e,
+  );
+}
+
+// ─── Программы A/B/C/D ──────────────────────────────────────────────────────
+
+export function savePrograms(programs: TrainingProgram[]): Promise<void> {
+  return db.set(KEY_PROGRAMS, programs);
+}
+
+const WORKOUT_LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
+
+export function newProgramWorkout(order: number): ProgramWorkout {
+  return {
+    id: newId(),
+    name: WORKOUT_LETTERS[order] ?? `День ${order + 1}`,
+    order,
+    exercises: [],
+  };
+}
+
+export function newProgram(name = "Моя программа"): TrainingProgram {
+  return {
+    id: newId(),
+    name,
+    workouts: [newProgramWorkout(0), newProgramWorkout(1)],
+    currentWorkoutIndex: 0,
+    cycleNumber: 1,
+    createdAt: new Date().toISOString(),
+    archivedAt: null,
+  };
+}
+
+export function newPlannedExercise(
+  exerciseId: string,
+  order: number,
+): PlannedExercise {
+  return {
+    id: newId(),
+    exerciseId,
+    order,
+    targetSets: 3,
+    targetRepMin: null,
+    targetRepMax: null,
+    targetWeight: null,
+  };
+}
+
+/**
+ * Собрать тренировку из шаблона дня программы. Подходы предзаполняются
+ * плановыми весами/повторами, но если этот день уже делали — переносятся
+ * фактические веса прошлого раза (быстрее, чем вводить заново). Плановые
+ * упражнения снапшотятся в `plan`, чтобы правка шаблона не меняла историю.
+ */
+export function startProgramWorkout(
+  program: TrainingProgram,
+  workout: ProgramWorkout,
+  date: string,
+  lastSession?: Session | null,
+): Session {
+  const exercises: SessionExercise[] = [...workout.exercises]
+    .sort((a, b) => a.order - b.order)
+    .map((pe) => {
+      const prev = lastSession?.exercises.find(
+        (e) => e.plannedExerciseId === pe.id || e.exerciseId === pe.exerciseId,
+      );
+      const count = Math.max(1, pe.targetSets || 1);
+      const sets: WorkoutSet[] = Array.from({ length: count }, (_, i) => {
+        const prevSet = prev?.sets[i] ?? prev?.sets[(prev?.sets.length ?? 1) - 1];
+        return {
+          id: newId(),
+          weight: prevSet?.weight ?? pe.targetWeight ?? null,
+          reps: prevSet?.reps ?? pe.targetRepMin ?? null,
+          done: false,
+        };
+      });
+      return {
+        id: newId(),
+        exerciseId: pe.exerciseId,
+        sets,
+        notes: pe.note ?? null,
+        plannedExerciseId: pe.id,
+      };
+    });
+
+  return {
+    id: newId(),
+    date,
+    kind: "strength",
+    cardioKind: null,
+    mobilityKind: null,
+    customKind: null,
+    icon: null,
+    time: nowTime(),
+    programId: program.id,
+    programWorkoutId: workout.id,
+    programCycleNumber: program.cycleNumber,
+    plan: workout.exercises.map((e) => ({ ...e })),
+    title: workout.name,
+    notes: null,
+    createdAt: new Date().toISOString(),
+    exercises,
+    cardio: null,
+  };
+}
+
+/** Продвинуть цикл на следующую тренировку; на замыкании круга — новый круг. */
+export function advanceProgram(program: TrainingProgram): TrainingProgram {
+  const n = program.workouts.length || 1;
+  const nextIndex = (program.currentWorkoutIndex + 1) % n;
+  return {
+    ...program,
+    currentWorkoutIndex: nextIndex,
+    cycleNumber: program.cycleNumber + (nextIndex === 0 ? 1 : 0),
+  };
+}
+
+/** Последняя выполненная сессия конкретного дня программы — для переноса весов. */
+export function lastSessionOfWorkout(
+  sessions: Session[],
+  workoutId: string,
+): Session | null {
+  return (
+    [...sessions]
+      .filter((s) => s.programWorkoutId === workoutId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ?? null
   );
 }
 

@@ -712,20 +712,37 @@ export default function SessionEditor({
                           spacing={1}
                           sx={{ alignItems: "center" }}
                         >
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ width: 14 }}
+                          {/* Тап по номеру переключает рабочий ⇄ разминочный.
+                              Разминка помечается «Р» и не идёт в тоннаж. */}
+                          <Box
+                            component="button"
+                            onClick={() =>
+                              patchSet(item.id, set.id, { warmup: !set.warmup })
+                            }
+                            aria-label={
+                              set.warmup ? "Разминочный подход" : "Рабочий подход"
+                            }
+                            sx={{
+                              width: 16,
+                              p: 0,
+                              border: "none",
+                              bgcolor: "transparent",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              fontSize: 12,
+                              fontWeight: set.warmup ? 700 : 400,
+                              color: set.warmup ? "warning.main" : "text.secondary",
+                            }}
                           >
-                            {index + 1}
-                          </Typography>
+                            {set.warmup ? "Р" : index + 1}
+                          </Box>
                           <NumberField
                             placeholder="кг"
                             value={set.weight}
                             onChange={(value) =>
                               patchSet(item.id, set.id, { weight: value })
                             }
-                            sx={{ flex: 1 }}
+                            sx={{ flex: 1, opacity: set.warmup ? 0.5 : 1 }}
                           />
                           <NumberField
                             placeholder="повт"
@@ -734,7 +751,7 @@ export default function SessionEditor({
                             onChange={(value) =>
                               patchSet(item.id, set.id, { reps: value })
                             }
-                            sx={{ flex: 1 }}
+                            sx={{ flex: 1, opacity: set.warmup ? 0.5 : 1 }}
                           />
                           <Checkbox
                             checked={set.done}

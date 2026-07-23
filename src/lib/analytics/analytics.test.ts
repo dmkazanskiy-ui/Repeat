@@ -147,7 +147,7 @@ describe("сравнение периодов", () => {
       strength("2026-07-15", [set(100, 5)]), // прошлая неделя: 500
       strength("2026-07-22", [set(110, 5)]), // текущая: 550
     ];
-    const period = buildPeriod("week", "2026-07-22");
+    const period = buildPeriod("week", "2026-07-22", undefined, undefined, "2026-07-26");
     const cmp = compareMetric(sessions, period, "volume");
     expect(cmp.current).toBe(550);
     expect(cmp.previous).toBe(500);
@@ -158,11 +158,27 @@ describe("сравнение периодов", () => {
 
   it("процент null, когда прошлый период пуст", () => {
     const sessions = [strength("2026-07-22", [set(100, 5)])];
-    const period = buildPeriod("week", "2026-07-22");
+    const period = buildPeriod("week", "2026-07-22", undefined, undefined, "2026-07-26");
     const cmp = compareMetric(sessions, period, "volume");
     expect(cmp.previous).toBe(0);
     expect(cmp.percent).toBeNull();
     expect(cmp.trend).toBe("up");
+  });
+
+  it("неполная неделя сравнивается с той же частью прошлой (Пн–Чт)", () => {
+    const sessions = [
+      strength("2026-07-16", [set(100, 5)]), // прошлый Чт: в окно Пн–Чт попадает
+      strength("2026-07-18", [set(100, 5)]), // прошлая Сб: НЕ должна попасть
+      strength("2026-07-23", [set(110, 5)]), // текущий Чт
+    ];
+    // asOf — четверг текущей недели, неделя ещё не завершена
+    const period = buildPeriod("week", "2026-07-23", undefined, undefined, "2026-07-23");
+    expect(period.comparison).toEqual({
+      startDate: "2026-07-13",
+      endDate: "2026-07-16",
+    });
+    const cmp = compareMetric(sessions, period, "volume");
+    expect(cmp.previous).toBe(500); // только Чт прошлой недели, без Сб
   });
 });
 
@@ -204,6 +220,14 @@ describe("рекорды", () => {
     ];
     const recs = newRecordsInPeriod(sessions, exercises, "2026-07-20", "2026-07-26");
     expect(recs.find((r) => r.type === "e1rm")).toBeUndefined();
+  });
+
+  it("длительность < 60 c не становится рекордом", () => {
+    const s = strength("2026-07-22", [set(80, 5)]);
+    s.startedAt = "2026-07-22T10:00:00.000Z";
+    s.endedAt = "2026-07-22T10:00:30.000Z"; // 30 секунд
+    const recs = newRecordsInPeriod([s], exercises, "2026-07-20", "2026-07-26");
+    expect(recs.find((r) => r.type === "duration")).toBeUndefined();
   });
 });
 

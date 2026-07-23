@@ -19,6 +19,7 @@ import {
   buildPeriod,
   compareMetric,
   consistency,
+  isOngoing,
   distribution,
   newRecordsInPeriod,
   series,
@@ -192,6 +193,7 @@ export default function AnalyticsScreen({ sessions, exercises }: Props) {
       >
         сравнение с {formatDate(period.comparison.startDate)} —{" "}
         {formatDate(period.comparison.endDate)}
+        {isOngoing(period) ? " · период ещё идёт" : ""}
       </Typography>
 
       {/* KPI-лента: горизонтальная прокрутка */}

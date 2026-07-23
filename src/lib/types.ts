@@ -83,6 +83,46 @@ export interface SessionExercise {
    * обычное самостоятельное упражнение.
    */
   groupId?: string | null;
+  /** Связь с плановым упражнением программы (план ⇄ факт). */
+  plannedExerciseId?: string | null;
+}
+
+/** Плановое упражнение в шаблоне тренировки программы. */
+export interface PlannedExercise {
+  id: string;
+  exerciseId: string;
+  order: number;
+  targetSets: number;
+  targetRepMin?: number | null;
+  targetRepMax?: number | null;
+  targetWeight?: number | null;
+  targetRir?: number | null;
+  restSeconds?: number | null;
+  note?: string | null;
+}
+
+/** Тренировка-день программы (A/B/C/D или своё название). */
+export interface ProgramWorkout {
+  id: string;
+  name: string;
+  order: number;
+  exercises: PlannedExercise[];
+}
+
+/**
+ * Программа-сплит: вращающийся цикл из 2–7 тренировок. Сплит не привязан к
+ * дням недели — крутится по кругу (SPEC §2.4).
+ */
+export interface TrainingProgram {
+  id: string;
+  name: string;
+  workouts: ProgramWorkout[];
+  /** Индекс следующей тренировки цикла. */
+  currentWorkoutIndex: number;
+  /** Сколько полных кругов пройдено. */
+  cycleNumber: number;
+  createdAt: string;
+  archivedAt?: string | null;
 }
 
 /**
@@ -119,6 +159,15 @@ export interface Session {
   /** Время начала тренировки, «HH:MM». Раскладывает день по времени:
       «Бег 6:00 · Вел 8:00 · Плавание 9:00». Можно поправить вручную. */
   time?: string | null;
+  /** Связь с программой: из какой программы и какой её тренировки начата. */
+  programId?: string | null;
+  programWorkoutId?: string | null;
+  programCycleNumber?: number | null;
+  /** Снапшот плановых упражнений на момент старта — история не меняется
+      при последующей правке шаблона программы. */
+  plan?: PlannedExercise[] | null;
+  /** Разгрузочная неделя — из подсчёта плато и baseline исключается. */
+  deload?: boolean;
   /** Момент нажатия «Начать» (ISO). Пока идёт — тикает таймер. */
   startedAt?: string | null;
   /** Момент нажатия «Завершить» (ISO). Есть — тренировка закрыта и read-only. */
@@ -209,9 +258,12 @@ export function setVolume(set: WorkoutSet): number {
   return volume;
 }
 
-/** Тоннаж упражнения — сумма по всем его подходам. */
+/** Тоннаж упражнения — сумма по рабочим подходам (разминка не в счёт). */
 export function exerciseVolume(exercise: SessionExercise): number {
-  return exercise.sets.reduce((total, set) => total + setVolume(set), 0);
+  return exercise.sets.reduce(
+    (total, set) => total + (set.warmup ? 0 : setVolume(set)),
+    0,
+  );
 }
 
 /** Тоннаж всей силовой тренировки. */

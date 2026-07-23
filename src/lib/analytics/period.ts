@@ -1,4 +1,4 @@
-import { addDays, parseDateKey, toDateKey, weekGrid } from "../format";
+import { addDays, parseDateKey, toDateKey, today, weekGrid } from "../format";
 import type { AggregationType, AnalyticsPeriod } from "./types";
 
 export type PeriodMode = "week" | "month" | "custom";
@@ -69,14 +69,45 @@ function monthRangeOf(anchor: string): [string, string] {
 }
 
 /**
+ * Предыдущий период для сравнения. Если текущий период ещё не завершён
+ * (сегодня внутри него), сравниваем только прошедшую часть с той же частью
+ * прошлого цикла: понедельник–четверг с понедельник–четвергом, а не с полной
+ * прошлой неделей — иначе неполная неделя даёт ложный регресс.
+ */
+function comparisonFor(
+  mode: PeriodMode,
+  start: string,
+  end: string,
+  asOf: string,
+): { startDate: string; endDate: string } {
+  const effEnd = end < asOf ? end : start > asOf ? start : asOf;
+  const elapsed = diffDays(start, effEnd); // прошедших дней (0-based)
+
+  if (mode === "month") {
+    const d = parseDateKey(start);
+    const prevFirst = toDateKey(new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    const prevLast = toDateKey(new Date(d.getFullYear(), d.getMonth(), 0));
+    const complete = effEnd >= end;
+    const prevEnd = complete ? prevLast : addDays(prevFirst, elapsed);
+    return { startDate: prevFirst, endDate: prevEnd > prevLast ? prevLast : prevEnd };
+  }
+
+  // Неделя/произвольный: сдвиг ровно на длину периода — тот же участок цикла.
+  const length = rangeLength(start, end);
+  return { startDate: addDays(start, -length), endDate: addDays(effEnd, -length) };
+}
+
+/**
  * Собрать период по режиму. Неделя — по дням, месяц — по неделям,
- * произвольный — авто по длине. Всегда с предыдущим периодом той же длины.
+ * произвольный — авто по длине. Предыдущий период выравнивается по прошедшей
+ * части текущего (`asOf`, по умолчанию сегодня).
  */
 export function buildPeriod(
   mode: PeriodMode,
   anchor: string,
   from?: string,
   to?: string,
+  asOf: string = today(),
 ): AnalyticsPeriod {
   let start: string;
   let end: string;
@@ -97,7 +128,17 @@ export function buildPeriod(
     aggregation = chooseAggregation(start, end);
   }
 
-  return { startDate: start, endDate: end, aggregation, comparison: previousRange(start, end) };
+  return {
+    startDate: start,
+    endDate: end,
+    aggregation,
+    comparison: comparisonFor(mode, start, end, asOf),
+  };
+}
+
+/** Идёт ли период прямо сейчас (сегодня внутри него и он ещё не закрыт). */
+export function isOngoing(period: AnalyticsPeriod, asOf: string = today()): boolean {
+  return period.startDate <= asOf && asOf < period.endDate;
 }
 
 /** Сдвиг опорной даты на предыдущий/следующий период (dir = ±1). */

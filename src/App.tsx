@@ -13,18 +13,24 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import HistoryIcon from "@mui/icons-material/History";
 import InsightsIcon from "@mui/icons-material/Insights";
 import PersonIcon from "@mui/icons-material/Person";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import {
+  advanceProgram,
   copySessionTo,
+  lastSessionOfWorkout,
   load,
+  newProgram,
   newSession,
   saveBodyEntries,
   saveCardioKinds,
   saveCustomExercises,
   saveMobilityKinds,
   savePhotos,
+  savePrograms,
   saveSessions,
+  startProgramWorkout,
 } from "./lib/store";
 import { newId } from "./lib/id";
 import { today } from "./lib/format";
@@ -32,6 +38,8 @@ import CalendarScreen from "./screens/CalendarScreen";
 import HistoryScreen from "./screens/HistoryScreen";
 import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import ProgramsScreen from "./screens/ProgramsScreen";
+import ProgramEditor from "./screens/ProgramEditor";
 import SessionEditor from "./screens/SessionEditor";
 import SessionView from "./screens/SessionView";
 import NewSessionDialog from "./components/NewSessionDialog";
@@ -45,9 +53,10 @@ import type {
   ProgressPhoto,
   Session,
   SessionKind,
+  TrainingProgram,
 } from "./lib/types";
 
-type Tab = "calendar" | "history" | "stats" | "profile";
+type Tab = "calendar" | "history" | "program" | "stats" | "profile";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -57,6 +66,8 @@ export default function App() {
   const [mobilityKinds, setMobilityKinds] = useState<CustomActivity[]>([]);
   const [bodyEntries, setBodyEntries] = useState<BodyEntry[]>([]);
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
+  const [programs, setPrograms] = useState<TrainingProgram[]>([]);
+  const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("calendar");
   const [selected, setSelected] = useState(today);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -75,6 +86,7 @@ export default function App() {
       setMobilityKinds(data.mobilityKinds);
       setBodyEntries(data.bodyEntries);
       setPhotos(data.photos);
+      setPrograms(data.programs);
       setReady(true);
     });
   }, []);
@@ -152,6 +164,65 @@ export default function App() {
     void savePhotos(next);
   }, []);
 
+  const commitPrograms = useCallback((next: TrainingProgram[]) => {
+    setPrograms(next);
+    void savePrograms(next);
+  }, []);
+
+  const createProgram = useCallback(() => {
+    const program = newProgram();
+    commitPrograms([...programs, program]);
+    setProgramEditId(program.id);
+  }, [programs, commitPrograms]);
+
+  const updateProgram = useCallback(
+    (updated: TrainingProgram) => {
+      commitPrograms(programs.map((p) => (p.id === updated.id ? updated : p)));
+    },
+    [programs, commitPrograms],
+  );
+
+  const archiveProgram = useCallback(
+    (id: string) => {
+      commitPrograms(
+        programs.map((p) =>
+          p.id === id ? { ...p, archivedAt: new Date().toISOString() } : p,
+        ),
+      );
+      setProgramEditId(null);
+    },
+    [programs, commitPrograms],
+  );
+
+  const startProgramDay = useCallback(
+    (program: TrainingProgram, index: number, deload: boolean) => {
+      const workout = [...program.workouts].sort((a, b) => a.order - b.order)[index];
+      if (!workout) return;
+      const last = lastSessionOfWorkout(sessions, workout.id);
+      const session = startProgramWorkout(
+        { ...program, currentWorkoutIndex: index },
+        workout,
+        today(),
+        last,
+      );
+      session.deload = deload;
+      commit([...sessions, session]);
+      // Продвигаем цикл от выбранного дня, а не всегда от текущего.
+      commitPrograms(
+        programs.map((p) =>
+          p.id === program.id
+            ? advanceProgram({ ...program, currentWorkoutIndex: index })
+            : p,
+        ),
+      );
+      setSelected(today());
+      setTab("calendar");
+      setOpenId(session.id);
+      setEditing(true);
+    },
+    [sessions, programs, commit, commitPrograms],
+  );
+
   const pasteSession = useCallback(() => {
     if (!clipboard) return;
     const copy = copySessionTo(clipboard, selected);
@@ -168,12 +239,24 @@ export default function App() {
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
   // Завершённую тренировку по умолчанию показываем read-only.
   const showView = open && isDone(open) && !editing;
+  const programBeingEdited = programEditId
+    ? (programs.find((p) => p.id === programEditId) ?? null)
+    : null;
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Container maxWidth="sm" sx={{ py: 2 }}>
-        {!ready ? null : open ? (
+        {!ready ? null : programBeingEdited ? (
+          <ProgramEditor
+            program={programBeingEdited}
+            exercises={exercises}
+            onChange={updateProgram}
+            onBack={() => setProgramEditId(null)}
+            onArchive={() => archiveProgram(programBeingEdited.id)}
+            onCreateExercise={createExercise}
+          />
+        ) : open ? (
           showView ? (
             <SessionView
               session={open}
@@ -248,6 +331,15 @@ export default function App() {
                 onDelete={deleteSession}
               />
             )}
+            {tab === "program" && (
+              <ProgramsScreen
+                programs={programs}
+                exercises={exercises}
+                onStart={startProgramDay}
+                onEdit={(p) => setProgramEditId(p.id)}
+                onCreate={createProgram}
+              />
+            )}
             {tab === "stats" && (
               <AnalyticsScreen sessions={sessions} exercises={exercises} />
             )}
@@ -292,8 +384,8 @@ export default function App() {
         />
       </Container>
 
-      {/* Нижняя навигация прячется, пока открыта тренировка (она во весь экран). */}
-      {ready && !open && (
+      {/* Нижняя навигация прячется на полноэкранных редакторах. */}
+      {ready && !open && !programBeingEdited && (
         <Paper
           elevation={0}
           sx={{
@@ -321,6 +413,11 @@ export default function App() {
                 label="История"
                 value="history"
                 icon={<HistoryIcon />}
+              />
+              <BottomNavigationAction
+                label="Программа"
+                value="program"
+                icon={<FitnessCenterIcon />}
               />
               <BottomNavigationAction
                 label="Аналитика"
