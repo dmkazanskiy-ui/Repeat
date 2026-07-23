@@ -341,7 +341,11 @@ export default function App() {
               />
             )}
             {tab === "stats" && (
-              <AnalyticsScreen sessions={sessions} exercises={exercises} />
+              <AnalyticsScreen
+                sessions={sessions}
+                exercises={exercises}
+                programs={programs}
+              />
             )}
             {tab === "profile" && (
               <ProfileScreen

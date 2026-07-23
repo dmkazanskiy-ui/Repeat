@@ -8,4 +8,5 @@ export * from "./strength";
 export * from "./records";
 export * from "./muscles";
 export * from "./muscle";
+export * from "./program";
 export * from "./nutrition";

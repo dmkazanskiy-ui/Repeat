@@ -16,8 +16,8 @@ import {
   workingVolume,
 } from "./index";
 import { exercisePerformance, strengthTrend } from "./strength";
-import { classifyExercise, movementBalance, muscleLoads } from "./index";
-import type { Exercise } from "../types";
+import { classifyExercise, movementBalance, muscleLoads, programProgress } from "./index";
+import type { Exercise, TrainingProgram } from "../types";
 
 let seq = 0;
 const id = () => `id${seq++}`;
@@ -315,6 +315,65 @@ describe("справочник мышц", () => {
     const pushpull = balance.find((b) => b.key === "pushpull")!;
     expect(pushpull.left).toBe(2); // жимовые подходы
     expect(pushpull.right).toBe(1); // тяговые
+  });
+});
+
+describe("прогресс по программе A→A", () => {
+  const bench: Exercise = {
+    id: "base:Жим",
+    name: "Жим штанги лёжа",
+    muscleGroup: "chest",
+    custom: false,
+  };
+
+  function doneWorkout(date: string, weight: number): Session {
+    const s = strength(date, [set(weight, 5), set(weight, 5), set(weight, 5)]);
+    s.programWorkoutId = "wA";
+    s.programId = "p";
+    s.endedAt = `${date}T11:00:00.000Z`;
+    s.startedAt = `${date}T10:00:00.000Z`;
+    s.plan = [
+      { id: "pe1", exerciseId: "base:Жим", order: 0, targetSets: 3, targetRepMin: 5 },
+    ];
+    s.exercises[0].plannedExerciseId = "pe1";
+    return s;
+  }
+
+  const program: TrainingProgram = {
+    id: "p",
+    name: "Программа",
+    workouts: [
+      {
+        id: "wA",
+        name: "A",
+        order: 0,
+        exercises: [
+          { id: "pe1", exerciseId: "base:Жим", order: 0, targetSets: 3, targetRepMin: 5 },
+        ],
+      },
+    ],
+    currentWorkoutIndex: 0,
+    cycleNumber: 1,
+    createdAt: "2026-07-01T00:00:00.000Z",
+  };
+
+  it("сравнивает две последние тренировки дня, прогресс веса", () => {
+    const sessions = [doneWorkout("2026-07-15", 80), doneWorkout("2026-07-22", 90)];
+    const progress = programProgress(program, sessions, [bench]);
+    expect(progress).toHaveLength(1);
+    const a = progress[0];
+    expect(a.intervalDays).toBe(7);
+    expect(a.plannedSets).toBe(3);
+    expect(a.actualSets).toBe(3);
+    expect(a.missed).toEqual([]);
+    expect(a.deltas[0].status).toBe("up");
+    expect(a.deltas[0].currWeight).toBe(90);
+    expect(a.deltas[0].prevWeight).toBe(80);
+  });
+
+  it("нужно ≥2 выполненных тренировки дня", () => {
+    const progress = programProgress(program, [doneWorkout("2026-07-22", 80)], [bench]);
+    expect(progress).toEqual([]);
   });
 });
 

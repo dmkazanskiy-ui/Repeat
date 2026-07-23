@@ -24,12 +24,13 @@ import {
   movementBalance,
   muscleLoads,
   newRecordsInPeriod,
+  programProgress,
   series,
   summarize,
   trainedExercises,
   averagePerActiveDay,
 } from "../lib/analytics";
-import type { BalanceRow, MuscleLoad } from "../lib/analytics";
+import type { BalanceRow, MuscleLoad, WorkoutComparison } from "../lib/analytics";
 import type { MetricComparison, MetricKey, PersonalRecord } from "../lib/analytics";
 import type { PeriodMode } from "../lib/analytics";
 import {
@@ -44,18 +45,20 @@ import {
   formatDate,
   formatDuration,
   formatVolume,
+  formatWeight,
   monthTitle,
   parseDateKey,
   today,
 } from "../lib/format";
-import type { Exercise, Session } from "../lib/types";
+import type { Exercise, Session, TrainingProgram } from "../lib/types";
 
 interface Props {
   sessions: Session[];
   exercises: Exercise[];
+  programs: TrainingProgram[];
 }
 
-export default function AnalyticsScreen({ sessions, exercises }: Props) {
+export default function AnalyticsScreen({ sessions, exercises, programs }: Props) {
   const [mode, setMode] = useState<PeriodMode>("week");
   const [anchor, setAnchor] = useState(today());
   const [from, setFrom] = useState(addDays(today(), -29));
@@ -88,6 +91,11 @@ export default function AnalyticsScreen({ sessions, exercises }: Props) {
     () => movementBalance(sessions, exercises, period.startDate, period.endDate),
     [sessions, exercises, period],
   );
+  // Прогресс по программе — по всей истории активной программы, вне периода.
+  const programCompare = useMemo(() => {
+    const active = programs.find((p) => !p.archivedAt);
+    return active ? programProgress(active, sessions, exercises) : [];
+  }, [programs, sessions, exercises]);
   const summary = useMemo(
     () => summarize(sessions, period.startDate, period.endDate),
     [sessions, period],
@@ -299,6 +307,20 @@ export default function AnalyticsScreen({ sessions, exercises }: Props) {
           <Stack spacing={1.5}>
             {balance.map((row) => (
               <BalanceBar key={row.key} row={row} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Прогресс по программе A→A */}
+      {programCompare.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h2" sx={{ mb: 1.5 }}>
+            Прогресс по программе
+          </Typography>
+          <Stack spacing={1.5}>
+            {programCompare.map((c) => (
+              <ProgramCompareCard key={c.workoutId} c={c} />
             ))}
           </Stack>
         </Box>
@@ -518,6 +540,74 @@ function BalanceBar({ row }: { row: BalanceRow }) {
         <Box sx={{ width: `${(row.right / total) * 100}%`, bgcolor: "text.disabled" }} />
       </Box>
     </Box>
+  );
+}
+
+function ProgramCompareCard({ c }: { c: WorkoutComparison }) {
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 0.5 }}>
+        <Typography variant="subtitle2" sx={{ flex: 1 }}>
+          {c.workoutName} · {formatDate(c.prevDate)} → {formatDate(c.currDate)}
+        </Typography>
+        {c.deload && (
+          <Chip label="разгрузка" size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+        )}
+      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        Интервал {c.intervalDays} дн · подходы плана {c.actualSets}/{c.plannedSets}
+        {c.missed.length ? ` · пропущено: ${c.missed.join(", ")}` : ""}
+      </Typography>
+      <Stack spacing={0.5} sx={{ mt: 1 }}>
+        {c.deltas.map((d) => (
+          <DeltaRow key={d.exerciseId} d={d} deload={c.deload} />
+        ))}
+      </Stack>
+    </Paper>
+  );
+}
+
+function DeltaRow({
+  d,
+  deload,
+}: {
+  d: WorkoutComparison["deltas"][number];
+  deload: boolean;
+}) {
+  const weightText =
+    d.prevWeight != null && d.currWeight != null
+      ? `${formatWeight(d.prevWeight)} → ${formatWeight(d.currWeight)} кг`
+      : d.currWeight != null
+        ? `${formatWeight(d.currWeight)} кг`
+        : "—";
+  const e1Change =
+    d.prevE1rm != null && d.currE1rm != null
+      ? Math.round(d.currE1rm - d.prevE1rm)
+      : null;
+  // Зелёным только рост; снижение (в т.ч. на разгрузке) — нейтрально.
+  const color = d.status === "up" ? "primary.main" : "text.secondary";
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
+        {d.name}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {weightText}
+      </Typography>
+      {d.status === "new" ? (
+        <Typography variant="caption" color="text.secondary">
+          новое
+        </Typography>
+      ) : (
+        e1Change != null &&
+        e1Change !== 0 && (
+          <Typography variant="caption" sx={{ color, fontWeight: 600 }}>
+            {e1Change > 0 ? "+" : ""}
+            {e1Change} e1RM{deload && d.status === "down" ? " · разгрузка" : ""}
+          </Typography>
+        )
+      )}
+    </Stack>
   );
 }
 
