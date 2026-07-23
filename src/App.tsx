@@ -30,7 +30,7 @@ import { newId } from "./lib/id";
 import { today } from "./lib/format";
 import CalendarScreen from "./screens/CalendarScreen";
 import HistoryScreen from "./screens/HistoryScreen";
-import StatsScreen from "./screens/StatsScreen";
+import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import SessionEditor from "./screens/SessionEditor";
 import SessionView from "./screens/SessionView";
@@ -249,7 +249,7 @@ export default function App() {
               />
             )}
             {tab === "stats" && (
-              <StatsScreen sessions={sessions} exercises={exercises} />
+              <AnalyticsScreen sessions={sessions} exercises={exercises} />
             )}
             {tab === "profile" && (
               <ProfileScreen
@@ -323,7 +323,7 @@ export default function App() {
                 icon={<HistoryIcon />}
               />
               <BottomNavigationAction
-                label="Статистика"
+                label="Аналитика"
                 value="stats"
                 icon={<InsightsIcon />}
               />
