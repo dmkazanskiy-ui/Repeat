@@ -6,4 +6,6 @@ export * from "./distribution";
 export * from "./consistency";
 export * from "./strength";
 export * from "./records";
+export * from "./muscles";
+export * from "./muscle";
 export * from "./nutrition";

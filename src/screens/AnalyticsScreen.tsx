@@ -21,12 +21,15 @@ import {
   consistency,
   isOngoing,
   distribution,
+  movementBalance,
+  muscleLoads,
   newRecordsInPeriod,
   series,
   summarize,
   trainedExercises,
   averagePerActiveDay,
 } from "../lib/analytics";
+import type { BalanceRow, MuscleLoad } from "../lib/analytics";
 import type { MetricComparison, MetricKey, PersonalRecord } from "../lib/analytics";
 import type { PeriodMode } from "../lib/analytics";
 import {
@@ -76,6 +79,14 @@ export default function AnalyticsScreen({ sessions, exercises }: Props) {
   const dist = useMemo(
     () => distribution(sessions, period.startDate, period.endDate),
     [sessions, period],
+  );
+  const muscles = useMemo(
+    () => muscleLoads(sessions, exercises, period),
+    [sessions, exercises, period],
+  );
+  const balance = useMemo(
+    () => movementBalance(sessions, exercises, period.startDate, period.endDate),
+    [sessions, exercises, period],
   );
   const summary = useMemo(
     () => summarize(sessions, period.startDate, period.endDate),
@@ -261,6 +272,38 @@ export default function AnalyticsScreen({ sessions, exercises }: Props) {
         </Box>
       )}
 
+      {/* Мышечные группы */}
+      {muscles.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h2" sx={{ mb: 0.5 }}>
+            Мышечные группы
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+            Эквивалентные подходы с учётом вторичной нагрузки. Классификация
+            упражнений предварительная.
+          </Typography>
+          <Stack spacing={1.25}>
+            {muscles.map((load) => (
+              <MuscleBar key={load.muscle} load={load} max={muscles[0].adjustedSets} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Баланс движений */}
+      {balance.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h2" sx={{ mb: 1.5 }}>
+            Баланс движений
+          </Typography>
+          <Stack spacing={1.5}>
+            {balance.map((row) => (
+              <BalanceBar key={row.key} row={row} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+
       {/* Прогресс силы */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         Прогресс силы
@@ -412,6 +455,67 @@ function DistributionBar({
             bgcolor: "primary.main",
           }}
         />
+      </Box>
+    </Box>
+  );
+}
+
+function MuscleBar({ load, max }: { load: MuscleLoad; max: number }) {
+  return (
+    <Box>
+      <Stack direction="row" spacing={1} sx={{ mb: 0.25, alignItems: "baseline" }}>
+        <Typography variant="body2" sx={{ flex: 1 }}>
+          {load.label}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {load.directSets} прям. · {Math.round(load.adjustedSets)} экв.
+          {load.daysSince != null ? ` · ${load.daysSince} дн. назад` : ""}
+        </Typography>
+      </Stack>
+      <Box sx={{ height: 8, borderRadius: 4, bgcolor: "action.hover" }}>
+        <Box
+          sx={{
+            height: 8,
+            borderRadius: 4,
+            width: `${Math.max(4, (load.adjustedSets / (max || 1)) * 100)}%`,
+            bgcolor: "primary.main",
+          }}
+        />
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        {load.levelLabel}
+      </Typography>
+    </Box>
+  );
+}
+
+function BalanceBar({ row }: { row: BalanceRow }) {
+  const total = row.left + row.right || 1;
+  const ratioText =
+    row.left && row.right
+      ? `${(row.left / row.right).toFixed(1).replace(".", ",")} : 1`
+      : "—";
+  return (
+    <Box>
+      <Stack direction="row" spacing={1} sx={{ mb: 0.25 }}>
+        <Typography variant="body2" sx={{ flex: 1 }}>
+          {row.leftLabel} {row.left} · {row.rightLabel} {row.right}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {ratioText}
+        </Typography>
+      </Stack>
+      <Box
+        sx={{
+          display: "flex",
+          height: 8,
+          borderRadius: 4,
+          overflow: "hidden",
+          bgcolor: "action.hover",
+        }}
+      >
+        <Box sx={{ width: `${(row.left / total) * 100}%`, bgcolor: "primary.main" }} />
+        <Box sx={{ width: `${(row.right / total) * 100}%`, bgcolor: "text.disabled" }} />
       </Box>
     </Box>
   );

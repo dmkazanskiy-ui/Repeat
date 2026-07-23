@@ -16,6 +16,8 @@ import {
   workingVolume,
 } from "./index";
 import { exercisePerformance, strengthTrend } from "./strength";
+import { classifyExercise, movementBalance, muscleLoads } from "./index";
+import type { Exercise } from "../types";
 
 let seq = 0;
 const id = () => `id${seq++}`;
@@ -258,6 +260,61 @@ describe("прогресс силы", () => {
       strength("2026-06-30", [set(95, 5)]),
     ];
     expect(strengthTrend(exercisePerformance(sessions, "base:Жим"))).toBe("up");
+  });
+});
+
+describe("справочник мышц", () => {
+  const bench: Exercise = {
+    id: "base:Жим",
+    name: "Жим штанги лёжа",
+    muscleGroup: "chest",
+    custom: false,
+  };
+
+  it("жим лёжа: грудь основная, трицепс и перед. дельта вторичные", () => {
+    const cls = classifyExercise(bench);
+    expect(cls.confidence).toBe("high");
+    const chest = cls.muscles.find((m) => m.muscle === "chest");
+    expect(chest?.role).toBe("primary");
+    expect(chest?.coef).toBe(1);
+    expect(cls.muscles.find((m) => m.muscle === "triceps")?.coef).toBe(0.5);
+    expect(cls.patterns).toContain("horizPush");
+  });
+
+  it("неизвестное упражнение — запасной вариант по грубой группе", () => {
+    const custom: Exercise = {
+      id: "x",
+      name: "Странное движение",
+      muscleGroup: "back",
+      custom: true,
+    };
+    const cls = classifyExercise(custom);
+    expect(cls.confidence).toBe("preliminary");
+    expect(cls.muscles[0].muscle).toBe("lats");
+  });
+
+  it("прямые и эквивалентные подходы", () => {
+    const sessions = [strength("2026-07-22", [set(80, 5), set(80, 5), set(80, 5)])];
+    const period = buildPeriod("week", "2026-07-22", undefined, undefined, "2026-07-26");
+    const loads = muscleLoads(sessions, [bench], period);
+    const chest = loads.find((l) => l.muscle === "chest")!;
+    expect(chest.directSets).toBe(3);
+    expect(chest.adjustedSets).toBe(3);
+    const triceps = loads.find((l) => l.muscle === "triceps")!;
+    expect(triceps.directSets).toBe(0); // только вторичная
+    expect(triceps.adjustedSets).toBeCloseTo(1.5); // 3 × 0.5
+  });
+
+  it("баланс движений: жим против тяги", () => {
+    const row: Exercise = { id: "row", name: "Тяга штанги в наклоне", muscleGroup: "back", custom: false };
+    const sessions = [
+      strength("2026-07-22", [set(80, 5), set(80, 5)], "base:Жим"),
+      strength("2026-07-22", [set(60, 8)], "row"),
+    ];
+    const balance = movementBalance(sessions, [bench, row], "2026-07-20", "2026-07-26");
+    const pushpull = balance.find((b) => b.key === "pushpull")!;
+    expect(pushpull.left).toBe(2); // жимовые подходы
+    expect(pushpull.right).toBe(1); // тяговые
   });
 });
 
