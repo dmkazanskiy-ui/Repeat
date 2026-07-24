@@ -9,6 +9,7 @@ export * from "./records";
 export * from "./muscles";
 export * from "./muscle";
 export * from "./load";
+export * from "./plateau";
 export * from "./program";
 export * from "./recovery";
 export * from "./summary";

@@ -16,6 +16,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import MetricChart from "../components/analytics/MetricChart";
 import StrengthProgress from "../components/analytics/StrengthProgress";
 import {
+  activePlateaus,
   buildPeriod,
   compareMetric,
   consistency,
@@ -114,6 +115,10 @@ export default function AnalyticsScreen({
   const load = useMemo(() => loadBaseline(sessions), [sessions]);
   const heat = useMemo(() => heatmap(sessions, 12), [sessions]);
   const ready = useMemo(() => readiness(sessions, recovery), [sessions, recovery]);
+  const plateaus = useMemo(
+    () => activePlateaus(sessions, exercises),
+    [sessions, exercises],
+  );
   const dist = useMemo(
     () => distribution(sessions, period.startDate, period.endDate),
     [sessions, period],
@@ -265,6 +270,37 @@ export default function AnalyticsScreen({
         </Stack>
       </Paper>
 
+      {/* Активные плато — плашки с ответом на исходную боль */}
+      {plateaus.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h2" sx={{ mb: 1 }}>
+            Активные плато
+          </Typography>
+          <Stack spacing={1}>
+            {plateaus.map((p) => (
+              <Paper
+                key={p.id}
+                variant="outlined"
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  borderColor: "warning.main",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ flex: 1 }}>
+                  {p.name}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>
+                  плато {p.weeks} нед
+                </Typography>
+              </Paper>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
       {/* KPI-лента: горизонтальная прокрутка */}
       <Box
         sx={{
@@ -380,7 +416,7 @@ export default function AnalyticsScreen({
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         Прогресс силы
       </Typography>
-      <StrengthProgress exercises={trained} />
+      <StrengthProgress exercises={trained} sessions={sessions} />
 
       {/* Рекорды */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>

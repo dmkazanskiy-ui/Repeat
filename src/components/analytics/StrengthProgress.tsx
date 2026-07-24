@@ -11,7 +11,9 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import MiniChart from "../MiniChart";
 import { addDays, formatDate, formatVolume, today } from "../../lib/format";
+import { exercisePlateau } from "../../lib/analytics";
 import type { ExerciseInsight, StrengthTrend } from "../../lib/analytics";
+import type { Session } from "../../lib/types";
 
 const RANGES: Array<{ key: string; label: string; days: number | null }> = [
   { key: "1m", label: "Месяц", days: 30 },
@@ -28,9 +30,10 @@ const TREND_LABEL: Record<StrengthTrend, string> = {
   insufficient: "данных пока мало для тренда",
 };
 
-function ExerciseRow({ ex }: { ex: ExerciseInsight }) {
+function ExerciseRow({ ex, sessions }: { ex: ExerciseInsight; sessions: Session[] }) {
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState("3m");
+  const plateau = exercisePlateau(sessions, ex.id);
 
   const days = RANGES.find((r) => r.key === range)?.days ?? null;
   const cutoff = days ? addDays(today(), -days) : "0000-00-00";
@@ -50,6 +53,12 @@ function ExerciseRow({ ex }: { ex: ExerciseInsight }) {
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Лучший e1RM {Math.round(ex.bestE1rm)} кг · {TREND_LABEL[ex.trend]}
+            {plateau.currentWeeks >= 3 && (
+              <Typography component="span" variant="caption" sx={{ color: "warning.main" }}>
+                {" · плато "}
+                {plateau.currentWeeks} нед
+              </Typography>
+            )}
           </Typography>
         </Box>
         <ExpandMoreIcon
@@ -99,6 +108,15 @@ function ExerciseRow({ ex }: { ex: ExerciseInsight }) {
             <Metric label="Лучший объём" value={formatVolume(ex.bestVolume)} />
             <Metric label="Тренировок" value={`${ex.sessions}`} />
             <Metric label="Последний рекорд" value={formatDate(ex.lastPrDate)} />
+            {plateau.currentWeeks > 0 && (
+              <Metric label="Плато сейчас" value={`${plateau.currentWeeks} нед`} />
+            )}
+            {plateau.longestWeeks > 0 && plateau.longestFrom && (
+              <Metric
+                label="Самое долгое плато"
+                value={`${plateau.longestWeeks} нед · ${formatDate(plateau.longestFrom)}`}
+              />
+            )}
           </Box>
         </Box>
       </Collapse>
@@ -121,8 +139,10 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 export default function StrengthProgress({
   exercises,
+  sessions,
 }: {
   exercises: ExerciseInsight[];
+  sessions: Session[];
 }) {
   if (exercises.length === 0) {
     return (
@@ -135,7 +155,7 @@ export default function StrengthProgress({
   return (
     <Stack spacing={1}>
       {exercises.map((ex) => (
-        <ExerciseRow key={ex.id} ex={ex} />
+        <ExerciseRow key={ex.id} ex={ex} sessions={sessions} />
       ))}
     </Stack>
   );

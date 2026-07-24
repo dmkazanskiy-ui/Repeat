@@ -20,6 +20,8 @@ import {
   classifyExercise,
   heatmap,
   loadBaseline,
+  activePlateaus,
+  exercisePlateau,
   movementBalance,
   muscleLoads,
   periodSummary,
@@ -461,6 +463,51 @@ describe("резюме периода", () => {
     const lines = periodSummary(sessions, [bench], [], period, "За неделю");
     expect(lines[0]).toContain("1 тренировка");
     expect(lines.join(" ")).toContain("Жим штанги лёжа");
+  });
+});
+
+describe("плато-детектор", () => {
+  const bench: Exercise = {
+    id: "base:Жим",
+    name: "Жим штанги лёжа",
+    muscleGroup: "chest",
+    custom: false,
+  };
+  // Недели идут по 7 дней — попадают в разные недели независимо от дня.
+  const weeks = ["2026-06-01", "2026-06-08", "2026-06-15", "2026-06-22", "2026-06-29"];
+  const w = (date: string, weight: number) => strength(date, [set(weight, 5)]);
+
+  it("ровный e1RM — плато растёт по неделям", () => {
+    const sessions = weeks.map((d) => w(d, 100));
+    const p = exercisePlateau(sessions, "base:Жим");
+    expect(p.weeks).toBe(5);
+    expect(p.currentWeeks).toBe(4); // 5 недель без прорыва
+  });
+
+  it("прорыв обнуляет текущее плато, но остаётся в истории", () => {
+    const sessions = [
+      w("2026-06-01", 90),
+      w("2026-06-08", 90),
+      w("2026-06-15", 90),
+      w("2026-06-22", 100),
+      w("2026-06-29", 100),
+      w("2026-07-06", 100),
+    ];
+    const p = exercisePlateau(sessions, "base:Жим");
+    expect(p.currentWeeks).toBe(0); // ещё растёт после прорыва
+    expect(p.longestWeeks).toBeGreaterThanOrEqual(3);
+  });
+
+  it("мало данных — плато не считается", () => {
+    expect(exercisePlateau([w("2026-06-01", 100)], "base:Жим").currentWeeks).toBe(0);
+  });
+
+  it("активные плато с порогом", () => {
+    const sessions = weeks.map((d) => w(d, 100));
+    const active = activePlateaus(sessions, [bench], 3);
+    expect(active).toHaveLength(1);
+    expect(active[0].name).toBe("Жим штанги лёжа");
+    expect(active[0].weeks).toBe(4);
   });
 });
 
