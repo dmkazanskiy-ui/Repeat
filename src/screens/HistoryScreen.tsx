@@ -10,6 +10,7 @@ interface Props {
   exercises: Exercise[];
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  onChangeTime: (id: string, time: string | null) => void;
 }
 
 /** Все тренировки таймлайном, свежие сверху, сгруппированы по дню. */
@@ -18,6 +19,7 @@ export default function HistoryScreen({
   exercises,
   onOpen,
   onDelete,
+  onChangeTime,
 }: Props) {
   const dates = useMemo(() => {
     const set = new Set(sessions.map((s) => s.date));
@@ -46,6 +48,7 @@ export default function HistoryScreen({
             exercises={exercises}
             onOpen={onOpen}
             onDelete={onDelete}
+            onChangeTime={onChangeTime}
           />
         </Box>
       ))}

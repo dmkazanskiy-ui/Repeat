@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, MouseEvent, ReactNode } from "react";
 import { Box, Chip, Paper, Stack, Typography } from "@mui/material";
 import SwipeToDelete from "./SwipeToDelete";
 import { ActivityIcon } from "../lib/icons";
@@ -25,6 +25,7 @@ interface Props {
   exercises: Exercise[];
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  onChangeTime: (id: string, time: string | null) => void;
   /** Текущее время «HH:MM» — рисует горизонтальную линию «сейчас» (только сегодня). */
   now?: string;
 }
@@ -183,6 +184,7 @@ export default function SessionTimeline({
   exercises,
   onOpen,
   onDelete,
+  onChangeTime,
   now,
 }: Props) {
   const n = sessions.length;
@@ -205,15 +207,35 @@ export default function SessionTimeline({
 
     rows.push(
       <Stack key={session.id} direction="row" spacing={1}>
-        {/* Время */}
-        <Box sx={{ width: RAIL, flexShrink: 0 }}>
+        {/* Время — редактируется тапом (нативный пикер) */}
+        <Box sx={{ width: RAIL, flexShrink: 0, position: "relative", mt: "2px" }}>
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: "block", textAlign: "right", lineHeight: "18px", mt: "2px" }}
+            sx={{ display: "block", textAlign: "right", lineHeight: "18px" }}
           >
-            {session.time ?? ""}
+            {session.time ?? "—:—"}
           </Typography>
+          <Box
+            component="input"
+            type="time"
+            value={session.time ?? ""}
+            aria-label="Время тренировки"
+            onClick={(e: MouseEvent) => e.stopPropagation()}
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              onChangeTime(session.id, e.target.value || null)
+            }
+            sx={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              opacity: 0,
+              cursor: "pointer",
+              border: "none",
+              p: 0,
+              m: 0,
+            }}
+          />
         </Box>
         {/* Точка и линия — по центру своей колонки */}
         <Box sx={{ width: NODE, position: "relative", flexShrink: 0 }}>

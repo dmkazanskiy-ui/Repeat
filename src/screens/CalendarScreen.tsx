@@ -29,6 +29,7 @@ interface Props {
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  onChangeTime: (id: string, time: string | null) => void;
 }
 
 export default function CalendarScreen({
@@ -39,6 +40,7 @@ export default function CalendarScreen({
   onOpen,
   onCreate,
   onDelete,
+  onChangeTime,
 }: Props) {
   const [cursor, setCursor] = useState(() => parseDateKey(selected));
   // По умолчанию календарь свёрнут в одну неделю: на экране телефона
@@ -195,6 +197,7 @@ export default function CalendarScreen({
           exercises={exercises}
           onOpen={onOpen}
           onDelete={onDelete}
+          onChangeTime={onChangeTime}
           now={selected === todayKey ? nowTime() : undefined}
         />
       )}

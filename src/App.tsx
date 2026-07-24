@@ -112,6 +112,13 @@ export default function App() {
     setEditing(false);
   }, []);
 
+  const changeSessionTime = useCallback(
+    (id: string, time: string | null) => {
+      commit(sessions.map((s) => (s.id === id ? { ...s, time } : s)));
+    },
+    [sessions, commit],
+  );
+
   const createSession = useCallback(
     (kind: SessionKind, options: CreateOptions) => {
       const session = newSession(selected, kind, options);
@@ -335,6 +342,7 @@ export default function App() {
                   onOpen={openSession}
                   onCreate={() => setCreating(true)}
                   onDelete={deleteSession}
+                  onChangeTime={changeSessionTime}
                 />
                 <NewSessionDialog
                   open={creating}
@@ -358,6 +366,7 @@ export default function App() {
                 exercises={exercises}
                 onOpen={openSession}
                 onDelete={deleteSession}
+                onChangeTime={changeSessionTime}
               />
             )}
             {tab === "stats" && (
