@@ -15,8 +15,10 @@ import {
 import { useTheme } from "@mui/material/styles";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MetricChart from "../components/analytics/MetricChart";
 import StrengthProgress from "../components/analytics/StrengthProgress";
+import { RulerMeter, ScoreRing, WeekDots } from "../components/analytics/Meters";
 import {
   activePlateaus,
   buildPeriod,
@@ -63,6 +65,7 @@ import {
   monthTitle,
   parseDateKey,
   today,
+  weekGrid,
 } from "../lib/format";
 import type {
   Exercise,
@@ -123,6 +126,12 @@ export default function AnalyticsScreen({
   const load = useMemo(() => loadBaseline(sessions), [sessions]);
   const heat = useMemo(() => heatmap(sessions, 12), [sessions]);
   const ready = useMemo(() => readiness(sessions, recovery), [sessions, recovery]);
+  // Активность текущей недели точками — для блока регулярности.
+  const weekActive = useMemo(() => {
+    const set = new Set(sessions.map((s) => s.date));
+    return weekGrid(today()).map((d) => set.has(d));
+  }, [sessions]);
+  const todayIdx = (parseDateKey(today()).getDay() + 6) % 7;
   const plateaus = useMemo(
     () => activePlateaus(sessions, exercises),
     [sessions, exercises],
@@ -263,13 +272,20 @@ export default function AnalyticsScreen({
         {isOngoing(period) ? " · период ещё идёт" : ""}
       </Typography>
 
-      {/* Итоги периода — резюме по правилам */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+      {/* Итоги периода — резюме по правилам, в духе AI-инсайта */}
+      <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 3 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
+          <AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 18 }} />
+          <Typography variant="subtitle2" sx={{ color: "primary.main" }}>
+            Итоги
+          </Typography>
+        </Stack>
         <Stack spacing={0.5}>
           {summaryLines.map((line, i) => (
             <Typography
               key={i}
-              variant="body2"
+              variant={i === 0 ? "subtitle1" : "body2"}
+              sx={{ fontWeight: i === 0 ? 600 : 400 }}
               color={i === 0 ? "text.primary" : "text.secondary"}
             >
               {line}
@@ -398,6 +414,17 @@ export default function AnalyticsScreen({
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         Регулярность
       </Typography>
+      <Paper variant="outlined" sx={{ p: 2, mb: 1.5, borderRadius: 3 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ flex: 1 }}>
+            Эта неделя
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            🔥 серия {cons.currentStreak}
+          </Typography>
+        </Stack>
+        <WeekDots active={weekActive} labels={WEEKDAYS_SHORT} todayIndex={todayIdx} />
+      </Paper>
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
         <StatTile value={`${cons.activeDays}`} label="Активных дней" />
         <StatTile value={cons.perWeek.toFixed(1).replace(".", ",")} label="Трен./нед" />
@@ -504,14 +531,15 @@ export default function AnalyticsScreen({
       <Typography variant="h2" sx={{ mb: 1 }}>
         Нагрузка недели
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>
-            {load.currentSets} рабочих подходов
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
+          <Typography variant="h2" sx={{ fontWeight: 700, flex: 1 }}>
+            {load.currentSets} <Typography component="span" variant="body2" color="text.secondary">рабочих подходов</Typography>
           </Typography>
           <Typography
             variant="body2"
             sx={{
+              fontWeight: 600,
               color:
                 load.level === "above" || load.level === "wellAbove"
                   ? "warning.main"
@@ -520,6 +548,15 @@ export default function AnalyticsScreen({
           >
             {load.levelLabel}
           </Typography>
+        </Stack>
+        <RulerMeter
+          position={load.ratio == null ? null : Math.min(1, load.ratio / 2)}
+          warn={load.level === "above" || load.level === "wellAbove"}
+        />
+        <Stack direction="row" sx={{ justifyContent: "space-between", mt: 0.5, mb: 1 }}>
+          <Typography variant="caption" color="text.secondary">ниже</Typography>
+          <Typography variant="caption" color="text.secondary">обычно</Typography>
+          <Typography variant="caption" color="text.secondary">выше</Typography>
         </Stack>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
           {load.ratio != null
@@ -535,30 +572,37 @@ export default function AnalyticsScreen({
       <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
         Готовность
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 0.5 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>
-            {ready.hasSubjective
-              ? `${ready.subjective!.toFixed(1).replace(".", ",")} из 5`
-              : "Предварительная оценка"}
-          </Typography>
-          {ready.hasSubjective && ready.subjectiveDate && (
-            <Typography variant="caption" color="text.secondary">
-              по отметке {formatDate(ready.subjectiveDate)}
-            </Typography>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          {ready.hasSubjective ? (
+            <ScoreRing
+              fraction={ready.subjective! / 5}
+              center={ready.subjective!.toFixed(1).replace(".", ",")}
+              sub="из 5"
+            />
+          ) : (
+            <ScoreRing fraction={0} center="—" sub="нет отметки" />
           )}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              {ready.hasSubjective ? "По твоей отметке" : "Предварительная оценка"}
+              {ready.hasSubjective && ready.subjectiveDate
+                ? ` · ${formatDate(ready.subjectiveDate)}`
+                : ""}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              {ready.daysSinceStrength != null
+                ? `Последняя силовая ${ready.daysSinceStrength === 0 ? "сегодня" : `${ready.daysSinceStrength} дн. назад`}. `
+                : ""}
+              Нагрузка недели {ready.loadLevelLabel}.
+            </Typography>
+            {!ready.hasSubjective && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                Отметь самочувствие в Профиле — оценка станет точнее.
+              </Typography>
+            )}
+          </Box>
         </Stack>
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-          {ready.daysSinceStrength != null
-            ? `Последняя силовая ${ready.daysSinceStrength === 0 ? "сегодня" : `${ready.daysSinceStrength} дн. назад`} · `
-            : ""}
-          нагрузка недели {ready.loadLevelLabel}.
-        </Typography>
-        {!ready.hasSubjective && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-            Субъективные данные не заполнены — отметь самочувствие в Профиле.
-          </Typography>
-        )}
       </Paper>
         </>
       )}

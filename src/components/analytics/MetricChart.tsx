@@ -143,13 +143,32 @@ export default function MetricChart({
                 height={H - PAD_TOP - PAD_BOTTOM}
                 fill="transparent"
               />
+              {active && (
+                <line
+                  x1={cx(i)}
+                  x2={cx(i)}
+                  y1={PAD_TOP}
+                  y2={base}
+                  stroke={green}
+                  strokeWidth={1}
+                  opacity={0.35}
+                />
+              )}
               {h > 0 && (
                 <path
                   d={roundedTopRect(cx(i) - barW / 2, y(p.value), barW, h, 4)}
                   fill={`url(#bar-${gid})`}
-                  opacity={active ? 1 : 0.9}
-                  stroke={active ? green : "none"}
-                  strokeWidth={active ? 1.5 : 0}
+                  opacity={active ? 1 : 0.88}
+                />
+              )}
+              {active && h > 0 && (
+                <circle
+                  cx={cx(i)}
+                  cy={y(p.value)}
+                  r={3.5}
+                  fill={theme.palette.background.paper}
+                  stroke={green}
+                  strokeWidth={2}
                 />
               )}
               {showLabels && (
