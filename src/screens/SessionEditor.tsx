@@ -236,33 +236,46 @@ export default function SessionEditor({
     });
   }
 
-  function openFinish() {
-    const elapsedMin =
-      session.startedAt && !session.endedAt
-        ? Math.round(Math.max(0, (nowMs - Date.parse(session.startedAt)) / 1000) / 60)
-        : null;
-    setFinishMin(elapsedMin);
-    setFinishHr(session.avgHr ?? null);
-    setFinishing(true);
-  }
-
-  function finishWorkout() {
+  function commitFinish(min: number | null, hr: number | null) {
     const now = new Date();
-    // Длительность задаёт стартовое время: end − N минут. Так работает и без
-    // «Начать» (backdate), и с таймером (переопределяет введённым значением).
+    // Длительность задаёт стартовое время: end − N минут. Работает и без
+    // «Начать» (backdate), и с таймером.
     const startedAt =
-      finishMin != null && finishMin > 0
-        ? new Date(now.getTime() - finishMin * 60_000).toISOString()
+      min != null && min > 0
+        ? new Date(now.getTime() - min * 60_000).toISOString()
         : (session.startedAt ?? now.toISOString());
     onChange({
       ...session,
       startedAt,
       endedAt: now.toISOString(),
-      avgHr: finishHr,
+      avgHr: hr,
       time: session.time ?? nowTime(),
     });
     setFinishing(false);
     onExitEditing?.();
+  }
+
+  /**
+   * Завершить. Если длительность уже известна — идёт таймер или введено время
+   * кардио — не спрашиваем ничего, сразу закрываем. Иначе просим ввести.
+   */
+  function handleFinish() {
+    if (running && session.startedAt) {
+      const elapsedMin = Math.round(
+        Math.max(0, (nowMs - Date.parse(session.startedAt)) / 1000) / 60,
+      );
+      commitFinish(elapsedMin, session.avgHr ?? session.cardio?.avgHr ?? null);
+      return;
+    }
+    const cardioDur =
+      session.kind === "cardio" ? (session.cardio?.durationSec ?? null) : null;
+    if (cardioDur) {
+      commitFinish(Math.round(cardioDur / 60), session.cardio?.avgHr ?? session.avgHr ?? null);
+      return;
+    }
+    setFinishMin(null);
+    setFinishHr(session.cardio?.avgHr ?? session.avgHr ?? null);
+    setFinishing(true);
   }
 
   return (
@@ -316,45 +329,53 @@ export default function SessionEditor({
             </Button>
           )}
         </Stack>
-      ) : (
+      ) : running ? (
         <Box sx={{ mb: 3 }}>
-          {running && (
-            <Typography
-              variant="h1"
-              sx={{ fontVariantNumeric: "tabular-nums", mb: 1 }}
-            >
-              {formatTimer(
-                session.startedAt
-                  ? Math.max(0, Math.floor((nowMs - Date.parse(session.startedAt)) / 1000))
-                  : 0,
-              )}
-            </Typography>
-          )}
+          <Typography
+            variant="h1"
+            sx={{ fontVariantNumeric: "tabular-nums", mb: 1 }}
+          >
+            {formatTimer(
+              session.startedAt
+                ? Math.max(0, Math.floor((nowMs - Date.parse(session.startedAt)) / 1000))
+                : 0,
+            )}
+          </Typography>
           <Button
             fullWidth
             variant="contained"
+            color="error"
             startIcon={<StopIcon />}
-            onClick={openFinish}
+            onClick={handleFinish}
           >
             Завершить тренировку
           </Button>
-          {!running && (
-            <Button
-              fullWidth
-              size="small"
-              startIcon={<PlayArrowIcon />}
-              sx={{ mt: 0.5 }}
-              onClick={() =>
-                onChange({
-                  ...session,
-                  startedAt: new Date().toISOString(),
-                  time: session.time ?? nowTime(),
-                })
-              }
-            >
-              Засечь время таймером
-            </Button>
-          )}
+        </Box>
+      ) : (
+        <Box sx={{ mb: 3 }}>
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<PlayArrowIcon />}
+            onClick={() =>
+              onChange({
+                ...session,
+                startedAt: new Date().toISOString(),
+                time: session.time ?? nowTime(),
+              })
+            }
+          >
+            Начать тренировку
+          </Button>
+          <Button
+            fullWidth
+            size="small"
+            startIcon={<StopIcon />}
+            sx={{ mt: 0.5 }}
+            onClick={handleFinish}
+          >
+            Завершить тренировку
+          </Button>
         </Box>
       )}
 
@@ -1011,7 +1032,7 @@ export default function SessionEditor({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setFinishing(false)}>Отмена</Button>
-          <Button variant="contained" onClick={finishWorkout}>
+          <Button variant="contained" onClick={() => commitFinish(finishMin, finishHr)}>
             Завершить
           </Button>
         </DialogActions>

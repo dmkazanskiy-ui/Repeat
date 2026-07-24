@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Box, Chip, Paper, Stack, Typography } from "@mui/material";
 import SwipeToDelete from "./SwipeToDelete";
 import { ActivityIcon } from "../lib/icons";
@@ -24,6 +25,8 @@ interface Props {
   exercises: Exercise[];
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Текущее время «HH:MM» — рисует горизонтальную линию «сейчас» (только сегодня). */
+  now?: string;
 }
 
 type Status = "done" | "plan" | "draft";
@@ -134,66 +137,126 @@ function SessionCard({
   );
 }
 
-/** Лента тренировок как вертикальный таймлайн: слева время + точка + линия. */
-export default function SessionTimeline({ sessions, exercises, onOpen, onDelete }: Props) {
-  const n = sessions.length;
-  return (
-    <Box>
-      {sessions.map((session, i) => {
-        const status = statusOf(session);
-        const dotColor =
-          status.kind === "done"
-            ? "primary.main"
-            : status.kind === "plan"
-              ? "text.secondary"
-              : "divider";
-        return (
-          <Stack key={session.id} direction="row">
-            {/* Рейл таймлайна: время, точка, соединительная линия */}
-            <Box sx={{ width: 46, flexShrink: 0, position: "relative", pr: 1.25 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block", textAlign: "right", lineHeight: "20px" }}
-              >
-                {session.time ?? ""}
-              </Typography>
-              <Box
-                sx={{
-                  position: "absolute",
-                  right: -5,
-                  top: 5,
-                  width: 11,
-                  height: 11,
-                  borderRadius: "50%",
-                  bgcolor: dotColor,
-                  border: "2px solid",
-                  borderColor: "background.default",
-                  zIndex: 1,
-                }}
-              />
-              {i < n - 1 && (
-                <Box
-                  sx={{
-                    position: "absolute",
-                    right: 0,
-                    top: 16,
-                    bottom: -6,
-                    width: "2px",
-                    bgcolor: "divider",
-                  }}
-                />
-              )}
-            </Box>
+const RAIL = 44; // ширина колонки времени
+const NODE = 16; // ширина колонки точки/линии
 
-            <Box sx={{ flex: 1, minWidth: 0, pb: 1.5 }}>
-              <SwipeToDelete onDelete={() => onDelete(session.id)}>
-                <SessionCard session={session} exercises={exercises} onOpen={onOpen} />
-              </SwipeToDelete>
-            </Box>
-          </Stack>
-        );
-      })}
-    </Box>
+/** Строка «сейчас» — горизонтальная пунктирная линия с тегом текущего времени. */
+function NowRow({ now }: { now: string }) {
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
+      <Box sx={{ width: RAIL, display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+        <Chip
+          label={now}
+          size="small"
+          color="primary"
+          sx={{
+            height: 18,
+            fontSize: 10,
+            fontWeight: 700,
+            flexShrink: 0,
+            "& .MuiChip-label": { px: 0.6 },
+          }}
+        />
+      </Box>
+      <Box sx={{ width: NODE, position: "relative", flexShrink: 0 }}>
+        <Box
+          sx={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            bgcolor: "primary.main",
+          }}
+        />
+      </Box>
+      <Box sx={{ flex: 1, borderTop: "1.5px dashed", borderColor: "primary.main", opacity: 0.7 }} />
+    </Stack>
   );
+}
+
+/** Лента тренировок как вертикальный таймлайн: слева время + точка + линия. */
+export default function SessionTimeline({
+  sessions,
+  exercises,
+  onOpen,
+  onDelete,
+  now,
+}: Props) {
+  const n = sessions.length;
+  // Куда вставить линию «сейчас»: после всех тренировок раньше текущего времени.
+  const nowIndex = now
+    ? sessions.filter((s) => (s.time ?? "00:00") <= now).length
+    : -1;
+
+  const rows: ReactNode[] = [];
+  sessions.forEach((session, i) => {
+    if (i === nowIndex && now) rows.push(<NowRow key="now" now={now} />);
+
+    const status = statusOf(session);
+    const dotColor =
+      status.kind === "done"
+        ? "primary.main"
+        : status.kind === "plan"
+          ? "text.secondary"
+          : "divider";
+
+    rows.push(
+      <Stack key={session.id} direction="row" spacing={1}>
+        {/* Время */}
+        <Box sx={{ width: RAIL, flexShrink: 0 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", textAlign: "right", lineHeight: "18px", mt: "2px" }}
+          >
+            {session.time ?? ""}
+          </Typography>
+        </Box>
+        {/* Точка и линия — по центру своей колонки */}
+        <Box sx={{ width: NODE, position: "relative", flexShrink: 0 }}>
+          {i < n - 1 && (
+            <Box
+              sx={{
+                position: "absolute",
+                left: "50%",
+                transform: "translateX(-50%)",
+                top: 8,
+                bottom: -12,
+                width: "2px",
+                bgcolor: "divider",
+              }}
+            />
+          )}
+          <Box
+            sx={{
+              position: "absolute",
+              left: "50%",
+              top: 3,
+              transform: "translateX(-50%)",
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              bgcolor: dotColor,
+              border: "2px solid",
+              borderColor: "background.default",
+              zIndex: 1,
+            }}
+          />
+        </Box>
+        {/* Карточка */}
+        <Box sx={{ flex: 1, minWidth: 0, pb: 1.5 }}>
+          <SwipeToDelete onDelete={() => onDelete(session.id)}>
+            <SessionCard session={session} exercises={exercises} onOpen={onOpen} />
+          </SwipeToDelete>
+        </Box>
+      </Stack>,
+    );
+  });
+
+  if (now && nowIndex === n) rows.push(<NowRow key="now" now={now} />);
+
+  return <Box>{rows}</Box>;
 }

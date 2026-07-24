@@ -13,6 +13,7 @@ import {
   formatDateFull,
   monthGrid,
   monthTitle,
+  nowTime,
   parseDateKey,
   today,
   toDateKey,
@@ -194,6 +195,7 @@ export default function CalendarScreen({
           exercises={exercises}
           onOpen={onOpen}
           onDelete={onDelete}
+          now={selected === todayKey ? nowTime() : undefined}
         />
       )}
 
