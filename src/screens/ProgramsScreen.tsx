@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   FormControlLabel,
+  IconButton,
   Paper,
   Stack,
   Switch,
@@ -12,11 +13,13 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import EditIcon from "@mui/icons-material/Edit";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import type { Exercise, TrainingProgram } from "../lib/types";
 
 interface Props {
   programs: TrainingProgram[];
   exercises: Exercise[];
+  onBack?: () => void;
   onStart: (program: TrainingProgram, workoutIndex: number, deload: boolean) => void;
   onEdit: (program: TrainingProgram) => void;
   onCreate: () => void;
@@ -25,6 +28,7 @@ interface Props {
 export default function ProgramsScreen({
   programs,
   exercises,
+  onBack,
   onStart,
   onEdit,
   onCreate,
@@ -38,9 +42,14 @@ export default function ProgramsScreen({
 
   return (
     <Box sx={{ pb: 10 }}>
-      <Typography variant="h1" sx={{ mb: 2 }}>
-        Программа
-      </Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 2 }}>
+        {onBack && (
+          <IconButton onClick={onBack} edge="start" aria-label="Назад">
+            <ArrowBackIcon />
+          </IconButton>
+        )}
+        <Typography variant="h1">Программа</Typography>
+      </Stack>
 
       {!program ? (
         <>

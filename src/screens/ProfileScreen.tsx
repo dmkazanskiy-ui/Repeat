@@ -16,6 +16,8 @@ import AddIcon from "@mui/icons-material/Add";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import CloseIcon from "@mui/icons-material/Close";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import NumberField from "../components/NumberField";
 import MiniChart from "../components/MiniChart";
 import { newBodyEntry, newRecoveryEntry } from "../lib/store";
@@ -23,12 +25,19 @@ import { fileToScaledDataUrl } from "../lib/image";
 import { newId } from "../lib/id";
 import { formatDate, today } from "../lib/format";
 import { BODY_METRICS, RECOVERY_METRICS, recoveryAverage } from "../lib/types";
-import type { BodyEntry, ProgressPhoto, RecoveryEntry } from "../lib/types";
+import type {
+  BodyEntry,
+  ProgressPhoto,
+  RecoveryEntry,
+  TrainingProgram,
+} from "../lib/types";
 
 interface Props {
   bodyEntries: BodyEntry[];
   photos: ProgressPhoto[];
   recovery: RecoveryEntry[];
+  programs: TrainingProgram[];
+  onOpenPrograms: () => void;
   onChangeBody: (entries: BodyEntry[]) => void;
   onChangePhotos: (photos: ProgressPhoto[]) => void;
   onChangeRecovery: (entries: RecoveryEntry[]) => void;
@@ -44,10 +53,13 @@ export default function ProfileScreen({
   bodyEntries,
   photos,
   recovery,
+  programs,
+  onOpenPrograms,
   onChangeBody,
   onChangePhotos,
   onChangeRecovery,
 }: Props) {
+  const activeProgram = programs.find((p) => !p.archivedAt) ?? null;
   const [editing, setEditing] = useState<BodyEntry | null>(null);
   const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
   const [viewPhoto, setViewPhoto] = useState<ProgressPhoto | null>(null);
@@ -111,6 +123,34 @@ export default function ProfileScreen({
       <Typography variant="h1" sx={{ mb: 2 }}>
         Профиль
       </Typography>
+
+      {/* Программа */}
+      <Paper
+        variant="outlined"
+        onClick={onOpenPrograms}
+        sx={{
+          p: 1.75,
+          mb: 2,
+          borderRadius: 2,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+        }}
+      >
+        <Box sx={{ color: "primary.main", display: "flex" }}>
+          <FitnessCenterIcon />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle2">Программа</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {activeProgram
+              ? `${activeProgram.name} · сплит ${activeProgram.workouts.length} дн.`
+              : "Собери сплит A/B/C/D"}
+          </Typography>
+        </Box>
+        <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
+      </Paper>
 
       {/* Вес */}
       <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>

@@ -69,9 +69,14 @@ export default function SessionView({
         </Box>
         <Box>
           <Typography variant="h1">{sessionTitle(session)}</Typography>
-          {duration != null && (
+          {(duration != null || session.avgHr != null) && (
             <Typography variant="body2" color="text.secondary">
-              {formatDuration(duration)}
+              {[
+                duration != null ? formatDuration(duration) : null,
+                session.avgHr != null ? `${session.avgHr} уд/мин` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Typography>
           )}
         </Box>

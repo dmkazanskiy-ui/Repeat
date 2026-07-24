@@ -4,6 +4,10 @@ import {
   Button,
   Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   MenuItem,
@@ -102,6 +106,11 @@ export default function SessionEditor({
 }: Props) {
   const [picking, setPicking] = useState(false);
   const [copyDate, setCopyDate] = useState("");
+  // Диалог завершения: длительность и средний пульс вводятся вручную —
+  // «Начать» жать необязательно.
+  const [finishing, setFinishing] = useState(false);
+  const [finishMin, setFinishMin] = useState<number | null>(null);
+  const [finishHr, setFinishHr] = useState<number | null>(null);
   // Источник объединения в супер-сет: включается по long-press на упражнении.
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const pressTimer = useRef<number | null>(null);
@@ -227,6 +236,35 @@ export default function SessionEditor({
     });
   }
 
+  function openFinish() {
+    const elapsedMin =
+      session.startedAt && !session.endedAt
+        ? Math.round(Math.max(0, (nowMs - Date.parse(session.startedAt)) / 1000) / 60)
+        : null;
+    setFinishMin(elapsedMin);
+    setFinishHr(session.avgHr ?? null);
+    setFinishing(true);
+  }
+
+  function finishWorkout() {
+    const now = new Date();
+    // Длительность задаёт стартовое время: end − N минут. Так работает и без
+    // «Начать» (backdate), и с таймером (переопределяет введённым значением).
+    const startedAt =
+      finishMin != null && finishMin > 0
+        ? new Date(now.getTime() - finishMin * 60_000).toISOString()
+        : (session.startedAt ?? now.toISOString());
+    onChange({
+      ...session,
+      startedAt,
+      endedAt: now.toISOString(),
+      avgHr: finishHr,
+      time: session.time ?? nowTime(),
+    });
+    setFinishing(false);
+    onExitEditing?.();
+  }
+
   return (
     <Box sx={{ pb: 6 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
@@ -262,13 +300,15 @@ export default function SessionEditor({
         sx={{ mb: 3 }}
       />
 
-      {/* Таймер тренировки: «Начать» → тикает → «Завершить». Завершённую
-          App показывает read-only; сюда попадаем уже в режиме правки. */}
+      {/* Жизненный цикл. Главное действие — «Завершить»: длительность и пульс
+          можно ввести вручную, «Начать» жать необязательно. Таймер — опция для
+          тех, кто хочет засечь время вживую. */}
       {session.endedAt ? (
         <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
           <Chip label="Завершена" size="small" color="primary" variant="outlined" />
           <Typography variant="body2" color="text.secondary">
             {formatDuration(sessionDurationSec(session))}
+            {session.avgHr ? ` · ${session.avgHr} уд/мин` : ""}
           </Typography>
           {onExitEditing && (
             <Button size="small" sx={{ ml: "auto" }} onClick={onExitEditing}>
@@ -276,47 +316,46 @@ export default function SessionEditor({
             </Button>
           )}
         </Stack>
-      ) : running ? (
-        <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
-          <Typography
-            variant="h1"
-            sx={{ fontVariantNumeric: "tabular-nums" }}
-          >
-            {formatTimer(
-              session.startedAt
-                ? Math.max(0, Math.floor((nowMs - Date.parse(session.startedAt)) / 1000))
-                : 0,
-            )}
-          </Typography>
-          <Button
-            variant="contained"
-            color="error"
-            startIcon={<StopIcon />}
-            sx={{ ml: "auto" }}
-            onClick={() => {
-              onChange({ ...session, endedAt: new Date().toISOString() });
-              onExitEditing?.();
-            }}
-          >
-            Завершить
-          </Button>
-        </Stack>
       ) : (
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<PlayArrowIcon />}
-          sx={{ mb: 3 }}
-          onClick={() =>
-            onChange({
-              ...session,
-              startedAt: new Date().toISOString(),
-              time: session.time ?? nowTime(),
-            })
-          }
-        >
-          Начать тренировку
-        </Button>
+        <Box sx={{ mb: 3 }}>
+          {running && (
+            <Typography
+              variant="h1"
+              sx={{ fontVariantNumeric: "tabular-nums", mb: 1 }}
+            >
+              {formatTimer(
+                session.startedAt
+                  ? Math.max(0, Math.floor((nowMs - Date.parse(session.startedAt)) / 1000))
+                  : 0,
+              )}
+            </Typography>
+          )}
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<StopIcon />}
+            onClick={openFinish}
+          >
+            Завершить тренировку
+          </Button>
+          {!running && (
+            <Button
+              fullWidth
+              size="small"
+              startIcon={<PlayArrowIcon />}
+              sx={{ mt: 0.5 }}
+              onClick={() =>
+                onChange({
+                  ...session,
+                  startedAt: new Date().toISOString(),
+                  time: session.time ?? nowTime(),
+                })
+              }
+            >
+              Засечь время таймером
+            </Button>
+          )}
+        </Box>
       )}
 
       {session.kind !== "strength" && (
@@ -946,6 +985,37 @@ export default function SessionEditor({
         }
         onCreate={onCreateExercise}
       />
+
+      <Dialog open={finishing} onClose={() => setFinishing(false)} fullWidth>
+        <DialogTitle>Завершить тренировку</DialogTitle>
+        <DialogContent>
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <NumberField
+              label="Длительность, мин"
+              integer
+              value={finishMin}
+              onChange={setFinishMin}
+              fullWidth
+            />
+            <NumberField
+              label="Средний пульс"
+              integer
+              value={finishHr}
+              onChange={setFinishHr}
+              fullWidth
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
+            Можно оставить пустым — заполни, если знаешь.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setFinishing(false)}>Отмена</Button>
+          <Button variant="contained" onClick={finishWorkout}>
+            Завершить
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

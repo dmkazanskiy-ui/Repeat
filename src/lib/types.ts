@@ -172,6 +172,8 @@ export interface Session {
   startedAt?: string | null;
   /** Момент нажатия «Завершить» (ISO). Есть — тренировка закрыта и read-only. */
   endedAt?: string | null;
+  /** Средний пульс за тренировку, введённый вручную при завершении. */
+  avgHr?: number | null;
   title: string | null;
   notes: string | null;
   createdAt: string; // ISO

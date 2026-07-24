@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Box,
-  BottomNavigation,
-  BottomNavigationAction,
   Button,
   Container,
   CssBaseline,
-  Paper,
+  IconButton,
   Snackbar,
 } from "@mui/material";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import HistoryIcon from "@mui/icons-material/History";
 import InsightsIcon from "@mui/icons-material/Insights";
 import PersonIcon from "@mui/icons-material/Person";
-import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import AddIcon from "@mui/icons-material/Add";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import {
@@ -58,7 +56,7 @@ import type {
   TrainingProgram,
 } from "./lib/types";
 
-type Tab = "calendar" | "history" | "program" | "stats" | "profile";
+type Tab = "calendar" | "history" | "stats" | "profile";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -71,6 +69,7 @@ export default function App() {
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
   const [recovery, setRecovery] = useState<RecoveryEntry[]>([]);
   const [programEditId, setProgramEditId] = useState<string | null>(null);
+  const [showPrograms, setShowPrograms] = useState(false);
   const [tab, setTab] = useState<Tab>("calendar");
   const [selected, setSelected] = useState(today);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -245,6 +244,13 @@ export default function App() {
     setEditing(false);
   }, []);
 
+  // Центральный «+» — быстрый лог: сегодняшний день, лист «новая тренировка».
+  const logWorkout = useCallback(() => {
+    setSelected(today());
+    setTab("calendar");
+    setCreating(true);
+  }, []);
+
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
   // Завершённую тренировку по умолчанию показываем read-only.
   const showView = open && isDone(open) && !editing;
@@ -264,6 +270,15 @@ export default function App() {
             onBack={() => setProgramEditId(null)}
             onArchive={() => archiveProgram(programBeingEdited.id)}
             onCreateExercise={createExercise}
+          />
+        ) : showPrograms ? (
+          <ProgramsScreen
+            programs={programs}
+            exercises={exercises}
+            onBack={() => setShowPrograms(false)}
+            onStart={startProgramDay}
+            onEdit={(p) => setProgramEditId(p.id)}
+            onCreate={createProgram}
           />
         ) : open ? (
           showView ? (
@@ -308,7 +323,7 @@ export default function App() {
             />
           )
         ) : (
-          <Box sx={{ pb: 7 }}>
+          <Box sx={{ pb: 12 }}>
             {tab === "calendar" && (
               <>
                 <CalendarScreen
@@ -344,15 +359,6 @@ export default function App() {
                 onDelete={deleteSession}
               />
             )}
-            {tab === "program" && (
-              <ProgramsScreen
-                programs={programs}
-                exercises={exercises}
-                onStart={startProgramDay}
-                onEdit={(p) => setProgramEditId(p.id)}
-                onCreate={createProgram}
-              />
-            )}
             {tab === "stats" && (
               <AnalyticsScreen
                 sessions={sessions}
@@ -366,6 +372,8 @@ export default function App() {
                 bodyEntries={bodyEntries}
                 photos={photos}
                 recovery={recovery}
+                programs={programs}
+                onOpenPrograms={() => setShowPrograms(true)}
                 onChangeBody={changeBody}
                 onChangePhotos={changePhotos}
                 onChangeRecovery={changeRecovery}
@@ -380,7 +388,7 @@ export default function App() {
           onClose={() => setUndo(null)}
           message="Тренировка удалена"
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          sx={{ bottom: { xs: 72 } }}
+          sx={{ bottom: { xs: 96 } }}
           action={
             <Button
               size="small"
@@ -400,59 +408,115 @@ export default function App() {
           onClose={() => setToast(null)}
           message={toast ?? ""}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          sx={{ bottom: { xs: 72 } }}
+          sx={{ bottom: { xs: 96 } }}
         />
       </Container>
 
-      {/* Нижняя навигация прячется на полноэкранных редакторах. */}
-      {ready && !open && !programBeingEdited && (
-        <Paper
-          elevation={0}
+      {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26). */}
+      {ready && !open && !programBeingEdited && !showPrograms && (
+        <Box
           sx={{
             position: "fixed",
-            bottom: 0,
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
             left: 0,
             right: 0,
-            borderTop: "1px solid",
-            borderColor: "divider",
-            zIndex: 10,
+            display: "flex",
+            justifyContent: "center",
+            zIndex: 20,
+            pointerEvents: "none",
           }}
         >
-          <Container maxWidth="sm" disableGutters>
-            <BottomNavigation
-              value={tab}
-              onChange={(_, value: Tab) => setTab(value)}
-              showLabels
+          <Box
+            sx={{
+              pointerEvents: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              px: 1,
+              py: 0.75,
+              borderRadius: 999,
+              // «Жидкое стекло»: полупрозрачный фон + блюр + тонкая рамка.
+              bgcolor: "rgba(22, 27, 34, 0.72)",
+              backdropFilter: "blur(24px) saturate(180%)",
+              WebkitBackdropFilter: "blur(24px) saturate(180%)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              boxShadow: "0 10px 34px rgba(0,0,0,0.45)",
+            }}
+          >
+            <NavIcon
+              active={tab === "calendar"}
+              label="Календарь"
+              onClick={() => setTab("calendar")}
             >
-              <BottomNavigationAction
-                label="Календарь"
-                value="calendar"
-                icon={<CalendarMonthIcon />}
-              />
-              <BottomNavigationAction
-                label="История"
-                value="history"
-                icon={<HistoryIcon />}
-              />
-              <BottomNavigationAction
-                label="Программа"
-                value="program"
-                icon={<FitnessCenterIcon />}
-              />
-              <BottomNavigationAction
-                label="Аналитика"
-                value="stats"
-                icon={<InsightsIcon />}
-              />
-              <BottomNavigationAction
-                label="Профиль"
-                value="profile"
-                icon={<PersonIcon />}
-              />
-            </BottomNavigation>
-          </Container>
-        </Paper>
+              <CalendarMonthIcon />
+            </NavIcon>
+            <NavIcon
+              active={tab === "history"}
+              label="История"
+              onClick={() => setTab("history")}
+            >
+              <HistoryIcon />
+            </NavIcon>
+
+            <IconButton
+              onClick={logWorkout}
+              aria-label="Добавить тренировку"
+              sx={{
+                mx: 0.5,
+                width: 52,
+                height: 52,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                boxShadow: "0 6px 18px rgba(74,222,128,0.4)",
+                "&:hover": { bgcolor: "primary.main" },
+              }}
+            >
+              <AddIcon />
+            </IconButton>
+
+            <NavIcon
+              active={tab === "stats"}
+              label="Аналитика"
+              onClick={() => setTab("stats")}
+            >
+              <InsightsIcon />
+            </NavIcon>
+            <NavIcon
+              active={tab === "profile"}
+              label="Профиль"
+              onClick={() => setTab("profile")}
+            >
+              <PersonIcon />
+            </NavIcon>
+          </Box>
+        </Box>
       )}
     </ThemeProvider>
+  );
+}
+
+function NavIcon({
+  active,
+  label,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <IconButton
+      onClick={onClick}
+      aria-label={label}
+      sx={{
+        width: 46,
+        height: 46,
+        color: active ? "primary.main" : "text.secondary",
+      }}
+    >
+      {children}
+    </IconButton>
   );
 }
