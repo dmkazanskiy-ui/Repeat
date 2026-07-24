@@ -6,6 +6,7 @@ import {
   CssBaseline,
   IconButton,
   Snackbar,
+  Typography,
 } from "@mui/material";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import HistoryIcon from "@mui/icons-material/History";
@@ -412,16 +413,16 @@ export default function App() {
         />
       </Container>
 
-      {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26). */}
+      {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
+          По ширине совпадает с контентом (maxWidth sm), с подписями. */}
       {ready && !open && !programBeingEdited && !showPrograms && (
         <Box
           sx={{
             position: "fixed",
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
             left: 0,
             right: 0,
-            display: "flex",
-            justifyContent: "center",
+            px: 2,
             zIndex: 20,
             pointerEvents: "none",
           }}
@@ -429,12 +430,14 @@ export default function App() {
           <Box
             sx={{
               pointerEvents: "auto",
+              maxWidth: 600,
+              mx: "auto",
               display: "flex",
               alignItems: "center",
-              gap: 0.5,
-              px: 1,
-              py: 0.75,
-              borderRadius: 999,
+              justifyContent: "space-between",
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 6,
               // «Жидкое стекло»: полупрозрачный фон + блюр + тонкая рамка.
               bgcolor: "rgba(22, 27, 34, 0.72)",
               backdropFilter: "blur(24px) saturate(180%)",
@@ -443,28 +446,29 @@ export default function App() {
               boxShadow: "0 10px 34px rgba(0,0,0,0.45)",
             }}
           >
-            <NavIcon
+            <NavItem
               active={tab === "calendar"}
               label="Календарь"
               onClick={() => setTab("calendar")}
             >
               <CalendarMonthIcon />
-            </NavIcon>
-            <NavIcon
+            </NavItem>
+            <NavItem
               active={tab === "history"}
               label="История"
               onClick={() => setTab("history")}
             >
               <HistoryIcon />
-            </NavIcon>
+            </NavItem>
 
             <IconButton
               onClick={logWorkout}
               aria-label="Добавить тренировку"
               sx={{
+                flex: "0 0 auto",
                 mx: 0.5,
-                width: 52,
-                height: 52,
+                width: 50,
+                height: 50,
                 bgcolor: "primary.main",
                 color: "primary.contrastText",
                 boxShadow: "0 6px 18px rgba(74,222,128,0.4)",
@@ -474,20 +478,20 @@ export default function App() {
               <AddIcon />
             </IconButton>
 
-            <NavIcon
+            <NavItem
               active={tab === "stats"}
               label="Аналитика"
               onClick={() => setTab("stats")}
             >
               <InsightsIcon />
-            </NavIcon>
-            <NavIcon
+            </NavItem>
+            <NavItem
               active={tab === "profile"}
               label="Профиль"
               onClick={() => setTab("profile")}
             >
               <PersonIcon />
-            </NavIcon>
+            </NavItem>
           </Box>
         </Box>
       )}
@@ -495,7 +499,7 @@ export default function App() {
   );
 }
 
-function NavIcon({
+function NavItem({
   active,
   label,
   onClick,
@@ -507,16 +511,29 @@ function NavIcon({
   children: ReactNode;
 }) {
   return (
-    <IconButton
+    <Box
+      component="button"
       onClick={onClick}
       aria-label={label}
       sx={{
-        width: 46,
-        height: 46,
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 0.25,
+        py: 0.75,
+        border: "none",
+        bgcolor: "transparent",
+        cursor: "pointer",
+        fontFamily: "inherit",
         color: active ? "primary.main" : "text.secondary",
       }}
     >
       {children}
-    </IconButton>
+      <Typography variant="caption" sx={{ fontSize: 10, lineHeight: 1 }}>
+        {label}
+      </Typography>
+    </Box>
   );
 }

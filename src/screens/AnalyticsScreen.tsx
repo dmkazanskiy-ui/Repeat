@@ -5,6 +5,8 @@ import {
   IconButton,
   Paper,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -74,6 +76,9 @@ interface Props {
   recovery: RecoveryEntry[];
 }
 
+// Разделы аналитики — по четырём вопросам пользователя.
+type View = "volume" | "strength" | "muscles" | "recovery";
+
 export default function AnalyticsScreen({
   sessions,
   exercises,
@@ -85,6 +90,7 @@ export default function AnalyticsScreen({
   const [from, setFrom] = useState(addDays(today(), -29));
   const [to, setTo] = useState(today());
   const [metric, setMetric] = useState<MetricKey>("volume");
+  const [view, setView] = useState<View>("volume");
 
   const period = useMemo(
     () => buildPeriod(mode, anchor, from, to),
@@ -301,6 +307,26 @@ export default function AnalyticsScreen({
         </Box>
       )}
 
+      {/* Разделы — отвечают на 4 вопроса, чтобы не вываливать всё простынёй */}
+      <Tabs
+        value={view}
+        onChange={(_, v: View) => setView(v)}
+        variant="scrollable"
+        scrollButtons={false}
+        sx={{
+          mb: 2,
+          minHeight: 40,
+          "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontSize: 14, px: 1.5 },
+        }}
+      >
+        <Tab label="Объём" value="volume" />
+        <Tab label="Сила" value="strength" />
+        <Tab label="Мышцы" value="muscles" />
+        <Tab label="Восстановление" value="recovery" />
+      </Tabs>
+
+      {view === "volume" && (
+        <>
       {/* KPI-лента: горизонтальная прокрутка */}
       <Box
         sx={{
@@ -366,54 +392,31 @@ export default function AnalyticsScreen({
         </Box>
       )}
 
-      {/* Мышечные группы */}
-      {muscles.length > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h2" sx={{ mb: 0.5 }}>
-            Мышечные группы
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-            Эквивалентные подходы с учётом вторичной нагрузки. Классификация
-            упражнений предварительная.
-          </Typography>
-          <Stack spacing={1.25}>
-            {muscles.map((load) => (
-              <MuscleBar key={load.muscle} load={load} max={muscles[0].adjustedSets} />
-            ))}
-          </Stack>
-        </Box>
-      )}
-
-      {/* Баланс движений */}
-      {balance.length > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h2" sx={{ mb: 1.5 }}>
-            Баланс движений
-          </Typography>
-          <Stack spacing={1.5}>
-            {balance.map((row) => (
-              <BalanceBar key={row.key} row={row} />
-            ))}
-          </Stack>
-        </Box>
-      )}
-
-      {/* Прогресс по программе A→A */}
-      {programCompare.length > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h2" sx={{ mb: 1.5 }}>
-            Прогресс по программе
-          </Typography>
-          <Stack spacing={1.5}>
-            {programCompare.map((c) => (
-              <ProgramCompareCard key={c.workoutId} c={c} />
-            ))}
-          </Stack>
-        </Box>
-      )}
-
-      {/* Прогресс силы */}
+      {/* Регулярность */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
+        Регулярность
+      </Typography>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
+        <StatTile value={`${cons.activeDays}`} label="Активных дней" />
+        <StatTile value={cons.perWeek.toFixed(1).replace(".", ",")} label="Трен./нед" />
+        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label="Активных недель" />
+        <StatTile value={`${cons.currentStreak}`} label="Серия сейчас" />
+        <StatTile value={`${cons.longestStreak}`} label="Лучшая серия" />
+        <StatTile value={`${cons.workouts}`} label="Тренировок" />
+      </Box>
+
+      {/* Календарная heatmap активности */}
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
+        Активность
+      </Typography>
+      <Heatmap grid={heat} />
+        </>
+      )}
+
+      {view === "strength" && (
+        <>
+      {/* Прогресс силы */}
+      <Typography variant="h2" sx={{ mb: 1.5 }}>
         Прогресс силы
       </Typography>
       <StrengthProgress exercises={trained} sessions={sessions} />
@@ -439,29 +442,64 @@ export default function AnalyticsScreen({
         </Stack>
       )}
 
-      {/* Регулярность */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
-        Регулярность
-      </Typography>
-      <Box
-        sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}
-      >
-        <StatTile value={`${cons.activeDays}`} label="Активных дней" />
-        <StatTile value={cons.perWeek.toFixed(1).replace(".", ",")} label="Трен./нед" />
-        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label="Активных недель" />
-        <StatTile value={`${cons.currentStreak}`} label="Серия сейчас" />
-        <StatTile value={`${cons.longestStreak}`} label="Лучшая серия" />
-        <StatTile value={`${cons.workouts}`} label="Тренировок" />
-      </Box>
+      {/* Прогресс по программе A→A */}
+      {programCompare.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h2" sx={{ mb: 1.5 }}>
+            Прогресс по программе
+          </Typography>
+          <Stack spacing={1.5}>
+            {programCompare.map((c) => (
+              <ProgramCompareCard key={c.workoutId} c={c} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+        </>
+      )}
 
-      {/* Календарная heatmap активности */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
-        Активность
-      </Typography>
-      <Heatmap grid={heat} />
+      {view === "muscles" && (
+        <>
+      {muscles.length > 0 ? (
+        <Box>
+          <Typography variant="h2" sx={{ mb: 0.5 }}>
+            Мышечные группы
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+            Эквивалентные подходы с учётом вторичной нагрузки. Классификация
+            упражнений предварительная.
+          </Typography>
+          <Stack spacing={1.25}>
+            {muscles.map((load) => (
+              <MuscleBar key={load.muscle} load={load} max={muscles[0].adjustedSets} />
+            ))}
+          </Stack>
+        </Box>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          Занеси силовые с весом и повторами — появится нагрузка по мышцам.
+        </Typography>
+      )}
 
+      {balance.length > 0 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h2" sx={{ mb: 1.5 }}>
+            Баланс движений
+          </Typography>
+          <Stack spacing={1.5}>
+            {balance.map((row) => (
+              <BalanceBar key={row.key} row={row} />
+            ))}
+          </Stack>
+        </Box>
+      )}
+        </>
+      )}
+
+      {view === "recovery" && (
+        <>
       {/* Персональная нагрузка недели */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+      <Typography variant="h2" sx={{ mb: 1 }}>
         Нагрузка недели
       </Typography>
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
@@ -520,6 +558,8 @@ export default function AnalyticsScreen({
           </Typography>
         )}
       </Paper>
+        </>
+      )}
 
       {sessions.length < 4 && (
         <Typography
