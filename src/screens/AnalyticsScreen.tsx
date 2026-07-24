@@ -1,7 +1,9 @@
 import { useId, useMemo, useState } from "react";
 import {
   Box,
+  Button,
   Chip,
+  Collapse,
   IconButton,
   Paper,
   Stack,
@@ -15,6 +17,7 @@ import {
 import { useTheme } from "@mui/material/styles";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MetricChart from "../components/analytics/MetricChart";
 import StrengthProgress from "../components/analytics/StrengthProgress";
@@ -96,6 +99,8 @@ export default function AnalyticsScreen({
   const [to, setTo] = useState(today());
   const [metric, setMetric] = useState<MetricKey>("volume");
   const [view, setView] = useState<View>("volume");
+  const [strengthOpen, setStrengthOpen] = useState(false);
+  const [recordsOpen, setRecordsOpen] = useState(false);
 
   const period = useMemo(
     () => buildPeriod(mode, anchor, from, to),
@@ -136,6 +141,28 @@ export default function AnalyticsScreen({
     () => activePlateaus(sessions, exercises),
     [sessions, exercises],
   );
+  // Сводка прогресса силы: сколько упражнений растёт/стабильно/снижается +
+  // лидеры роста по изменению e1RM. Чтобы не листать десятки карточек.
+  const strengthSummary = useMemo(() => {
+    let up = 0;
+    let flat = 0;
+    let down = 0;
+    const movers: Array<{ name: string; delta: number }> = [];
+    for (const ex of trained) {
+      if (ex.trend === "up") up += 1;
+      else if (ex.trend === "down") down += 1;
+      else if (ex.trend === "flat") flat += 1;
+      const e = ex.points.filter((p) => p.e1rm != null);
+      if (e.length >= 2) {
+        movers.push({ name: ex.name, delta: e[e.length - 1].e1rm! - e[0].e1rm! });
+      }
+    }
+    const gainers = movers
+      .filter((m) => m.delta > 0.5)
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 3);
+    return { up, flat, down, plateau: plateaus.length, gainers };
+  }, [trained, plateaus]);
   const dist = useMemo(
     () => distribution(sessions, period.startDate, period.endDate),
     [sessions, period],
@@ -345,17 +372,9 @@ export default function AnalyticsScreen({
 
       {view === "volume" && (
         <>
-      {/* KPI-лента: горизонтальная прокрутка */}
+      {/* KPI: сетка по 2 в ряд, друг под другом */}
       <Box
-        sx={{
-          display: "flex",
-          gap: 1,
-          overflowX: "auto",
-          pb: 1,
-          mx: -0.5,
-          px: 0.5,
-          scrollSnapType: "x proximity",
-        }}
+        sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}
       >
         {KPI_METRICS.map((m) => (
           <KpiCard
@@ -425,13 +444,11 @@ export default function AnalyticsScreen({
         </Stack>
         <WeekDots active={weekActive} labels={WEEKDAYS_SHORT} todayIndex={todayIdx} />
       </Paper>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
         <StatTile value={`${cons.activeDays}`} label="Активных дней" />
-        <StatTile value={cons.perWeek.toFixed(1).replace(".", ",")} label="Трен./нед" />
-        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label="Активных недель" />
-        <StatTile value={`${cons.currentStreak}`} label="Серия сейчас" />
+        <StatTile value={cons.perWeek.toFixed(1).replace(".", ",")} label="Тренировок в неделю" />
         <StatTile value={`${cons.longestStreak}`} label="Лучшая серия" />
-        <StatTile value={`${cons.workouts}`} label="Тренировок" />
+        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label="Активных недель" />
       </Box>
 
       {/* Календарная heatmap активности */}
@@ -444,13 +461,67 @@ export default function AnalyticsScreen({
 
       {view === "strength" && (
         <>
-      {/* Прогресс силы */}
+      {/* Прогресс силы — дашборд без проваливания в каждое упражнение */}
       <Typography variant="h2" sx={{ mb: 1.5 }}>
         Прогресс силы
       </Typography>
-      <StrengthProgress exercises={trained} sessions={sessions} />
+      {trained.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          Занеси несколько силовых с весом и повторами — появится прогресс.
+        </Typography>
+      ) : (
+        <>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1 }}>
+              <StatusCount value={strengthSummary.up} label="растут" tone="up" />
+              <StatusCount value={strengthSummary.flat} label="стабильны" tone="flat" />
+              <StatusCount value={strengthSummary.down} label="снижаются" tone="flat" />
+              <StatusCount value={strengthSummary.plateau} label="плато" tone="warn" />
+            </Box>
+            {strengthSummary.gainers.length > 0 && (
+              <>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 2, mb: 1 }}
+                >
+                  Лидеры роста e1RM
+                </Typography>
+                <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+                  {strengthSummary.gainers.map((g) => (
+                    <Chip
+                      key={g.name}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                      label={`${g.name} +${Math.round(g.delta)} кг`}
+                    />
+                  ))}
+                </Box>
+              </>
+            )}
+          </Paper>
+          <Button
+            fullWidth
+            onClick={() => setStrengthOpen((v) => !v)}
+            endIcon={
+              <ExpandMoreIcon
+                sx={{ transition: "transform .2s", transform: strengthOpen ? "rotate(180deg)" : "none" }}
+              />
+            }
+            sx={{ mt: 1, justifyContent: "space-between", px: 2 }}
+          >
+            Детализация по упражнениям · {trained.length}
+          </Button>
+          <Collapse in={strengthOpen} unmountOnExit>
+            <Box sx={{ mt: 1 }}>
+              <StrengthProgress exercises={trained} sessions={sessions} />
+            </Box>
+          </Collapse>
+        </>
+      )}
 
-      {/* Рекорды */}
+      {/* Рекорды — свежие сверху, остальные под дропдауном */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         Рекорды
         {records.length > 0 && (
@@ -464,11 +535,36 @@ export default function AnalyticsScreen({
           За выбранный период новых рекордов нет.
         </Typography>
       ) : (
-        <Stack spacing={1}>
-          {records.map((r, i) => (
-            <RecordRow key={`${r.type}-${r.exerciseId ?? "g"}-${i}`} record={r} />
-          ))}
-        </Stack>
+        <>
+          <Stack spacing={1}>
+            {records.slice(0, 2).map((r, i) => (
+              <RecordRow key={`${r.type}-${r.exerciseId ?? "g"}-${i}`} record={r} />
+            ))}
+          </Stack>
+          {records.length > 2 && (
+            <>
+              <Button
+                fullWidth
+                onClick={() => setRecordsOpen((v) => !v)}
+                endIcon={
+                  <ExpandMoreIcon
+                    sx={{ transition: "transform .2s", transform: recordsOpen ? "rotate(180deg)" : "none" }}
+                  />
+                }
+                sx={{ mt: 1, justifyContent: "space-between", px: 2 }}
+              >
+                Ещё {records.length - 2}
+              </Button>
+              <Collapse in={recordsOpen} unmountOnExit>
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                  {records.slice(2).map((r, i) => (
+                    <RecordRow key={`more-${r.type}-${r.exerciseId ?? "g"}-${i}`} record={r} />
+                  ))}
+                </Stack>
+              </Collapse>
+            </>
+          )}
+        </>
       )}
 
       {/* Прогресс по программе A→A */}
@@ -655,16 +751,7 @@ function KpiCard({
   const area = areaPath(pts, 28, 0, 100);
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        p: 1.5,
-        borderRadius: 2,
-        minWidth: 132,
-        flex: "0 0 auto",
-        scrollSnapAlign: "start",
-      }}
-    >
+    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
       <Typography variant="caption" color="text.secondary">
         {meta.label}
       </Typography>
@@ -737,20 +824,23 @@ function DistributionBar({
 
 function Heatmap({ grid }: { grid: HeatCell[][] }) {
   // Прозрачность зелёного по уровню; день без тренировки — нейтральная клетка.
+  // Колонки тянутся на всю ширину фрейма, клетки квадратные.
   const opacity = [0, 0.3, 0.55, 0.78, 1];
   return (
-    <Box sx={{ display: "flex", gap: "3px", overflowX: "auto", pb: 0.5 }}>
+    <Box sx={{ display: "flex", gap: "4px", width: "100%" }}>
       {grid.map((col, i) => (
-        <Box key={i} sx={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+        <Box
+          key={i}
+          sx={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}
+        >
           {col.map((cell) => (
             <Box
               key={cell.date}
               title={`${cell.date}${cell.hasSession ? ` · ${cell.sets} подх.` : ""}`}
               sx={{
-                width: 13,
-                height: 13,
+                width: "100%",
+                aspectRatio: "1",
                 borderRadius: "3px",
-                flex: "0 0 auto",
                 bgcolor: cell.level === 0 ? "action.hover" : "primary.main",
                 opacity: cell.level === 0 ? 1 : opacity[cell.level],
               }}
@@ -944,10 +1034,39 @@ function RecordRow({ record }: { record: PersonalRecord }) {
   );
 }
 
+function StatusCount({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: "up" | "flat" | "warn";
+}) {
+  const color =
+    value === 0
+      ? "text.disabled"
+      : tone === "up"
+        ? "primary.main"
+        : tone === "warn"
+          ? "warning.main"
+          : "text.primary";
+  return (
+    <Box sx={{ textAlign: "center" }}>
+      <Typography variant="h2" sx={{ fontWeight: 700, color }}>
+        {value}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+    </Box>
+  );
+}
+
 function StatTile({ value, label }: { value: string; label: string }) {
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, textAlign: "center" }}>
-      <Typography variant="h2" sx={{ fontWeight: 700 }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+      <Typography variant="h1" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
         {value}
       </Typography>
       <Typography variant="caption" color="text.secondary">

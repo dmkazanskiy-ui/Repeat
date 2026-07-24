@@ -3,7 +3,6 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { ActivityIcon } from "../lib/icons";
-import { sessionTitle } from "./CalendarScreen";
 import {
   formatDateFull,
   formatDistance,
@@ -13,7 +12,9 @@ import {
   formatWeight,
 } from "../lib/format";
 import {
+  SESSION_LABELS,
   activityIcon,
+  activityLabel,
   exerciseVolume,
   groupExercises,
   sessionDurationSec,
@@ -21,6 +22,10 @@ import {
   sessionVolume,
 } from "../lib/types";
 import type { Exercise, Session, WorkoutSet } from "../lib/types";
+
+function sessionTitle(session: Session): string {
+  return session.title || activityLabel(session) || SESSION_LABELS[session.kind];
+}
 
 interface Props {
   session: Session;

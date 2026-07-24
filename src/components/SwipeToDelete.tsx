@@ -83,7 +83,7 @@ export default function SwipeToDelete({ children, onDelete }: Props) {
   }
 
   return (
-    <Box sx={{ position: "relative", overflow: "hidden", borderRadius: 1 }}>
+    <Box sx={{ position: "relative", overflow: "hidden", borderRadius: 2.5 }}>
       <Box
         onClick={onDelete}
         sx={{

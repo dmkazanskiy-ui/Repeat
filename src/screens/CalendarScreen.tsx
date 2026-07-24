@@ -1,41 +1,23 @@
 import { useMemo, useState } from "react";
-import {
-  Box,
-  Button,
-  Chip,
-  IconButton,
-  Paper,
-  Stack,
-  Typography,
-} from "@mui/material";
+import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import AddIcon from "@mui/icons-material/Add";
-import SwipeToDelete from "../components/SwipeToDelete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import { ActivityIcon } from "../lib/icons";
+import SessionTimeline from "../components/SessionTimeline";
 import {
   WEEKDAYS_SHORT,
   addDays,
   weekGrid,
   formatDateFull,
-  formatDistance,
-  formatDuration,
   monthGrid,
   monthTitle,
   parseDateKey,
   today,
   toDateKey,
 } from "../lib/format";
-import { formatVolume } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
-import {
-  SESSION_LABELS,
-  activityIcon,
-  activityLabel,
-  sessionVolume,
-} from "../lib/types";
 import type { Exercise, Session } from "../lib/types";
 
 interface Props {
@@ -46,34 +28,6 @@ interface Props {
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
-}
-
-export function sessionIcon(session: Session) {
-  return <ActivityIcon icon={activityIcon(session)} />;
-}
-
-export function sessionTitle(session: Session): string {
-  if (session.title) return session.title;
-  return activityLabel(session) ?? SESSION_LABELS[session.kind];
-}
-
-export function sessionSummary(session: Session, exercises: Exercise[]): string {
-  if (session.kind === "cardio" && session.cardio) {
-    const parts = [
-      formatDistance(session.cardio.distanceM, session.cardioKind),
-      formatDuration(session.cardio.durationSec),
-    ].filter((part) => part !== "—");
-    return parts.length ? parts.join(" · ") : "Без данных";
-  }
-
-  if (session.exercises.length === 0) return "Пусто — добавь упражнения";
-  const names = session.exercises
-    .map((item) => exercises.find((e) => e.id === item.exerciseId)?.name)
-    .filter(Boolean);
-  const sets = session.exercises.reduce((n, e) => n + e.sets.length, 0);
-  const volume = sessionVolume(session);
-  const tail = volume > 0 ? ` · ${formatVolume(volume)}` : "";
-  return `${names.slice(0, 3).join(" · ")}${names.length > 3 ? "…" : ""} — ${sets} подх.${tail}`;
 }
 
 export default function CalendarScreen({
@@ -228,60 +182,20 @@ export default function CalendarScreen({
         )}
       </Stack>
 
-      <Stack spacing={1}>
-        {dayList.length === 0 && (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-            {parseDateKey(selected) > parseDateKey(todayKey)
-              ? "На этот день ничего не запланировано."
-              : "В этот день тренировок не было."}
-          </Typography>
-        )}
-
-        {dayList.map((session) => (
-          <SwipeToDelete key={session.id} onDelete={() => onDelete(session.id)}>
-          <Paper
-            variant="outlined"
-            onClick={() => onOpen(session.id)}
-            sx={{ p: 1.5, cursor: "pointer", borderRadius: 1 }}
-          >
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "flex-start" }}>
-              <Box sx={{ color: "primary.main", mt: "2px" }}>
-                {sessionIcon(session)}
-              </Box>
-              <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                  <Typography variant="subtitle2">
-                    {sessionTitle(session)}
-                  </Typography>
-                  {/* Тип показываем только когда у тренировки своё название —
-                      иначе заголовок и чип дублировали бы друг друга. */}
-                  {session.title && (
-                    <Chip
-                      label={SESSION_LABELS[session.kind]}
-                      size="small"
-                      variant="outlined"
-                      sx={{ height: 20, fontSize: 11 }}
-                    />
-                  )}
-                  {session.time && (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ ml: "auto", pl: 1 }}
-                    >
-                      {session.time}
-                    </Typography>
-                  )}
-                </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  {sessionSummary(session, exercises)}
-                </Typography>
-              </Box>
-            </Stack>
-          </Paper>
-          </SwipeToDelete>
-        ))}
-      </Stack>
+      {dayList.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+          {parseDateKey(selected) > parseDateKey(todayKey)
+            ? "На этот день ничего не запланировано."
+            : "В этот день тренировок не было."}
+        </Typography>
+      ) : (
+        <SessionTimeline
+          sessions={dayList}
+          exercises={exercises}
+          onOpen={onOpen}
+          onDelete={onDelete}
+        />
+      )}
 
       <Button
         fullWidth
