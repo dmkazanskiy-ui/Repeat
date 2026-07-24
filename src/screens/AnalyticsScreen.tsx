@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   Box,
   Chip,
@@ -51,6 +51,8 @@ import {
   METRIC_META,
   formatPercent,
 } from "../lib/metricMeta";
+import { areaPath, smoothPath } from "../lib/chart";
+import type { Pt } from "../lib/chart";
 import {
   WEEKDAYS_SHORT,
   addDays,
@@ -597,11 +599,16 @@ function KpiCard({
   const deltaColor = trend === "up" ? "primary.main" : "text.secondary";
   const sign = absolute > 0 ? "+" : absolute < 0 ? "−" : "";
 
+  const gid = useId().replace(/:/g, "");
   const max = Math.max(1, ...spark);
   const n = spark.length;
-  const line = spark
-    .map((v, i) => `${(i / Math.max(1, n - 1)) * 100},${28 - (v / max) * 26}`)
-    .join(" ");
+  const green = theme.palette.primary.main;
+  const pts: Pt[] = spark.map((v, i) => [
+    (i / Math.max(1, n - 1)) * 100,
+    27 - (v / max) * 24,
+  ]);
+  const line = smoothPath(pts);
+  const area = areaPath(pts, 28, 0, 100);
 
   return (
     <Paper
@@ -624,13 +631,22 @@ function KpiCard({
         component="svg"
         viewBox="0 0 100 28"
         preserveAspectRatio="none"
-        sx={{ width: "100%", height: 24, my: 0.5, display: "block" }}
+        sx={{ width: "100%", height: 26, my: 0.5, display: "block" }}
       >
-        <polyline
-          points={line}
+        <defs>
+          <linearGradient id={`spark-${gid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={green} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={green} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#spark-${gid})`} />
+        <path
+          d={line}
           fill="none"
-          stroke={theme.palette.primary.main}
+          stroke={green}
           strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
         />
       </Box>

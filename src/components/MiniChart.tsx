@@ -1,5 +1,8 @@
+import { useId } from "react";
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
+import { areaPath, smoothPath } from "../lib/chart";
+import type { Pt } from "../lib/chart";
 
 export interface ChartPoint {
   label: string; // подпись по оси X (дата)
@@ -21,6 +24,7 @@ interface Props {
  */
 export default function MiniChart({ points, height = 140, format }: Props) {
   const theme = useTheme();
+  const gid = useId().replace(/:/g, "");
   const fmt = format ?? ((v: number) => String(Math.round(v)));
 
   if (points.length === 0) {
@@ -50,8 +54,10 @@ export default function MiniChart({ points, height = 140, format }: Props) {
   const y = (v: number) =>
     H - padY - ((v - lo) / (hi - lo)) * (H - padY * 2);
 
-  const line = points.map((p, i) => `${x(i)},${y(p.value)}`).join(" ");
-  const area = `${padX},${H - padY} ${line} ${W - padX},${H - padY}`;
+  const pts: Pt[] = points.map((p, i) => [x(i), y(p.value)]);
+  const line = smoothPath(pts);
+  const area = areaPath(pts, H - padY, x(0), x(points.length - 1));
+  const green = theme.palette.primary.main;
   const maxIdx = values.indexOf(max);
   const minIdx = values.indexOf(min);
 
@@ -62,24 +68,34 @@ export default function MiniChart({ points, height = 140, format }: Props) {
         viewBox={`0 0 ${W} ${H}`}
         sx={{ width: "100%", display: "block", overflow: "visible" }}
       >
-        <polygon points={area} fill={theme.palette.primary.main} opacity={0.1} />
-        <polyline
-          points={line}
+        <defs>
+          <linearGradient id={`area-${gid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={green} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={green} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#area-${gid})`} />
+        <path
+          d={line}
           fill="none"
-          stroke={theme.palette.primary.main}
-          strokeWidth={2}
+          stroke={green}
+          strokeWidth={2.25}
           strokeLinejoin="round"
           strokeLinecap="round"
         />
-        {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={x(i)}
-            cy={y(p.value)}
-            r={i === maxIdx || i === minIdx ? 3.5 : 2}
-            fill={theme.palette.primary.main}
-          />
-        ))}
+        {[maxIdx, minIdx].map((idx, k) =>
+          k === 1 && minIdx === maxIdx ? null : (
+            <circle
+              key={idx}
+              cx={x(idx)}
+              cy={y(values[idx])}
+              r={3.5}
+              fill={theme.palette.background.paper}
+              stroke={green}
+              strokeWidth={2}
+            />
+          ),
+        )}
         {/* Подписи крайних значений — только они несут смысл на мелком графике. */}
         <text
           x={x(maxIdx)}
