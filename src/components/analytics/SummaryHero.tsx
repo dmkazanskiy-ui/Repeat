@@ -33,15 +33,18 @@ export interface HeroData {
   workoutsText: string;
   daysText: string;
   volumeText: string;
+  /** Подпись над крупным числом объёма (по умолчанию «Общий тоннаж»). */
+  volumeLabel?: string;
   dailyVolume: number[];
   /** По каждому дню графика: было восстановление, но не было тренировки. */
   recoveryDays: boolean[];
-  cardio: Insight;
-  best: Insight;
-  records: Insight;
-  progress: Insight;
-  mobility: Insight;
-  recovery: Insight;
+  // Инсайты-дропдаун «Показатели» — опциональны (для итога дня не нужны).
+  cardio?: Insight;
+  best?: Insight;
+  records?: Insight;
+  progress?: Insight;
+  mobility?: Insight;
+  recovery?: Insight;
 }
 
 const RECOVERY_COLOR = "#38bdf8";
@@ -193,6 +196,9 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
   // Показатели прячем под дропдаун и раскрываем в одну колонку: на узких
   // экранах (iPhone) сетка 2×2 резала контент, а карточки во всю ширину — нет.
   const [showMetrics, setShowMetrics] = useState(false);
+  const hasInsights = Boolean(
+    hero.cardio && hero.best && hero.records && hero.progress && hero.mobility && hero.recovery,
+  );
 
   return (
     <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
@@ -243,7 +249,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
           </Typography>
           <Divider sx={{ my: 1.5 }} />
           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-            {t("Общий тоннаж", "Total tonnage")}
+            {hero.volumeLabel ?? t("Общий тоннаж", "Total tonnage")}
           </Typography>
           <Typography sx={{ fontSize: 23, fontWeight: 800, lineHeight: 1.1 }}>
             {hero.volumeText}
@@ -254,44 +260,48 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
         </Box>
       </Stack>
 
-      <Box
-        component="button"
-        onClick={() => setShowMetrics((v) => !v)}
-        aria-expanded={showMetrics}
-        sx={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          px: 1.5,
-          py: 1,
-          borderRadius: 2,
-          bgcolor: "action.hover",
-          border: "none",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          color: "text.primary",
-        }}
-      >
-        <Typography variant="subtitle2">{t("Показатели за период", "Metrics for the period")}</Typography>
-        <ExpandMoreRoundedIcon
-          sx={{
-            color: "text.secondary",
-            transition: "transform 0.2s",
-            transform: showMetrics ? "rotate(180deg)" : "none",
-          }}
-        />
-      </Box>
-      <Collapse in={showMetrics}>
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          <InsightCard icon={<MonitorHeartOutlinedIcon sx={iconSx} />} label={t("Кардио", "Cardio")} insight={hero.cardio} />
-          <InsightCard icon={<SelfImprovementRoundedIcon sx={iconSx} />} label={t("Мобилити", "Mobility")} insight={hero.mobility} />
-          <InsightCard icon={<SpaOutlinedIcon sx={iconSx} />} label={t("Восстановление", "Recovery")} insight={hero.recovery} />
-          <InsightCard icon={<FitnessCenterOutlinedIcon sx={iconSx} />} label={t("Лучший результат", "Best result")} insight={hero.best} />
-          <InsightCard icon={<EmojiEventsOutlinedIcon sx={iconSx} />} label={t("Рекорды", "Records")} insight={hero.records} />
-          <InsightCard icon={<ShowChartRoundedIcon sx={iconSx} />} label={t("Прогресс", "Progress")} insight={hero.progress} />
-        </Stack>
-      </Collapse>
+      {hasInsights && (
+        <>
+          <Box
+            component="button"
+            onClick={() => setShowMetrics((v) => !v)}
+            aria-expanded={showMetrics}
+            sx={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: 1.5,
+              py: 1,
+              borderRadius: 2,
+              bgcolor: "action.hover",
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              color: "text.primary",
+            }}
+          >
+            <Typography variant="subtitle2">{t("Показатели за период", "Metrics for the period")}</Typography>
+            <ExpandMoreRoundedIcon
+              sx={{
+                color: "text.secondary",
+                transition: "transform 0.2s",
+                transform: showMetrics ? "rotate(180deg)" : "none",
+              }}
+            />
+          </Box>
+          <Collapse in={showMetrics}>
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              <InsightCard icon={<MonitorHeartOutlinedIcon sx={iconSx} />} label={t("Кардио", "Cardio")} insight={hero.cardio!} />
+              <InsightCard icon={<SelfImprovementRoundedIcon sx={iconSx} />} label={t("Мобилити", "Mobility")} insight={hero.mobility!} />
+              <InsightCard icon={<SpaOutlinedIcon sx={iconSx} />} label={t("Восстановление", "Recovery")} insight={hero.recovery!} />
+              <InsightCard icon={<FitnessCenterOutlinedIcon sx={iconSx} />} label={t("Лучший результат", "Best result")} insight={hero.best!} />
+              <InsightCard icon={<EmojiEventsOutlinedIcon sx={iconSx} />} label={t("Рекорды", "Records")} insight={hero.records!} />
+              <InsightCard icon={<ShowChartRoundedIcon sx={iconSx} />} label={t("Прогресс", "Progress")} insight={hero.progress!} />
+            </Stack>
+          </Collapse>
+        </>
+      )}
     </Paper>
   );
 }

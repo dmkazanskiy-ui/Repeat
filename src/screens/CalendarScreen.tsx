@@ -21,9 +21,59 @@ import {
 } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
 import { daySummary } from "../lib/analytics";
-import DaySummaryCard from "../components/DaySummaryCard";
+import SummaryHero from "../components/analytics/SummaryHero";
+import type { HeroData } from "../components/analytics/SummaryHero";
 import { useT } from "../lib/i18n";
+import { countsDoneOnly, exerciseVolume } from "../lib/types";
 import type { Exercise, RecoveryEntry, Session, TrainingProgram } from "../lib/types";
+
+/** Итог дня в формате hero-карточки аналитики (переиспользуем «Итоги недели»). */
+function buildDayHero(dayList: Session[], t: ReturnType<typeof useT>): HeroData {
+  const sum = daySummary(dayList);
+
+  // Бары справа — тоннаж по упражнениям силовых дня (эквалайзер дня). Нет
+  // силовых → один бар: голубой для восстановления, иначе низкий.
+  const bars: number[] = [];
+  const rec: boolean[] = [];
+  for (const s of dayList) {
+    if (s.kind === "strength") {
+      for (const ex of s.exercises) {
+        bars.push(exerciseVolume(ex, countsDoneOnly(s)));
+        rec.push(false);
+      }
+    }
+  }
+  if (bars.length === 0) {
+    bars.push(0);
+    rec.push(dayList.some((s) => s.kind === "recovery"));
+  }
+
+  let volumeText = "—";
+  let volumeLabel = t("Тоннаж дня", "Day tonnage");
+  if (sum.tonnage > 0) {
+    volumeText = `${sum.tonnage.toLocaleString(t("ru-RU", "en-US"))} ${t("кг", "kg")}`;
+  } else if (sum.durationSec >= 60) {
+    volumeText = `${Math.round(sum.durationSec / 60)} ${t("мин", "min")}`;
+    volumeLabel = t("Активное время", "Active time");
+  }
+
+  const parts: string[] = [];
+  if (sum.sets > 0) parts.push(`${sum.sets} ${t("подх.", "sets")}`);
+  if (sum.tonnage > 0 && sum.durationSec >= 60) parts.push(`${Math.round(sum.durationSec / 60)} ${t("мин", "min")}`);
+  if (sum.distanceM > 0) parts.push(`${(Math.round(sum.distanceM / 100) / 10).toLocaleString(t("ru-RU", "en-US"))} ${t("км", "km")}`);
+
+  return {
+    title: t("Итог дня", "Day summary"),
+    changeLabel: "",
+    changePercent: null,
+    workoutsText: sum.headline,
+    daysText: parts.join(" · "),
+    volumeText,
+    volumeLabel,
+    dailyVolume: bars,
+    recoveryDays: rec,
+  };
+}
 import type { FocusGoal } from "../lib/workoutBuilder";
 
 interface Props {
@@ -74,7 +124,7 @@ export default function CalendarScreen({
   );
   const marked = useMemo(() => datesWithSessions(sessions), [sessions]);
   const dayList = sessionsOn(sessions, selected);
-  const summary = useMemo(() => daySummary(dayList), [dayList]);
+  const dayHero = useMemo(() => (dayList.length > 0 ? buildDayHero(dayList, t) : null), [dayList, t]);
   const todayKey = today();
   const cursorMonth = cursor.getMonth();
 
@@ -207,9 +257,8 @@ export default function CalendarScreen({
         )}
       </Stack>
 
-      {/* Итог дня — карточка со цветовой идентичностью по составу дня
-          (серый/фиолет/красный/бирюза/зелёный, градиент на смешанном). */}
-      {dayList.length > 0 && <DaySummaryCard summary={summary} />}
+      {/* Итог дня — та же hero-карточка, что «Итоги недели» в аналитике. */}
+      {dayHero && <SummaryHero hero={dayHero} />}
 
       {dayList.length === 0 ? (
         selected === todayKey ? (
@@ -227,15 +276,11 @@ export default function CalendarScreen({
             onCreate={onCreate}
           />
         ) : (
-          // Прошлый/будущий пустой день — серая карточка итога дня.
-          <DaySummaryCard
-            summary={summary}
-            emptyLabel={
-              selected > todayKey
-                ? t("Ничего не запланировано", "Nothing planned")
-                : t("Не было тренировок", "No workouts")
-            }
-          />
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+            {selected > todayKey
+              ? t("На этот день ничего не запланировано.", "Nothing planned for this day.")
+              : t("В этот день тренировок не было.", "No workouts on this day.")}
+          </Typography>
         )
       ) : (
         <SessionTimeline
