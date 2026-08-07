@@ -7,6 +7,9 @@
 
 import type { Exercise } from "../types";
 import type { Confidence } from "./types";
+import { L } from "../i18n";
+import { EXERCISE_MUSCLES } from "../exerciseMuscles";
+import type { FedbMuscles } from "../exerciseMuscles";
 
 export type Muscle =
   | "chest"
@@ -24,19 +27,19 @@ export type Muscle =
   | "core";
 
 export const MUSCLE_LABEL: Record<Muscle, string> = {
-  chest: "Грудь",
-  lats: "Широчайшие",
-  upperBack: "Верх спины",
-  frontDelt: "Передняя дельта",
-  sideDelt: "Средняя дельта",
-  rearDelt: "Задняя дельта",
-  biceps: "Бицепс",
-  triceps: "Трицепс",
-  quads: "Квадрицепс",
-  hamstrings: "Бицепс бедра",
-  glutes: "Ягодичные",
-  calves: "Икры",
-  core: "Кор",
+  get chest() { return L("Грудь", "Chest"); },
+  get lats() { return L("Широчайшие", "Lats"); },
+  get upperBack() { return L("Верх спины", "Upper back"); },
+  get frontDelt() { return L("Передняя дельта", "Front delt"); },
+  get sideDelt() { return L("Средняя дельта", "Side delt"); },
+  get rearDelt() { return L("Задняя дельта", "Rear delt"); },
+  get biceps() { return L("Бицепс", "Biceps"); },
+  get triceps() { return L("Трицепс", "Triceps"); },
+  get quads() { return L("Квадрицепс", "Quads"); },
+  get hamstrings() { return L("Бицепс бедра", "Hamstrings"); },
+  get glutes() { return L("Ягодичные", "Glutes"); },
+  get calves() { return L("Икры", "Calves"); },
+  get core() { return L("Кор", "Core"); },
 };
 
 export type MovementPattern =
@@ -172,25 +175,84 @@ const COARSE_FALLBACK: Partial<Record<Exercise["muscleGroup"], Muscle>> = {
   core: "core",
 };
 
+// Маппинг мышц free-exercise-db → наши 13 групп. Дельты у датасета одной
+// «shoulders» — уточняем конкретную дельту из эвристики (см. fromDataset).
+const FEDB_TO_MUSCLE: Record<string, Muscle | null> = {
+  abdominals: "core",
+  abductors: "glutes",
+  adductors: "quads",
+  biceps: "biceps",
+  calves: "calves",
+  chest: "chest",
+  forearms: "biceps",
+  glutes: "glutes",
+  hamstrings: "hamstrings",
+  lats: "lats",
+  "lower back": "core",
+  "middle back": "upperBack",
+  neck: null,
+  quadriceps: "quads",
+  shoulders: "sideDelt", // общий дефолт, уточняется в fromDataset
+  traps: "upperBack",
+  triceps: "triceps",
+};
+
+function heuristicDelt(muscles: MuscleContribution[]): Muscle | null {
+  const d = muscles.find(
+    (m) => m.muscle === "frontDelt" || m.muscle === "sideDelt" || m.muscle === "rearDelt",
+  );
+  return d ? d.muscle : null;
+}
+
+/**
+ * Из данных датасета (primary/secondary) собираем наши MuscleContribution.
+ * primary → coef 1, secondary → coef 0.5. Общую «shoulders» уточняем конкретной
+ * дельтой из эвристики (frontDelt/sideDelt/rearDelt), чтобы не потерять деление.
+ */
+function fromDataset(ds: FedbMuscles, heuristic: MuscleContribution[]): MuscleContribution[] {
+  const delt = heuristicDelt(heuristic);
+  const acc = new Map<Muscle, MuscleContribution>();
+  const add = (slug: string, coef: number, role: "primary" | "secondary") => {
+    let m = FEDB_TO_MUSCLE[slug];
+    if (m == null) return;
+    if (slug === "shoulders" && delt) m = delt;
+    const cur = acc.get(m);
+    if (!cur || coef > cur.coef) acc.set(m, { muscle: m, coef, role });
+  };
+  for (const s of ds.p) add(s, 1, "primary");
+  for (const s of ds.s) add(s, 0.5, "secondary");
+  return [...acc.values()];
+}
+
 /**
  * Классификация упражнения: основные/вторичные мышцы с коэффициентами и
- * паттерн движения. confidence «high» — сработало точное правило по названию;
+ * паттерн движения. Где есть выверенный матч в free-exercise-db — берём реальные
+ * primary/secondary (точнее эвристики); паттерн движения всегда из эвристики
+ * (в датасете его нет). confidence «high» — точное правило или матч датасета;
  * «preliminary» — только запасной вариант по грубой группе.
  */
 export function classifyExercise(exercise: Exercise): ExerciseClassification {
   const n = exercise.name.toLowerCase();
+  let base: ExerciseClassification | null = null;
   for (const rule of RULES) {
     if (rule.test(n)) {
-      return { muscles: rule.muscles, patterns: rule.patterns, confidence: "high" };
+      base = { muscles: rule.muscles, patterns: rule.patterns, confidence: "high" };
+      break;
     }
   }
-  const fallback = COARSE_FALLBACK[exercise.muscleGroup];
-  if (fallback) {
-    return {
-      muscles: [{ muscle: fallback, coef: 1, role: "primary" }],
-      patterns: ["other"],
-      confidence: "preliminary",
-    };
+  if (!base) {
+    const fallback = COARSE_FALLBACK[exercise.muscleGroup];
+    base = fallback
+      ? { muscles: [{ muscle: fallback, coef: 1, role: "primary" }], patterns: ["other"], confidence: "preliminary" }
+      : { muscles: [], patterns: ["other"], confidence: "preliminary" };
   }
-  return { muscles: [], patterns: ["other"], confidence: "preliminary" };
+
+  const ds = EXERCISE_MUSCLES[exercise.name];
+  if (ds) {
+    const muscles = fromDataset(ds, base.muscles);
+    if (muscles.length > 0) {
+      return { muscles, patterns: base.patterns, confidence: "high" };
+    }
+  }
+  return base;
 }

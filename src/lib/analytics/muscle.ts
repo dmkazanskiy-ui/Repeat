@@ -6,6 +6,7 @@ import { diffDays } from "./period";
 import { classifyExercise, MUSCLE_LABEL } from "./muscles";
 import type { Muscle } from "./muscles";
 import type { AnalyticsPeriod } from "./types";
+import { L } from "../i18n";
 
 type MuscleAgg = {
   directSets: number;
@@ -56,10 +57,10 @@ function aggregate(
 export type LoadLevel = "below" | "usual" | "above" | "wellAbove";
 
 const LEVEL_LABEL: Record<LoadLevel, string> = {
-  below: "ниже обычного",
-  usual: "в пределах обычного",
-  above: "выше обычного",
-  wellAbove: "заметно выше обычного",
+  get below() { return L("ниже обычного", "below usual"); },
+  get usual() { return L("в пределах обычного", "around usual"); },
+  get above() { return L("выше обычного", "above usual"); },
+  get wellAbove() { return L("заметно выше обычного", "notably above usual"); },
 };
 
 function levelOf(current: number, previous: number): LoadLevel {
@@ -164,10 +165,10 @@ export function movementBalance(
   const lower = (["quads", "hamstrings", "glutes", "calves"] as Muscle[]).reduce((n, m) => n + adj(m), 0);
 
   const rows: BalanceRow[] = [
-    { key: "pushpull", leftLabel: "Жим", left: push, rightLabel: "Тяга", right: pull },
-    { key: "upperlower", leftLabel: "Верх", left: Math.round(upper), rightLabel: "Низ", right: Math.round(lower) },
-    { key: "legs", leftLabel: "Квадрицепс", left: Math.round(adj("quads")), rightLabel: "Бицепс бедра", right: Math.round(adj("hamstrings")) },
-    { key: "delts", leftLabel: "Передняя дельта", left: Math.round(adj("frontDelt")), rightLabel: "Задняя дельта", right: Math.round(adj("rearDelt")) },
+    { key: "pushpull", leftLabel: L("Жим", "Push"), left: push, rightLabel: L("Тяга", "Pull"), right: pull },
+    { key: "upperlower", leftLabel: L("Верх", "Upper"), left: Math.round(upper), rightLabel: L("Низ", "Lower"), right: Math.round(lower) },
+    { key: "legs", leftLabel: L("Квадрицепс", "Quads"), left: Math.round(adj("quads")), rightLabel: L("Бицепс бедра", "Hamstrings"), right: Math.round(adj("hamstrings")) },
+    { key: "delts", leftLabel: L("Передняя дельта", "Front delt"), left: Math.round(adj("frontDelt")), rightLabel: L("Задняя дельта", "Rear delt"), right: Math.round(adj("rearDelt")) },
   ];
   return rows.filter((r) => r.left > 0 || r.right > 0);
 }
