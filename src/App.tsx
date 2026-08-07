@@ -53,6 +53,9 @@ import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import OnboardingScreen from "./screens/OnboardingScreen";
 import ProgramsScreen from "./screens/ProgramsScreen";
+import HiitScreen from "./screens/HiitScreen";
+import { loadHiit, saveHiit, hiitWorkSec } from "./lib/hiit";
+import type { HiitConfig } from "./lib/hiit";
 import ProgramDetail from "./screens/ProgramDetail";
 import ProgramEditor from "./screens/ProgramEditor";
 import SessionEditor from "./screens/SessionEditor";
@@ -92,6 +95,8 @@ export default function App() {
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
+  const [showHiit, setShowHiit] = useState(false);
+  const [hiitCfg, setHiitCfg] = useState<HiitConfig>(() => loadHiit());
   const [tab, setTab] = useState<Tab>("calendar");
   const [lang, setLang] = useState<Lang>(loadLang);
   const [selected, setSelected] = useState(today);
@@ -160,6 +165,34 @@ export default function App() {
       commit([...sessions, session]);
       setOpenId(session.id);
       setEditing(true);
+    },
+    [selected, sessions, commit],
+  );
+
+  // Финиш HIIT-таймера → готовая кардио-сессия (сегменты + длительность).
+  const finishHiit = useCallback(
+    (cfg: HiitConfig, elapsedSec: number) => {
+      saveHiit(cfg);
+      setHiitCfg(cfg);
+      setShowHiit(false);
+      if (elapsedSec < 5) return; // отменили сразу — не создаём пустышку
+      const session = newSession(selected, "cardio", { cardioKind: "hiit" });
+      const end = new Date();
+      session.startedAt = new Date(end.getTime() - elapsedSec * 1000).toISOString();
+      session.endedAt = end.toISOString();
+      session.cardio = {
+        durationSec: hiitWorkSec(cfg),
+        distanceM: null,
+        avgHr: null,
+        segments: [
+          { id: newId(), repeat: cfg.rounds, durationSec: cfg.workSec, restSec: cfg.restSec, distanceM: null },
+        ],
+      };
+      commit([...sessions, session]);
+      setOpenId(session.id);
+      setEditing(false); // открываем готовый вид (с «как ты после»)
+      setSelected(selected);
+      setTab("calendar");
     },
     [selected, sessions, commit],
   );
@@ -441,7 +474,14 @@ export default function App() {
         />
       )}
       <Container maxWidth="sm" sx={{ py: 2 }}>
-        {!ready ? null : programBeingEdited ? (
+        {!ready ? null : showHiit ? (
+          <HiitScreen
+            initial={hiitCfg}
+            onBack={() => setShowHiit(false)}
+            onFinish={finishHiit}
+            onConfigChange={setHiitCfg}
+          />
+        ) : programBeingEdited ? (
           <ProgramEditor
             program={programBeingEdited}
             exercises={exercises}
@@ -559,6 +599,10 @@ export default function App() {
                   onStartProgram={(program, index) =>
                     startProgramDay(program, index, false, selected)
                   }
+                  onStartHiit={() => {
+                    setCreating(false);
+                    setShowHiit(true);
+                  }}
                   onPaste={pasteSession}
                   onSuggested={createSuggestedWorkout}
                   sessions={sessions}

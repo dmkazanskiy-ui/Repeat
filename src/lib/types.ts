@@ -178,7 +178,8 @@ export type CardioKind =
   | "treadmill" // ходьба на дорожке (исторический ключ, поэтому старые данные читаются)
   | "treadmill_run" // бег на дорожке
   | "elliptical"
-  | "stairs";
+  | "stairs"
+  | "hiit"; // интервальный HIIT (создаётся через таймер, не обычный редактор)
 
 export type MobilityKind =
   | "yoga"
@@ -393,6 +394,7 @@ export const CARDIO_LABELS: Record<CardioKind, string> = {
   get treadmill_run() { return L("Бег на дорожке", "Treadmill run"); },
   get elliptical() { return L("Эллипс", "Elliptical"); },
   get stairs() { return L("Ступеньки", "Stairs"); },
+  get hiit() { return L("HIIT", "HIIT"); },
 };
 
 export const CARDIO_ICONS: Record<CardioKind, IconKey> = {
@@ -403,6 +405,7 @@ export const CARDIO_ICONS: Record<CardioKind, IconKey> = {
   treadmill_run: "run",
   elliptical: "nordic",
   stairs: "stairs",
+  hiit: "bolt",
 };
 
 /** Виды с наклоном дорожки (в градусах). */

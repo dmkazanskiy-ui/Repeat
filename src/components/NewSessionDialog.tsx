@@ -77,6 +77,8 @@ interface Props {
   onCreate: (kind: SessionKind, options: CreateOptions) => void;
   onAddCustom: (kind: "cardio" | "mobility", activity: CustomActivity) => void;
   onStartProgram: (program: TrainingProgram, workoutIndex: number) => void;
+  /** Открыть HIIT-таймер (конфиг + раннер), сессия создастся на финише. */
+  onStartHiit: () => void;
   onPaste: () => void;
   /** Запуск подобранной тренировки (создать сессию из плана и открыть). */
   onSuggested: (suggestion: WorkoutSuggestion) => void;
@@ -100,11 +102,13 @@ const KIND_CARDS: Array<{
   { id: "program", color: "#f59e0b", icon: "gym", get label() { return L("Программа", "Program"); }, get hint() { return L("Тренировка дня из твоего сплита", "Day's workout from your split"); } },
   { id: "strength", color: TYPE_COLOR.strength, icon: "gym", get label() { return L("Силовая в зале", "Strength (gym)"); }, get hint() { return L("Упражнения, подходы, веса", "Exercises, sets, weights"); } },
   { id: "cardio", color: TYPE_COLOR.cardio, icon: "run", get label() { return L("Кардио", "Cardio"); }, get hint() { return L("Бег, вел, плавание и другое", "Running, cycling, swimming and more"); } },
+  { id: "hiit", color: TYPE_COLOR.cardio, icon: "bolt", get label() { return L("HIIT", "HIIT"); }, get hint() { return L("Интервальный таймер: работа/отдых по раундам", "Interval timer: work/rest by rounds"); } },
   { id: "mobility", color: TYPE_COLOR.mobility, icon: "yoga", get label() { return L("Мобилити", "Mobility"); }, get hint() { return L("Йога, ЛФК, стретчинг, медитация", "Yoga, rehab, stretching, meditation"); } },
   { id: "recovery", color: TYPE_COLOR.recovery, icon: "spa", get label() { return L("Восстановление", "Recovery"); }, get hint() { return L("Отдых, баня, холод, массаж, сон", "Rest, sauna, cold, massage, sleep"); } },
 ];
 
-const CARDIO_KEYS = Object.keys(CARDIO_LABELS) as CardioKind[];
+// HIIT в обычную кардио-сетку не идёт — у него отдельный таймер-флоу.
+const CARDIO_KEYS = (Object.keys(CARDIO_LABELS) as CardioKind[]).filter((k) => k !== "hiit");
 const MOBILITY_KEYS = Object.keys(MOBILITY_LABELS) as MobilityKind[];
 
 type Step =
@@ -249,6 +253,7 @@ export default function NewSessionDialog({
   onCreate,
   onAddCustom,
   onStartProgram,
+  onStartHiit,
   onPaste,
   onSuggested,
   sessions,
@@ -301,6 +306,9 @@ export default function NewSessionDialog({
   function pickKind(key: string) {
     if (key === "strength") {
       onCreate("strength", {});
+      close();
+    } else if (key === "hiit") {
+      onStartHiit();
       close();
     } else if (key === "program") setStep("program");
     else setStep(key as Step);
