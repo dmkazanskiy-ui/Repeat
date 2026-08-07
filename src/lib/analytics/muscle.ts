@@ -124,6 +124,33 @@ export function muscleLoads(
   return loads.sort((a, b) => b.adjustedSets - a.adjustedSets);
 }
 
+/**
+ * Нагрузка по мышцам за ОДНУ сессию (для карты мышц в итоге тренировки). Без
+ * сравнения с прошлым — только распределение внутри сессии: какие мышцы
+ * получили больше/меньше эквивалентных подходов.
+ */
+export function sessionMuscleLoads(session: Session, exercises: Exercise[]): MuscleLoad[] {
+  const cur = aggregate([session], exercises, session.date, session.date);
+  const loads: MuscleLoad[] = [];
+  for (const [muscle, agg] of cur) {
+    loads.push({
+      muscle,
+      label: MUSCLE_LABEL[muscle],
+      directSets: agg.directSets,
+      adjustedSets: agg.adjustedSets,
+      totalVolume: agg.volume,
+      lastTrainedAt: agg.lastTrainedAt,
+      daysSince: null,
+      frequency: agg.days.size,
+      prevAdjusted: 0,
+      changePct: null,
+      level: "usual",
+      levelLabel: LEVEL_LABEL[levelOf(agg.adjustedSets, 0)],
+    });
+  }
+  return loads.sort((a, b) => b.adjustedSets - a.adjustedSets);
+}
+
 export interface BalanceRow {
   key: string;
   leftLabel: string;

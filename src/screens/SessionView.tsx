@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import MoodPad from "../components/MoodPad";
+import BodyMap from "../components/analytics/BodyMap";
+import { sessionMuscleLoads } from "../lib/analytics";
 import EditIcon from "@mui/icons-material/Edit";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { ActivityIcon } from "../lib/icons";
@@ -70,6 +72,11 @@ export default function SessionView({
   const moodCtx = moodContextFor(session.kind);
   const moodCfg = MOOD_CONTEXTS[moodCtx];
   const [moodOpen, setMoodOpen] = useState(false);
+  // Карта мышц за эту сессию (только силовая) — где нагрузка была выше/ниже.
+  const bodyLoads = useMemo(
+    () => (session.kind === "strength" ? sessionMuscleLoads(session, exercises) : []),
+    [session, exercises],
+  );
   // Акцент экрана — цвет типа активности, как на карточке этой тренировки.
   const theme = useTheme();
   const color = typeColor(session.kind);
@@ -226,6 +233,15 @@ export default function SessionView({
               </Box>
             );
           })}
+
+          {bodyLoads.length > 0 && (
+            <Box sx={{ mt: 1, mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                {t("Нагрузка по мышцам", "Muscle load")}
+              </Typography>
+              <BodyMap loads={bodyLoads} />
+            </Box>
+          )}
         </>
       )}
 
