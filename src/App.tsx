@@ -15,15 +15,22 @@ import PersonIcon from "@mui/icons-material/Person";
 import AddIcon from "@mui/icons-material/Add";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
+import { LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
+import type { Lang } from "./lib/i18n";
 import {
   advanceProgram,
+  buildProgramFromPreset,
   copySessionTo,
   lastSessionOfWorkout,
   load,
   newProgram,
+  newSessionExercise,
+  newSet,
   newSession,
   saveBodyEntries,
   saveCardioKinds,
+  saveFocusGoal,
+  saveOnboarded,
   saveCustomExercises,
   saveMobilityKinds,
   savePhotos,
@@ -38,13 +45,18 @@ import CalendarScreen from "./screens/CalendarScreen";
 import HistoryScreen from "./screens/HistoryScreen";
 import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import OnboardingScreen from "./screens/OnboardingScreen";
 import ProgramsScreen from "./screens/ProgramsScreen";
+import ProgramDetail from "./screens/ProgramDetail";
 import ProgramEditor from "./screens/ProgramEditor";
 import SessionEditor from "./screens/SessionEditor";
+import RecoveryEditor from "./screens/RecoveryEditor";
 import SessionView from "./screens/SessionView";
 import NewSessionDialog from "./components/NewSessionDialog";
 import type { CreateOptions } from "./components/NewSessionDialog";
-import { isDone } from "./lib/types";
+import type { ProgramPreset } from "./lib/programLibrary";
+import type { FocusGoal, WorkoutSuggestion } from "./lib/workoutBuilder";
+import { isDiscardableSession, isDone } from "./lib/types";
 import type {
   BodyEntry,
   CustomActivity,
@@ -69,14 +81,28 @@ export default function App() {
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
   const [recovery, setRecovery] = useState<RecoveryEntry[]>([]);
+  const [focusGoal, setFocusGoal] = useState<FocusGoal | null>(null);
+  const [onboarded, setOnboarded] = useState(true);
   const [programEditId, setProgramEditId] = useState<string | null>(null);
+  const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
   const [tab, setTab] = useState<Tab>("calendar");
+  const [lang, setLang] = useState<Lang>(loadLang);
   const [selected, setSelected] = useState(today);
+  const t = (ru: string, en: string) => (lang === "ru" ? ru : en);
+
+  const changeLang = useCallback((next: Lang) => {
+    setCurrentLang(next);
+    setLang(next);
+    saveLang(next);
+  }, []);
   const [openId, setOpenId] = useState<string | null>(null);
   // Правим ли завершённую тренировку — иначе она показывается read-only.
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
+  // С какого шага открыть лист «Новая тренировка»: обычный выбор или сразу
+  // мастер «Тренер» (из проактивного «Сегодня»).
+  const [dialogStart, setDialogStart] = useState<"kind" | "goal">("kind");
   const [undo, setUndo] = useState<Session | null>(null);
   const [clipboard, setClipboard] = useState<Session | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -91,6 +117,9 @@ export default function App() {
       setPhotos(data.photos);
       setPrograms(data.programs);
       setRecovery(data.recovery);
+      setFocusGoal(data.focusGoal);
+      // Онбординг — только для новых: если уже есть тренировки, не показываем.
+      setOnboarded(data.onboarded || data.sessions.length > 0);
       setReady(true);
     });
   }, []);
@@ -127,6 +156,51 @@ export default function App() {
       setEditing(true);
     },
     [selected, sessions, commit],
+  );
+
+  // Подобранная тренировка → обычная сессия с предзаполненным планом, дальше
+  // открывается в существующем редакторе (отдельного «режима выполнения» нет).
+  const createSuggestedWorkout = useCallback(
+    (suggestion: WorkoutSuggestion) => {
+      if (suggestion.kind !== "strength" || suggestion.exercises.length === 0) {
+        // Восстановительная цель — лёгкая мобилити.
+        const s = newSession(selected, "mobility", { mobilityKind: "stretching" });
+        commit([...sessions, s]);
+        setOpenId(s.id);
+        setEditing(true);
+        return;
+      }
+      const created: Exercise[] = [];
+      const resolveExerciseId = (name: string, group: MuscleGroup): string => {
+        const key = name.toLowerCase();
+        const found =
+          exercises.find((e) => e.name.toLowerCase() === key) ??
+          created.find((e) => e.name.toLowerCase() === key);
+        if (found) return found.id;
+        const ex: Exercise = { id: newId(), name, muscleGroup: group, custom: true };
+        created.push(ex);
+        return ex.id;
+      };
+      const session = newSession(selected, "strength");
+      session.exercises = suggestion.exercises.map((ex) => {
+        const se = newSessionExercise(resolveExerciseId(ex.name, ex.group));
+        se.sets = Array.from({ length: ex.sets }, () => ({
+          ...newSet(),
+          reps: ex.repMin,
+          weight: ex.lastWeight ?? null,
+        }));
+        return se;
+      });
+      if (created.length > 0) {
+        const nextEx = [...exercises, ...created];
+        setExercises(nextEx);
+        void saveCustomExercises(nextEx);
+      }
+      commit([...sessions, session]);
+      setOpenId(session.id);
+      setEditing(true);
+    },
+    [selected, sessions, exercises, commit],
   );
 
   const deleteSession = useCallback(
@@ -180,6 +254,16 @@ export default function App() {
     void saveRecovery(next);
   }, []);
 
+  const changeFocusGoal = useCallback((goal: FocusGoal | null) => {
+    setFocusGoal(goal);
+    void saveFocusGoal(goal);
+  }, []);
+
+  const finishOnboarding = useCallback(() => {
+    setOnboarded(true);
+    void saveOnboarded(true);
+  }, []);
+
   const commitPrograms = useCallback((next: TrainingProgram[]) => {
     setPrograms(next);
     void savePrograms(next);
@@ -190,6 +274,34 @@ export default function App() {
     commitPrograms([...programs, program]);
     setProgramEditId(program.id);
   }, [programs, commitPrograms]);
+
+  // Добавить готовую программу из библиотеки: недостающие упражнения заводим
+  // тут (в одном проходе, чтобы повторяющиеся имена не дублировались), затем
+  // создаём программу и открываем её деталь.
+  const addPreset = useCallback(
+    (preset: ProgramPreset) => {
+      const created: Exercise[] = [];
+      const resolveExerciseId = (name: string, group: MuscleGroup): string => {
+        const key = name.toLowerCase();
+        const found =
+          exercises.find((e) => e.name.toLowerCase() === key) ??
+          created.find((e) => e.name.toLowerCase() === key);
+        if (found) return found.id;
+        const ex: Exercise = { id: newId(), name, muscleGroup: group, custom: true };
+        created.push(ex);
+        return ex.id;
+      };
+      const program = buildProgramFromPreset(preset, resolveExerciseId);
+      if (created.length > 0) {
+        const nextEx = [...exercises, ...created];
+        setExercises(nextEx);
+        void saveCustomExercises(nextEx);
+      }
+      commitPrograms([...programs, program]);
+      setOpenProgramId(program.id);
+    },
+    [exercises, programs, commitPrograms],
+  );
 
   const updateProgram = useCallback(
     (updated: TrainingProgram) => {
@@ -233,6 +345,9 @@ export default function App() {
       );
       setSelected(date);
       setTab("calendar");
+      // Уходим из экранов программ, иначе открытая тренировка перекроется деталью.
+      setShowPrograms(false);
+      setOpenProgramId(null);
       setOpenId(session.id);
       setEditing(true);
     },
@@ -247,15 +362,38 @@ export default function App() {
     setEditing(true);
   }, [clipboard, selected, sessions, commit]);
 
+  // Открыть лист «Новая тренировка»: обычный выбор или сразу мастер «Тренер».
+  const openCreate = useCallback((step: "kind" | "goal" = "kind") => {
+    setDialogStart(step);
+    setCreating(true);
+  }, []);
+
+  // «Повторить прошлую» из проактивного «Сегодня»: копия на сегодня, сразу в правку.
+  const repeatSession = useCallback(
+    (session: Session) => {
+      const copy = copySessionTo(session, today());
+      commit([...sessions, copy]);
+      setOpenId(copy.id);
+      setEditing(true);
+    },
+    [sessions, commit],
+  );
+
   const closeSession = useCallback(() => {
+    // Пустую недоделанную тренировку («потыкал и вышел») выбрасываем.
+    const open = openId ? sessions.find((s) => s.id === openId) : null;
+    if (open && isDiscardableSession(open)) {
+      commit(sessions.filter((s) => s.id !== open.id));
+    }
     setOpenId(null);
     setEditing(false);
-  }, []);
+  }, [openId, sessions, commit]);
 
   // Центральный «+» — быстрый лог: сегодняшний день, лист «новая тренировка».
   const logWorkout = useCallback(() => {
     setSelected(today());
     setTab("calendar");
+    setDialogStart("kind");
     setCreating(true);
   }, []);
 
@@ -265,10 +403,21 @@ export default function App() {
   const programBeingEdited = programEditId
     ? (programs.find((p) => p.id === programEditId) ?? null)
     : null;
+  const programBeingViewed = openProgramId
+    ? (programs.find((p) => p.id === openProgramId) ?? null)
+    : null;
 
   return (
+    <LangContext.Provider value={lang}>
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {ready && !onboarded && (
+        <OnboardingScreen
+          focusGoal={focusGoal}
+          onPickGoal={changeFocusGoal}
+          onDone={finishOnboarding}
+        />
+      )}
       <Container maxWidth="sm" sx={{ py: 2 }}>
         {!ready ? null : programBeingEdited ? (
           <ProgramEditor
@@ -279,20 +428,42 @@ export default function App() {
             onArchive={() => archiveProgram(programBeingEdited.id)}
             onCreateExercise={createExercise}
           />
+        ) : programBeingViewed ? (
+          <ProgramDetail
+            program={programBeingViewed}
+            exercises={exercises}
+            onBack={() => setOpenProgramId(null)}
+            onStart={startProgramDay}
+            onEdit={(p) => setProgramEditId(p.id)}
+            onDelete={(p) => {
+              archiveProgram(p.id);
+              setOpenProgramId(null);
+            }}
+          />
         ) : showPrograms ? (
           <ProgramsScreen
             programs={programs}
-            exercises={exercises}
             onBack={() => setShowPrograms(false)}
-            onStart={startProgramDay}
-            onEdit={(p) => setProgramEditId(p.id)}
+            onOpen={(p) => setOpenProgramId(p.id)}
             onCreate={createProgram}
+            onAddPreset={addPreset}
           />
         ) : open ? (
-          showView ? (
+          open.kind === "recovery" ? (
+            <RecoveryEditor
+              session={open}
+              onChange={updateSession}
+              onBack={closeSession}
+              onDelete={() => {
+                deleteSession(open.id);
+                closeSession();
+              }}
+            />
+          ) : showView ? (
             <SessionView
               session={open}
               exercises={exercises}
+              onChange={updateSession}
               onBack={closeSession}
               onEdit={() => setEditing(true)}
               onDelete={() => {
@@ -301,7 +472,7 @@ export default function App() {
               }}
               onCopyToClipboard={() => {
                 setClipboard(open);
-                setToast("Скопировано — вставь через «Добавить тренировку»");
+                setToast(t("Тренировка скопирована. Открой нужный день и нажми + → «Вставить тренировку»", "Workout copied. Open the day you want and tap + → “Paste workout”."));
               }}
             />
           ) : (
@@ -326,7 +497,7 @@ export default function App() {
               }}
               onCopyToClipboard={() => {
                 setClipboard(open);
-                setToast("Скопировано — вставь через «Добавить тренировку»");
+                setToast(t("Тренировка скопирована. Открой нужный день и нажми + → «Вставить тренировку»", "Workout copied. Open the day you want and tap + → “Paste workout”."));
               }}
             />
           )
@@ -337,12 +508,21 @@ export default function App() {
                 <CalendarScreen
                   sessions={sessions}
                   exercises={exercises}
+                  programs={programs}
+                  recovery={recovery}
+                  focusGoal={focusGoal}
                   selected={selected}
                   onSelect={setSelected}
                   onOpen={openSession}
-                  onCreate={() => setCreating(true)}
+                  onCreate={() => openCreate("kind")}
                   onDelete={deleteSession}
                   onChangeTime={changeSessionTime}
+                  onStartProgramDay={(program, index) =>
+                    startProgramDay(program, index, false, selected)
+                  }
+                  onSuggest={() => openCreate("goal")}
+                  onOpenLibrary={() => setShowPrograms(true)}
+                  onRepeatLast={repeatSession}
                 />
                 <NewSessionDialog
                   open={creating}
@@ -350,6 +530,7 @@ export default function App() {
                   mobilityKinds={mobilityKinds}
                   programs={programs}
                   hasClipboard={Boolean(clipboard)}
+                  initialStep={dialogStart}
                   onClose={() => setCreating(false)}
                   onCreate={createSession}
                   onAddCustom={addCustomActivity}
@@ -357,6 +538,10 @@ export default function App() {
                     startProgramDay(program, index, false, selected)
                   }
                   onPaste={pasteSession}
+                  onSuggested={createSuggestedWorkout}
+                  sessions={sessions}
+                  exercises={exercises}
+                  focusGoal={focusGoal}
                 />
               </>
             )}
@@ -375,6 +560,7 @@ export default function App() {
                 exercises={exercises}
                 programs={programs}
                 recovery={recovery}
+                focusGoal={focusGoal}
               />
             )}
             {tab === "profile" && (
@@ -383,10 +569,13 @@ export default function App() {
                 photos={photos}
                 recovery={recovery}
                 programs={programs}
+                focusGoal={focusGoal}
                 onOpenPrograms={() => setShowPrograms(true)}
                 onChangeBody={changeBody}
                 onChangePhotos={changePhotos}
                 onChangeRecovery={changeRecovery}
+                onChangeFocusGoal={changeFocusGoal}
+                onChangeLang={changeLang}
               />
             )}
           </Box>
@@ -396,7 +585,7 @@ export default function App() {
           open={Boolean(undo)}
           autoHideDuration={6000}
           onClose={() => setUndo(null)}
-          message="Тренировка удалена"
+          message={t("Тренировка удалена", "Workout deleted")}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           sx={{ bottom: { xs: 96 } }}
           action={
@@ -407,7 +596,7 @@ export default function App() {
                 setUndo(null);
               }}
             >
-              Отменить
+              {t("Отменить", "Undo")}
             </Button>
           }
         />
@@ -424,7 +613,7 @@ export default function App() {
 
       {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
           По ширине совпадает с контентом (maxWidth sm), с подписями. */}
-      {ready && !open && !programBeingEdited && !showPrograms && (
+      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && (
         <Box
           sx={{
             position: "fixed",
@@ -457,14 +646,14 @@ export default function App() {
           >
             <NavItem
               active={tab === "calendar"}
-              label="Календарь"
+              label={t("Календарь", "Calendar")}
               onClick={() => setTab("calendar")}
             >
               <CalendarMonthIcon />
             </NavItem>
             <NavItem
               active={tab === "history"}
-              label="История"
+              label={t("История", "History")}
               onClick={() => setTab("history")}
             >
               <HistoryIcon />
@@ -472,7 +661,7 @@ export default function App() {
 
             <IconButton
               onClick={logWorkout}
-              aria-label="Добавить тренировку"
+              aria-label={t("Добавить тренировку", "Add workout")}
               sx={{
                 flex: "0 0 auto",
                 mx: 0.5,
@@ -489,14 +678,14 @@ export default function App() {
 
             <NavItem
               active={tab === "stats"}
-              label="Аналитика"
+              label={t("Аналитика", "Analytics")}
               onClick={() => setTab("stats")}
             >
               <InsightsIcon />
             </NavItem>
             <NavItem
               active={tab === "profile"}
-              label="Профиль"
+              label={t("Профиль", "Profile")}
               onClick={() => setTab("profile")}
             >
               <PersonIcon />
@@ -505,6 +694,7 @@ export default function App() {
         </Box>
       )}
     </ThemeProvider>
+    </LangContext.Provider>
   );
 }
 

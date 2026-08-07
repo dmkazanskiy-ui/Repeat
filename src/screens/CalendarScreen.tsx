@@ -6,8 +6,9 @@ import AddIcon from "@mui/icons-material/Add";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import SessionTimeline from "../components/SessionTimeline";
+import TodayGuide from "../components/TodayGuide";
 import {
-  WEEKDAYS_SHORT,
+    weekdaysShort,
   addDays,
   weekGrid,
   formatDateFull,
@@ -19,29 +20,47 @@ import {
   toDateKey,
 } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
-import type { Exercise, Session } from "../lib/types";
+import { useT } from "../lib/i18n";
+import type { Exercise, RecoveryEntry, Session, TrainingProgram } from "../lib/types";
+import type { FocusGoal } from "../lib/workoutBuilder";
 
 interface Props {
   sessions: Session[];
   exercises: Exercise[];
+  programs: TrainingProgram[];
+  recovery: RecoveryEntry[];
+  focusGoal: FocusGoal | null;
   selected: string;
   onSelect: (date: string) => void;
   onOpen: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
   onChangeTime: (id: string, time: string | null) => void;
+  /** Действия проактивного «Сегодня». */
+  onStartProgramDay: (program: TrainingProgram, workoutIndex: number) => void;
+  onSuggest: () => void;
+  onOpenLibrary: () => void;
+  onRepeatLast: (session: Session) => void;
 }
 
 export default function CalendarScreen({
   sessions,
   exercises,
+  programs,
+  recovery,
+  focusGoal,
   selected,
   onSelect,
   onOpen,
   onCreate,
   onDelete,
   onChangeTime,
+  onStartProgramDay,
+  onSuggest,
+  onOpenLibrary,
+  onRepeatLast,
 }: Props) {
+  const t = useT();
   const [cursor, setCursor] = useState(() => parseDateKey(selected));
   // По умолчанию календарь свёрнут в одну неделю: на экране телефона
   // это оставляет место списку тренировок, а месяц нужен реже.
@@ -80,7 +99,7 @@ export default function CalendarScreen({
       >
         <IconButton
           onClick={() => shift(-1)}
-          aria-label={expanded ? "Предыдущий месяц" : "Предыдущая неделя"}
+          aria-label={expanded ? t("Предыдущий месяц", "Previous month") : t("Предыдущая неделя", "Previous week")}
         >
           <ChevronLeftIcon />
         </IconButton>
@@ -95,14 +114,14 @@ export default function CalendarScreen({
 
         <IconButton
           onClick={() => shift(1)}
-          aria-label={expanded ? "Следующий месяц" : "Следующая неделя"}
+          aria-label={expanded ? t("Следующий месяц", "Next month") : t("Следующая неделя", "Next week")}
         >
           <ChevronRightIcon />
         </IconButton>
       </Stack>
 
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", mb: 0.5 }}>
-        {WEEKDAYS_SHORT.map((day) => (
+        {weekdaysShort().map((day) => (
           <Typography
             key={day}
             variant="caption"
@@ -180,17 +199,33 @@ export default function CalendarScreen({
         <Typography variant="h2">{formatDateFull(selected)}</Typography>
         {selected !== todayKey && (
           <Button size="small" onClick={goToday}>
-            Сегодня
+            {t("Сегодня", "Today")}
           </Button>
         )}
       </Stack>
 
       {dayList.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-          {parseDateKey(selected) > parseDateKey(todayKey)
-            ? "На этот день ничего не запланировано."
-            : "В этот день тренировок не было."}
-        </Typography>
+        selected === todayKey ? (
+          // Проактивный «Сегодня»: пустой день не оставляем заглушкой, а ведём
+          // пользователя к действию в один тап (что делать прямо сейчас).
+          <TodayGuide
+            sessions={sessions}
+            programs={programs}
+            recovery={recovery}
+            focusGoal={focusGoal}
+            onStartProgramDay={onStartProgramDay}
+            onSuggest={onSuggest}
+            onOpenLibrary={onOpenLibrary}
+            onRepeatLast={onRepeatLast}
+            onCreate={onCreate}
+          />
+        ) : (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+            {selected > todayKey
+              ? t("На этот день ничего не запланировано.", "Nothing planned for this day.")
+              : t("В этот день тренировок не было.", "No workouts on this day.")}
+          </Typography>
+        )
       ) : (
         <SessionTimeline
           sessions={dayList}
@@ -202,15 +237,19 @@ export default function CalendarScreen({
         />
       )}
 
-      <Button
-        fullWidth
-        variant="contained"
-        startIcon={<AddIcon />}
-        onClick={onCreate}
-        sx={{ mt: 2 }}
-      >
-        Добавить тренировку
-      </Button>
+      {/* В сегодняшнем дне кнопки нет — тренировка добавляется через центральный «+».
+          В прошлом — «Добавить», в будущем — «Запланировать»; обе вторичным стилем. */}
+      {selected !== todayKey && (
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={onCreate}
+          sx={{ mt: 2 }}
+        >
+          {selected > todayKey ? t("Запланировать тренировку", "Schedule a workout") : t("Добавить тренировку", "Add a workout")}
+        </Button>
+      )}
     </Box>
   );
 }

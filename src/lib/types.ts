@@ -5,6 +5,8 @@
 // поэтому календарь строится вокруг сессий, а не вокруг дня.
 
 import type { IconKey } from "./icons";
+import { RECOVERY_ICONS, RECOVERY_LABELS } from "./recovery/catalog";
+import { L } from "./i18n";
 
 export type MuscleGroup =
   | "chest"
@@ -16,24 +18,194 @@ export type MuscleGroup =
   | "core"
   | "other";
 
-export type SessionKind = "strength" | "cardio" | "mobility";
+export type SessionKind = "strength" | "cardio" | "mobility" | "recovery";
+
+/** Группа восстановительных процедур — для выбора в списке. */
+export type RecoveryCategory =
+  | "rest"
+  | "thermal"
+  | "cold"
+  | "bodywork"
+  | "professional"
+  | "other";
+
+/** Конкретная восстановительная процедура. */
+export type RecoveryType =
+  | "full_rest"
+  | "sauna"
+  | "banya"
+  | "steam"
+  | "hot_bath"
+  | "cold_plunge"
+  | "ice_bath"
+  | "cold_shower"
+  | "contrast"
+  | "massage"
+  | "sports_massage"
+  | "relax_massage"
+  | "lymph_massage"
+  | "thai_massage"
+  | "spa_ritual"
+  | "compression"
+  | "physio"
+  | "manual_therapy"
+  | "other";
+
+/**
+ * Как процедура зашла по ощущениям. Это субъективная оценка самой процедуры,
+ * а НЕ готовность: в расчёт готовности не идёт и авто-бонуса за «хорошо
+ * восстановило» не даёт (Recovery-запись — контекст, а не гарантия).
+ */
+export type PerceivedEffect =
+  | "much_worse"
+  | "worse"
+  | "no_change"
+  | "better"
+  | "much_better";
+
+/** Варианты эффекта в порядке от худшего к лучшему, с подписями (геттеры → язык). */
+export const PERCEIVED_EFFECTS: ReadonlyArray<{ value: PerceivedEffect; label: string }> = [
+  { value: "much_worse", get label() { return L("Хуже", "Worse"); } },
+  { value: "worse", get label() { return L("Скорее хуже", "Somewhat worse"); } },
+  { value: "no_change", get label() { return L("Без изменений", "No change"); } },
+  { value: "better", get label() { return L("Помогло", "Helped"); } },
+  { value: "much_better", get label() { return L("Отлично восстановило", "Recovered well"); } },
+];
+
+export const PERCEIVED_EFFECT_LABELS: Record<PerceivedEffect, string> = {
+  get much_worse() { return L("Хуже", "Worse"); },
+  get worse() { return L("Скорее хуже", "Somewhat worse"); },
+  get no_change() { return L("Без изменений", "No change"); },
+  get better() { return L("Помогло", "Helped"); },
+  get much_better() { return L("Отлично восстановило", "Recovered well"); },
+};
+
+/** Самочувствие после активности (1–5): выше = больше сил/бодрее (легаси, mood заменил). */
+export const AFTER_STATES: ReadonlyArray<{ value: number; label: string; emoji: string }> = [
+  { value: 1, get label() { return L("Выжат", "Drained"); }, emoji: "😵" },
+  { value: 2, get label() { return L("Устал", "Tired"); }, emoji: "😮‍💨" },
+  { value: 3, get label() { return L("Нормально", "Okay"); }, emoji: "🙂" },
+  { value: 4, get label() { return L("Бодр", "Energized"); }, emoji: "😃" },
+  { value: 5, get label() { return L("Полон сил", "Full of energy"); }, emoji: "🔥" },
+];
+
+export const AFTER_STATE_LABELS: Record<number, string> = {
+  get 1() { return L("Выжат", "Drained"); },
+  get 2() { return L("Устал", "Tired"); },
+  get 3() { return L("Нормально", "Okay"); },
+  get 4() { return L("Бодр", "Energized"); },
+  get 5() { return L("Полон сил", "Full of energy"); },
+};
+
+/**
+ * Оси mood-карты под контекст: `y` — силы/бодрость (низ→верх), `x` — вторая ось
+ * со смыслом под тип активности (лево→право). Валидация смыслом: у каждого
+ * контекста свои подписи концов.
+ */
+export type MoodContext = "strength" | "cardio" | "mobility" | "recovery" | "daily";
+
+export const MOOD_CONTEXTS: Record<
+  MoodContext,
+  { title: string; y: [string, string]; x: [string, string]; color: string }
+> = {
+  strength: {
+    get title() { return L("Как ты после силовой?", "How do you feel after strength?"); },
+    get y() { return [L("Выжат", "Drained"), L("Полон сил", "Energized")] as [string, string]; },
+    get x() { return [L("Тяжело далось", "Tough"), L("Легко", "Easy")] as [string, string]; },
+    color: "#a78bfa",
+  },
+  cardio: {
+    get title() { return L("Как ты после кардио?", "How do you feel after cardio?"); },
+    get y() { return [L("Выжат", "Drained"), L("Бодр", "Fresh")] as [string, string]; },
+    get x() { return [L("Загнался", "Gassed"), L("Дышалось легко", "Easy breathing")] as [string, string]; },
+    color: "#f472b6",
+  },
+  mobility: {
+    get title() { return L("Как ты после мобилити?", "How do you feel after mobility?"); },
+    get y() { return [L("Вялый", "Sluggish"), L("В тонусе", "Toned up")] as [string, string]; },
+    get x() { return [L("Зажат", "Tight"), L("Расслаблен", "Loose")] as [string, string]; },
+    color: "#4ade80",
+  },
+  recovery: {
+    get title() { return L("Как зашло восстановление?", "How was the recovery?"); },
+    get y() { return [L("Не помогло", "Didn't help"), L("Восстановило", "Restored")] as [string, string]; },
+    get x() { return [L("Напряжён", "Tense"), L("Расслаблен", "Relaxed")] as [string, string]; },
+    color: "#38bdf8",
+  },
+  daily: {
+    get title() { return L("Самочувствие за день", "How you feel today"); },
+    get y() { return [L("Нет сил", "No energy"), L("Полон энергии", "Full of energy")] as [string, string]; },
+    get x() { return [L("Плохое настроение", "Bad mood"), L("Хорошее", "Good")] as [string, string]; },
+    color: "#4ade80",
+  },
+};
+
+export function moodContextFor(kind: SessionKind): MoodContext {
+  if (kind === "recovery") return "recovery";
+  if (kind === "cardio") return "cardio";
+  if (kind === "mobility") return "mobility";
+  return "strength";
+}
+
+/** Короткое качественное чтение точки: «скорее {ось-y} · {ось-x}». */
+export function moodReading(ctx: MoodContext, mood: { x: number; y: number }): string {
+  const c = MOOD_CONTEXTS[ctx];
+  const word = (v: number, ends: [string, string]) =>
+    v >= 0.62 ? ends[1].toLowerCase() : v <= 0.38 ? ends[0].toLowerCase() : null;
+  const yw = word(mood.y, c.y);
+  const xw = word(mood.x, c.x);
+  const parts = [yw, xw].filter(Boolean);
+  return parts.length ? parts.join(" · ") : L("нейтрально", "neutral");
+}
+
+/**
+ * Данные записи восстановления. Держим намеренно минимальными: тип процедуры,
+ * длительность, заметка и субъективный эффект. Готовность живёт в отдельном
+ * суточном чек-ине (RecoveryEntry) — не плодим две модели состояния.
+ */
+export interface RecoveryData {
+  type: RecoveryType;
+  durationMin?: number | null;
+  note?: string | null;
+  /** Как зашло по ощущениям — качественная обратная связь к процедуре. */
+  effect?: PerceivedEffect | null;
+}
 
 export type CardioKind =
   | "run"
   | "bike"
   | "swim"
-  | "treadmill"
+  | "treadmill" // ходьба на дорожке (исторический ключ, поэтому старые данные читаются)
+  | "treadmill_run" // бег на дорожке
   | "elliptical"
   | "stairs";
 
-export type MobilityKind = "yoga" | "lfk" | "stretching" | "meditation";
+export type MobilityKind =
+  | "yoga"
+  | "lfk"
+  | "stretching"
+  | "meditation"
+  | "breathing"
+  | "foam_rolling";
+
+/** Субъективная тяжесть тренировки — заносится вручную, питает аналитику нагрузки. */
+export type SessionIntensity = "easy" | "medium" | "hard";
 
 export interface Exercise {
   id: string;
+  /** Каноничное (русское) имя — по нему матчит классификатор мышц и id `base:`. */
   name: string;
+  /** Английское имя каталожного упражнения (у своих — нет). */
+  nameEn?: string | null;
   muscleGroup: MuscleGroup;
   /** Своё упражнение пользователя — его можно удалить, базовое нельзя. */
   custom: boolean;
+}
+
+/** Имя упражнения для показа: EN у каталожных при en-языке, иначе — как есть. */
+export function exerciseName(ex: { name: string; nameEn?: string | null } | undefined): string {
+  if (!ex) return L("Упражнение", "Exercise");
+  return L("ru", "en") === "en" && ex.nameEn ? ex.nameEn : ex.name;
 }
 
 /** Свой вид кардио или мобилити, заведённый пользователем. */
@@ -116,6 +288,8 @@ export interface ProgramWorkout {
 export interface TrainingProgram {
   id: string;
   name: string;
+  /** Короткое описание программы (для чего она, как устроена). */
+  description?: string | null;
   workouts: ProgramWorkout[];
   /** Индекс следующей тренировки цикла. */
   currentWorkoutIndex: number;
@@ -141,6 +315,8 @@ export interface CardioData {
   durationSec: number | null;
   distanceM: number | null;
   avgHr: number | null;
+  /** Наклон дорожки в градусах (только для беговой дорожки). */
+  inclineDeg?: number | null;
   segments?: CardioSegment[];
 }
 
@@ -168,12 +344,31 @@ export interface Session {
   plan?: PlannedExercise[] | null;
   /** Разгрузочная неделя — из подсчёта плато и baseline исключается. */
   deload?: boolean;
+  /** Субъективная тяжесть тренировки (легко/средне/тяжело). */
+  intensity?: SessionIntensity | null;
+  /**
+   * Устаревшее одномерное самочувствие (1–5). Оставлено для чтения старых
+   * записей; новые пишут `mood`. Читать единообразно через `perceivedFeel`.
+   */
+  afterState?: number | null;
+  /**
+   * Самочувствие после активности точкой на 2D-карте (обе оси 0–1). Ось `y` —
+   * силы/бодрость (выше = лучше, идёт в готовность), `x` — контекстная вторая
+   * ось (см. `MOOD_CONTEXTS`). У восстановления ту же роль играет `recovery.effect`.
+   */
+  mood?: { x: number; y: number } | null;
   /** Момент нажатия «Начать» (ISO). Пока идёт — тикает таймер. */
   startedAt?: string | null;
   /** Момент нажатия «Завершить» (ISO). Есть — тренировка закрыта и read-only. */
   endedAt?: string | null;
+  /** Накопленное время на паузе, мс. Вычитается из длительности. */
+  pausedMs?: number | null;
+  /** Момент постановки на паузу (ISO). Есть — тренировка сейчас на паузе. */
+  pausedAt?: string | null;
   /** Средний пульс за тренировку, введённый вручную при завершении. */
   avgHr?: number | null;
+  /** Только для kind === "recovery": процедура, длительность, заметка. */
+  recovery?: RecoveryData | null;
   title: string | null;
   notes: string | null;
   createdAt: string; // ISO
@@ -181,19 +376,23 @@ export interface Session {
   cardio: CardioData | null;
 }
 
+// Лейблы — геттеры, чтобы `X[key]` возвращал строку на текущем языке
+// динамически (без правки мест использования по всему приложению).
 export const SESSION_LABELS: Record<SessionKind, string> = {
-  strength: "Силовая",
-  cardio: "Кардио",
-  mobility: "Мобилити",
+  get strength() { return L("Силовая", "Strength"); },
+  get cardio() { return L("Кардио", "Cardio"); },
+  get mobility() { return L("Мобилити", "Mobility"); },
+  get recovery() { return L("Восстановление", "Recovery"); },
 };
 
 export const CARDIO_LABELS: Record<CardioKind, string> = {
-  run: "Бег",
-  bike: "Велосипед",
-  swim: "Плавание",
-  treadmill: "Дорожка",
-  elliptical: "Эллипс",
-  stairs: "Ступеньки",
+  get run() { return L("Бег", "Running"); },
+  get bike() { return L("Велосипед", "Cycling"); },
+  get swim() { return L("Плавание", "Swimming"); },
+  get treadmill() { return L("Ходьба на дорожке", "Treadmill walk"); },
+  get treadmill_run() { return L("Бег на дорожке", "Treadmill run"); },
+  get elliptical() { return L("Эллипс", "Elliptical"); },
+  get stairs() { return L("Ступеньки", "Stairs"); },
 };
 
 export const CARDIO_ICONS: Record<CardioKind, IconKey> = {
@@ -201,15 +400,23 @@ export const CARDIO_ICONS: Record<CardioKind, IconKey> = {
   bike: "bike",
   swim: "swim",
   treadmill: "walk",
+  treadmill_run: "run",
   elliptical: "nordic",
   stairs: "stairs",
 };
 
+/** Виды с наклоном дорожки (в градусах). */
+export function hasIncline(kind: CardioKind | null | undefined): boolean {
+  return kind === "treadmill" || kind === "treadmill_run";
+}
+
 export const MOBILITY_LABELS: Record<MobilityKind, string> = {
-  yoga: "Йога",
-  lfk: "ЛФК",
-  stretching: "Стретчинг",
-  meditation: "Медитация",
+  get yoga() { return L("Йога", "Yoga"); },
+  get lfk() { return L("ЛФК", "Rehab"); },
+  get stretching() { return L("Стретчинг", "Stretching"); },
+  get meditation() { return L("Медитация", "Meditation"); },
+  get breathing() { return L("Дыхание", "Breathing"); },
+  get foam_rolling() { return L("Массажный ролл", "Foam rolling"); },
 };
 
 export const MOBILITY_ICONS: Record<MobilityKind, IconKey> = {
@@ -217,15 +424,33 @@ export const MOBILITY_ICONS: Record<MobilityKind, IconKey> = {
   lfk: "body",
   stretching: "stretch",
   meditation: "spa",
+  breathing: "spa",
+  foam_rolling: "healing",
 };
 
+export const INTENSITY_LABELS: Record<SessionIntensity, string> = {
+  get easy() { return L("Легко", "Easy"); },
+  get medium() { return L("Средне", "Medium"); },
+  get hard() { return L("Тяжело", "Hard"); },
+};
+
+/** Подписи тяжести в порядке от лёгкой к тяжёлой (label читается с текущего языка). */
+export const INTENSITY_OPTIONS = [
+  { value: "easy", get label() { return INTENSITY_LABELS.easy; } },
+  { value: "medium", get label() { return INTENSITY_LABELS.medium; } },
+  { value: "hard", get label() { return INTENSITY_LABELS.hard; } },
+] as ReadonlyArray<{ value: SessionIntensity; label: string }>;
+
 /** У плавания дистанция удобнее в метрах, у остального — в километрах. */
-export function distanceUnit(kind: CardioKind | null): "м" | "км" {
-  return kind === "swim" ? "м" : "км";
+export function distanceUnit(kind: CardioKind | null): string {
+  return kind === "swim" ? L("м", "m") : L("км", "km");
 }
 
 /** Название вида: своё важнее готового. */
 export function activityLabel(session: Session): string | null {
+  if (session.kind === "recovery" && session.recovery) {
+    return RECOVERY_LABELS[session.recovery.type];
+  }
   if (session.customKind) return session.customKind;
   if (session.kind === "cardio" && session.cardioKind) {
     return CARDIO_LABELS[session.cardioKind];
@@ -238,6 +463,9 @@ export function activityLabel(session: Session): string | null {
 
 /** Иконка карточки: у своих видов из данных, у готовых — из таблицы. */
 export function activityIcon(session: Session): IconKey {
+  if (session.kind === "recovery") {
+    return session.recovery ? RECOVERY_ICONS[session.recovery.type] : "spa";
+  }
   if (session.customKind) return session.icon ?? "bolt";
   if (session.kind === "cardio" && session.cardioKind) {
     return CARDIO_ICONS[session.cardioKind];
@@ -246,6 +474,37 @@ export function activityIcon(session: Session): IconKey {
     return session.mobilityKind ? MOBILITY_ICONS[session.mobilityKind] : "yoga";
   }
   return "gym";
+}
+
+/** Длительность записи восстановления в секундах (для единого форматирования). */
+export function recoveryDurationSec(session: Session): number | null {
+  const min = session.recovery?.durationMin;
+  return min && min > 0 ? min * 60 : null;
+}
+
+/**
+ * Тренировочная ли это сессия. Восстановление — не тренировка: в объём,
+ * счётчики тренировок, силовую и мышечную аналитику оно не входит.
+ */
+export function isTrainingSession(session: Session): boolean {
+  return session.kind !== "recovery";
+}
+
+/**
+ * Единое субъективное самочувствие после активности, 0–1 (выше = лучше).
+ * Для силовой/кардио/мобилити — из `afterState` (1–5), для восстановления — из
+ * `recovery.effect`. Так готовность и аналитика читают один сигнал со всех видов.
+ */
+export function perceivedFeel(session: Session): number | null {
+  if (session.mood) return session.mood.y; // ось силы/бодрости, 0–1
+  if (session.kind === "recovery") {
+    const eff = session.recovery?.effect; // старые записи восстановления
+    if (!eff) return null;
+    const idx = PERCEIVED_EFFECTS.findIndex((e) => e.value === eff);
+    return idx < 0 ? null : idx / (PERCEIVED_EFFECTS.length - 1);
+  }
+  const v = session.afterState; // старые тренировки
+  return v == null ? null : (v - 1) / 4;
 }
 
 /**
@@ -260,22 +519,45 @@ export function setVolume(set: WorkoutSet): number {
   return volume;
 }
 
-/** Тоннаж упражнения — сумма по рабочим подходам (разминка не в счёт). */
-export function exerciseVolume(exercise: SessionExercise): number {
-  return exercise.sets.reduce(
-    (total, set) => total + (set.warmup ? 0 : setVolume(set)),
-    0,
-  );
+/**
+ * Тоннаж упражнения — сумма по рабочим подходам (разминка не в счёт).
+ * `doneOnly` — считать только отмеченные выполненными (честный тоннаж).
+ */
+export function exerciseVolume(exercise: SessionExercise, doneOnly = false): number {
+  return exercise.sets.reduce((total, set) => {
+    if (set.warmup) return total;
+    if (doneOnly && !set.done) return total;
+    return total + setVolume(set);
+  }, 0);
 }
 
-/** Тоннаж всей силовой тренировки. */
+/**
+ * Считать ли тоннаж только по выполненным подходам. Идущая тренировка — да
+ * (растёт по мере отметок). Завершённая — да, если хоть один подход отмечен;
+ * если ни одного (старые данные без галочек) — считаем все, чтобы не обнулить.
+ */
+export function countsDoneOnly(session: Session): boolean {
+  if (!session.endedAt) return true;
+  return session.exercises.some((ex) => ex.sets.some((s) => s.done));
+}
+
+/** Тоннаж всей силовой — честный, по выполненным подходам. */
 export function sessionVolume(session: Session): number {
-  return session.exercises.reduce((total, ex) => total + exerciseVolume(ex), 0);
+  const doneOnly = countsDoneOnly(session);
+  return session.exercises.reduce((total, ex) => total + exerciseVolume(ex, doneOnly), 0);
 }
 
 /** Сколько всего подходов в силовой (дропы не считаем отдельными подходами). */
 export function sessionSetCount(session: Session): number {
   return session.exercises.reduce((total, ex) => total + ex.sets.length, 0);
+}
+
+/** Сколько подходов отмечено выполненными. */
+export function sessionDoneSetCount(session: Session): number {
+  return session.exercises.reduce(
+    (total, ex) => total + ex.sets.filter((s) => s.done).length,
+    0,
+  );
 }
 
 /** Тренировка закрыта: нажали «Завершить». Такую показываем read-only. */
@@ -284,16 +566,40 @@ export function isDone(session: Session): boolean {
 }
 
 /**
+ * Пустая недоделанная тренировка — открыли «потыкать» и вышли, ничего не внеся.
+ * Такую при выходе выбрасываем, чтобы не висела в дне. Кардио/мобилити/
+ * восстановление создаются с выбранным видом (уже намерение) — не трогаем.
+ */
+export function isDiscardableSession(session: Session): boolean {
+  if (session.kind !== "strength") return false;
+  if (session.startedAt || session.endedAt) return false;
+  if (session.title && session.title.trim()) return false;
+  return session.exercises.length === 0;
+}
+
+/**
  * Длительность тренировки в секундах: по таймеру (старт→финиш), а если
  * его не запускали — из времени кардио. Иначе неизвестна.
  */
 export function sessionDurationSec(session: Session): number | null {
   if (session.startedAt && session.endedAt) {
-    const ms = Date.parse(session.endedAt) - Date.parse(session.startedAt);
+    const ms =
+      Date.parse(session.endedAt) - Date.parse(session.startedAt) - (session.pausedMs ?? 0);
     if (ms > 0) return Math.round(ms / 1000);
   }
   if (session.kind === "cardio") return session.cardio?.durationSec ?? null;
   return null;
+}
+
+/**
+ * Текущая длительность идущей тренировки в секундах (с учётом пауз). Если сейчас
+ * на паузе — время застыло на моменте паузы. `nowMs` — текущее время из тика.
+ */
+export function liveElapsedSec(session: Session, nowMs: number): number {
+  if (!session.startedAt) return 0;
+  const end = session.pausedAt ? Date.parse(session.pausedAt) : nowMs;
+  const ms = end - Date.parse(session.startedAt) - (session.pausedMs ?? 0);
+  return Math.max(0, Math.round(ms / 1000));
 }
 
 /**
@@ -383,6 +689,8 @@ export interface RecoveryEntry {
   sleep: number | null; // сон
   freshness: number | null; // свежесть мышц (1 забиты … 5 свежие)
   motivation: number | null; // желание тренироваться
+  /** Точка на mood-карте (энергия × настроение, 0–1). Новый способ ввода. */
+  mood?: { x: number; y: number } | null;
 }
 
 /** Поля чек-ина в порядке показа. */
@@ -393,8 +701,12 @@ export const RECOVERY_METRICS = [
   { key: "motivation", label: "Желание тренироваться" },
 ] as const satisfies ReadonlyArray<{ key: keyof RecoveryEntry; label: string }>;
 
-/** Среднее заполненных шкал чек-ина (1–5), либо null. */
+/**
+ * Готовность из чек-ина по шкале 1–5. Новый ввод — точка на mood-карте (ось
+ * `y` энергия → 1–5); старые записи — среднее 4 шкал. null, если ничего нет.
+ */
 export function recoveryAverage(entry: RecoveryEntry): number | null {
+  if (entry.mood) return entry.mood.y * 4 + 1; // 0–1 → 1–5
   const values = [entry.wellbeing, entry.sleep, entry.freshness, entry.motivation].filter(
     (v): v is number => v != null,
   );

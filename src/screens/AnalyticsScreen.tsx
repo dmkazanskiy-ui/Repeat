@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   Collapse,
+  Divider,
   IconButton,
   Paper,
   Stack,
@@ -14,18 +15,41 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
+import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
+import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MetricChart from "../components/analytics/MetricChart";
 import StrengthProgress from "../components/analytics/StrengthProgress";
 import { RulerMeter, ScoreRing, WeekDots } from "../components/analytics/Meters";
+import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
+import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
+import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
+import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
+import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
+import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
+import LoopRoundedIcon from "@mui/icons-material/LoopRounded";
+import RadarChart from "../components/analytics/RadarChart";
+import BodyMap from "../components/analytics/BodyMap";
+import CapacitiesCard from "../components/analytics/CapacitiesCard";
+import GoalLensCard from "../components/analytics/GoalLensCard";
+import type { FocusGoal } from "../lib/workoutBuilder";
+import RestBalanceCard from "../components/analytics/RestBalanceCard";
+import SummaryHero from "../components/analytics/SummaryHero";
+import type { HeroData } from "../components/analytics/SummaryHero";
 import {
   activePlateaus,
+  bucketKey,
+  bucketStarts,
   buildPeriod,
+  capacityProgress,
   compareMetric,
+  goalVerdict,
+  dayKeys,
+  restBalance,
   consistency,
   isOngoing,
   distribution,
@@ -34,7 +58,6 @@ import {
   movementBalance,
   muscleLoads,
   newRecordsInPeriod,
-  periodSummary,
   programProgress,
   readiness,
   series,
@@ -57,10 +80,11 @@ import {
   formatPercent,
 } from "../lib/metricMeta";
 import { areaPath, smoothPath } from "../lib/chart";
+import { L, useLang, useT } from "../lib/i18n";
 import type { Pt } from "../lib/chart";
 import {
-  WEEKDAYS_SHORT,
-  addDays,
+  weekdaysShort,
+    addDays,
   formatDate,
   formatDuration,
   formatVolume,
@@ -70,6 +94,7 @@ import {
   today,
   weekGrid,
 } from "../lib/format";
+import { bestE1rm, exerciseName, isTrainingSession } from "../lib/types";
 import type {
   Exercise,
   RecoveryEntry,
@@ -82,23 +107,35 @@ interface Props {
   exercises: Exercise[];
   programs: TrainingProgram[];
   recovery: RecoveryEntry[];
+  focusGoal: FocusGoal | null;
 }
 
 // Разделы аналитики — по четырём вопросам пользователя.
 type View = "volume" | "strength" | "muscles" | "recovery";
 
 export default function AnalyticsScreen({
-  sessions,
+  sessions: allSessions,
   exercises,
   programs,
   recovery,
+  focusGoal,
 }: Props) {
+  const t = useT();
+  const lang = useLang();
+  // Записи восстановления — не тренировки: в тренировочную аналитику (объём,
+  // счётчики, сила, мышцы, heatmap) они не идут. Отдельная аналитика баланса
+  // восстановления получит полный список отдельно (следующий этап).
+  const sessions = useMemo(
+    () => allSessions.filter(isTrainingSession),
+    [allSessions],
+  );
   const [mode, setMode] = useState<PeriodMode>("week");
   const [anchor, setAnchor] = useState(today());
   const [from, setFrom] = useState(addDays(today(), -29));
   const [to, setTo] = useState(today());
-  const [metric, setMetric] = useState<MetricKey>("volume");
+  const [metric, setMetric] = useState<MetricKey>("workouts");
   const [view, setView] = useState<View>("volume");
+  const [lensGoal, setLensGoal] = useState<FocusGoal>(focusGoal ?? "strength");
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
 
@@ -109,28 +146,47 @@ export default function AnalyticsScreen({
 
   const trained = useMemo(
     () => trainedExercises(sessions, exercises),
-    [sessions, exercises],
+    [sessions, exercises, lang],
   );
+  const capacities = useMemo(
+    () => capacityProgress(sessions, period),
+    [sessions, period, lang],
+  );
+  // Баланс отдыха считаем по ПОЛНОМУ списку (нужны и recovery-записи, и нагрузка),
+  // а не по отфильтрованному от восстановления.
+  const rest = useMemo(() => restBalance(allSessions, recovery), [allSessions, recovery, lang]);
   const records = useMemo(
     () => newRecordsInPeriod(sessions, exercises, period.startDate, period.endDate),
-    [sessions, exercises, period],
+    [sessions, exercises, period, lang],
   );
   const cons = useMemo(() => consistency(sessions, period), [sessions, period]);
-  const summaryLines = useMemo(
-    () =>
-      periodSummary(
-        sessions,
-        exercises,
-        programs,
-        period,
-        mode === "week" ? "За неделю" : mode === "month" ? "За месяц" : "За период",
-      ),
-    [sessions, exercises, programs, period, mode],
-  );
   // Нагрузка и heatmap — по текущей неделе / всей истории, не по периоду.
-  const load = useMemo(() => loadBaseline(sessions), [sessions]);
-  const heat = useMemo(() => heatmap(sessions, 12), [sessions]);
-  const ready = useMemo(() => readiness(sessions, recovery), [sessions, recovery]);
+  const load = useMemo(() => loadBaseline(sessions), [sessions, lang]);
+  // Даты восстановления (из полного списка) — красим ими пустые дни в heatmap.
+  const recoveryDates = useMemo(
+    () => new Set(allSessions.filter((s) => s.kind === "recovery").map((s) => s.date)),
+    [allSessions],
+  );
+  // Для бар-графика «Итоги»: бакеты периода, где было восстановление, но НЕ было
+  // тренировки — красим голубым (как пустые дни восстановления в heatmap).
+  const heroRecoveryDays = useMemo(() => {
+    const inPeriod = (d: string) => d >= period.startDate && d <= period.endDate;
+    const trainingBuckets = new Set(
+      sessions
+        .filter((s) => inPeriod(s.date))
+        .map((s) => bucketKey(s.date, period.aggregation)),
+    );
+    const recoveryBuckets = new Set(
+      allSessions
+        .filter((s) => s.kind === "recovery" && inPeriod(s.date))
+        .map((s) => bucketKey(s.date, period.aggregation)),
+    );
+    return bucketStarts(period).map(
+      (b) => recoveryBuckets.has(b) && !trainingBuckets.has(b),
+    );
+  }, [sessions, allSessions, period]);
+  const heat = useMemo(() => heatmap(sessions, 12, today(), recoveryDates), [sessions, recoveryDates]);
+  const ready = useMemo(() => readiness(sessions, recovery), [sessions, recovery, lang]);
   // Активность текущей недели точками — для блока регулярности.
   const weekActive = useMemo(() => {
     const set = new Set(sessions.map((s) => s.date));
@@ -139,7 +195,7 @@ export default function AnalyticsScreen({
   const todayIdx = (parseDateKey(today()).getDay() + 6) % 7;
   const plateaus = useMemo(
     () => activePlateaus(sessions, exercises),
-    [sessions, exercises],
+    [sessions, exercises, lang],
   );
   // Сводка прогресса силы: сколько упражнений растёт/стабильно/снижается +
   // лидеры роста по изменению e1RM. Чтобы не листать десятки карточек.
@@ -162,28 +218,209 @@ export default function AnalyticsScreen({
       .sort((a, b) => b.delta - a.delta)
       .slice(0, 3);
     return { up, flat, down, plateau: plateaus.length, gainers };
-  }, [trained, plateaus]);
+  }, [trained, plateaus, lang]);
   const dist = useMemo(
     () => distribution(sessions, period.startDate, period.endDate),
-    [sessions, period],
+    [sessions, period, lang],
   );
   const muscles = useMemo(
     () => muscleLoads(sessions, exercises, period),
-    [sessions, exercises, period],
+    [sessions, exercises, period, lang],
   );
   const balance = useMemo(
     () => movementBalance(sessions, exercises, period.startDate, period.endDate),
-    [sessions, exercises, period],
+    [sessions, exercises, period, lang],
   );
   // Прогресс по программе — по всей истории активной программы, вне периода.
   const programCompare = useMemo(() => {
     const active = programs.find((p) => !p.archivedAt);
     return active ? programProgress(active, sessions, exercises) : [];
-  }, [programs, sessions, exercises]);
+  }, [programs, sessions, exercises, lang]);
   const summary = useMemo(
     () => summarize(sessions, period.startDate, period.endDate),
     [sessions, period],
   );
+
+  // Линза цели: вердикт «как идёшь к цели» под выбранную цель.
+  const lensVerdict = useMemo(
+    () =>
+      goalVerdict({
+        goal: lensGoal,
+        perWeek: cons.perWeek,
+        streak: cons.currentStreak,
+        readiness01: ready.score,
+        restWarningHigh: rest.warning?.severity === "high",
+        strengthUp: strengthSummary.up,
+        plateau: strengthSummary.plateau,
+        recordsCount: records.length,
+        volumePercent: compareMetric(sessions, period, "volume").percent,
+        endurance: capacities.find((c) => c.key === "endurance"),
+        speed: capacities.find((c) => c.key === "speed"),
+        cardioKm: summary.distance / 1000,
+      }),
+    [lensGoal, cons, ready, rest, strengthSummary, records, sessions, period, capacities, summary, lang],
+  );
+
+  // Лучший e1RM внутри периода + упражнение — для инсайта «Лучший результат».
+  const bestInPeriod = useMemo(() => {
+    let best = 0;
+    let name = "";
+    for (const s of sessions) {
+      if (s.kind !== "strength") continue;
+      if (s.date < period.startDate || s.date > period.endDate) continue;
+      for (const ex of s.exercises) {
+        const v = bestE1rm(ex);
+        if (v != null && v > best) {
+          best = v;
+          name = exerciseName(exercises.find((e) => e.id === ex.exerciseId));
+        }
+      }
+    }
+    return best > 0 ? { value: best, name } : null;
+  }, [sessions, exercises, period, lang]);
+
+  // Дневные ряды для мини-спарклайнов инсайтов (по дням периода).
+  const heroSparks = useMemo(() => {
+    const days = dayKeys(period.startDate, period.endDate);
+    const inP = (d: string) => d >= period.startDate && d <= period.endDate;
+    const dist = new Map<string, number>();
+    const sets = new Map<string, number>();
+    const e1rmDay = new Map<string, number>();
+    const mobByDay = new Map<string, number>();
+    for (const s of sessions) {
+      if (s.date < period.startDate || s.date > period.endDate) continue;
+      if (s.kind === "cardio") {
+        dist.set(s.date, (dist.get(s.date) ?? 0) + (s.cardio?.distanceM ?? 0));
+      }
+      if (s.kind === "mobility") {
+        mobByDay.set(s.date, (mobByDay.get(s.date) ?? 0) + 1);
+      }
+      if (s.kind === "strength") {
+        let ss = 0;
+        let best = 0;
+        for (const ex of s.exercises) {
+          ss += ex.sets.length;
+          const v = bestE1rm(ex);
+          if (v != null && v > best) best = v;
+        }
+        sets.set(s.date, (sets.get(s.date) ?? 0) + ss);
+        if (best > 0) e1rmDay.set(s.date, Math.max(e1rmDay.get(s.date) ?? 0, best));
+      }
+    }
+    // Лучший результат — накопительный максимум e1RM (растущая линия).
+    let run = 0;
+    const best = days.map((d) => {
+      const v = e1rmDay.get(d);
+      if (v && v > run) run = v;
+      return run;
+    });
+    // Рекорды — накопительное число за период.
+    const recByDay = new Map<string, number>();
+    for (const r of records) recByDay.set(r.achievedAt, (recByDay.get(r.achievedAt) ?? 0) + 1);
+    let c = 0;
+    const recordsCum = days.map((d) => {
+      c += recByDay.get(d) ?? 0;
+      return c;
+    });
+    // Восстановление — из полного списка (не тренировка), накопительно.
+    const recovByDay = new Map<string, number>();
+    for (const s of allSessions) {
+      if (s.kind === "recovery" && inP(s.date)) {
+        recovByDay.set(s.date, (recovByDay.get(s.date) ?? 0) + 1);
+      }
+    }
+    let cm = 0;
+    const mobilityCum = days.map((d) => {
+      cm += mobByDay.get(d) ?? 0;
+      return cm;
+    });
+    let cr = 0;
+    const recoveryCum = days.map((d) => {
+      cr += recovByDay.get(d) ?? 0;
+      return cr;
+    });
+    return {
+      cardio: days.map((d) => dist.get(d) ?? 0),
+      sets: days.map((d) => sets.get(d) ?? 0),
+      best,
+      records: recordsCum,
+      mobility: mobilityCum,
+      recovery: recoveryCum,
+    };
+  }, [sessions, allSessions, period, records]);
+
+  // Данные карточки-фокуса «Итоги».
+  const hero: HeroData = useMemo(() => {
+    const volCompare = compareMetric(sessions, period, "volume");
+    const dailyVolume = series(sessions, period, "volume").map((p) => p.value);
+    const wk = summary.workouts;
+    const days = summary.activeDays;
+    const modeWord = mode === "month" ? L("месяца", "month") : mode === "custom" ? L("периода", "period") : L("недели", "week");
+    const compareWord =
+      mode === "month" ? L("прошлому месяцу", "last month") : mode === "custom" ? L("прошлому периоду", "last period") : L("прошлой неделе", "last week");
+    const pct = volCompare.percent;
+    const up = strengthSummary.up;
+    const inP = (d: string) => d >= period.startDate && d <= period.endDate;
+    const mobilityCount = sessions.filter((s) => s.kind === "mobility" && inP(s.date)).length;
+    const recoveryCount = allSessions.filter((s) => s.kind === "recovery" && inP(s.date)).length;
+    return {
+      title: `${L("Итоги", "Summary")}: ${modeWord}`,
+      changeLabel: `${L("к", "vs")} ${compareWord}`,
+      changePercent: pct,
+      workoutsText: `${wk} ${lang === "ru" ? ruPlural(wk, "тренировка", "тренировки", "тренировок") : wk === 1 ? "workout" : "workouts"}`,
+      daysText: `${L("в", "across")} ${days} ${lang === "ru" ? ruPlural(days, "тренировочном дне", "тренировочных днях", "тренировочных днях") : days === 1 ? "training day" : "training days"}`,
+      volumeText: formatVolume(summary.volume),
+      dailyVolume,
+      recoveryDays: heroRecoveryDays,
+      cardio: {
+        value:
+          summary.distance > 0
+            ? `${(summary.distance / 1000).toFixed(1).replace(".", L(",", "."))} ${L("км", "km")}`
+            : "—",
+        sub: summary.distance > 0 ? L("дистанция", "distance") : L("нет кардио", "no cardio"),
+        spark: heroSparks.cardio,
+        color: "#f87171",
+      },
+      best: {
+        prefix: bestInPeriod ? "e1RM" : undefined,
+        value: bestInPeriod ? `${Math.round(bestInPeriod.value)} ${L("кг", "kg")}` : "—",
+        sub: bestInPeriod
+          ? bestInPeriod.name
+            ? `«${bestInPeriod.name}»`
+            : L("лучший подход периода", "best set of the period")
+          : L("нет силовых данных", "no strength data"),
+        spark: heroSparks.best,
+        color: "#a78bfa",
+      },
+      records: {
+        value: `${records.length}`,
+        suffix: lang === "ru" ? ruPlural(records.length, "новый", "новых", "новых") : "new",
+        sub: lang === "ru" ? ruPlural(records.length, "личный рекорд", "личных рекорда", "личных рекордов") : records.length === 1 ? "personal record" : "personal records",
+        spark: heroSparks.records,
+        color: "#f59e0b",
+      },
+      progress: {
+        value: up > 0 ? `${up} ${L("упр.", "ex.")}` : "—",
+        sub: up > 0 ? L("растут в силе", "gaining strength") : L("пока без роста", "no gains yet"),
+        spark: heroSparks.sets,
+        color: "#4ade80",
+      },
+      mobility: {
+        value: mobilityCount > 0 ? `${mobilityCount}` : "—",
+        suffix: mobilityCount > 0 ? (lang === "ru" ? ruPlural(mobilityCount, "сессия", "сессии", "сессий") : mobilityCount === 1 ? "session" : "sessions") : undefined,
+        sub: mobilityCount > 0 ? L("мобилити", "mobility") : L("нет мобилити", "no mobility"),
+        spark: heroSparks.mobility,
+        color: "#4ade80",
+      },
+      recovery: {
+        value: recoveryCount > 0 ? `${recoveryCount}` : "—",
+        suffix: recoveryCount > 0 ? (lang === "ru" ? ruPlural(recoveryCount, "процедура", "процедуры", "процедур") : recoveryCount === 1 ? "session" : "sessions") : undefined,
+        sub: recoveryCount > 0 ? L("восстановление", "recovery") : L("нет восстановления", "no recovery"),
+        spark: heroSparks.recovery,
+        color: "#38bdf8",
+      },
+    };
+  }, [sessions, allSessions, period, summary, mode, strengthSummary, bestInPeriod, records, heroSparks, heroRecoveryDays, lang]);
 
   function shift(dir: number) {
     setAnchor(
@@ -194,7 +431,7 @@ export default function AnalyticsScreen({
   function labelOf(key: string): string {
     if (period.aggregation === "day") {
       const d = parseDateKey(key).getDay();
-      return WEEKDAYS_SHORT[(d + 6) % 7];
+      return weekdaysShort()[(d + 6) % 7];
     }
     return formatDate(key);
   }
@@ -228,10 +465,10 @@ export default function AnalyticsScreen({
     return (
       <Box sx={{ pb: 10 }}>
         <Typography variant="h1" sx={{ mb: 2 }}>
-          Аналитика
+          {t("Аналитика", "Analytics")}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
-          Добавьте первую тренировку, чтобы увидеть аналитику.
+          {t("Добавьте первую тренировку, чтобы увидеть аналитику.", "Add your first workout to see analytics.")}
         </Typography>
       </Box>
     );
@@ -240,7 +477,7 @@ export default function AnalyticsScreen({
   return (
     <Box sx={{ pb: 10 }}>
       <Typography variant="h1" sx={{ mb: 2 }}>
-        Аналитика
+        {t("Аналитика", "Analytics")}
       </Typography>
 
       <ToggleButtonGroup
@@ -249,25 +486,44 @@ export default function AnalyticsScreen({
         fullWidth
         size="small"
         onChange={(_, v) => v && setMode(v)}
-        sx={{ mb: 2 }}
+        sx={{
+          mb: 2,
+          gap: 0.5,
+          p: 0.5,
+          borderRadius: 999,
+          bgcolor: "action.hover",
+          "& .MuiToggleButton-root": {
+            border: 0,
+            borderRadius: "999px !important",
+            textTransform: "none",
+            fontWeight: 600,
+            color: "text.secondary",
+            py: 0.75,
+          },
+          "& .MuiToggleButton-root.Mui-selected": {
+            color: "primary.main",
+            bgcolor: "rgba(74,222,128,0.14)",
+            "&:hover": { bgcolor: "rgba(74,222,128,0.2)" },
+          },
+        }}
       >
-        <ToggleButton value="week">Неделя</ToggleButton>
-        <ToggleButton value="month">Месяц</ToggleButton>
-        <ToggleButton value="custom">Период</ToggleButton>
+        <ToggleButton value="week">{t("Неделя", "Week")}</ToggleButton>
+        <ToggleButton value="month">{t("Месяц", "Month")}</ToggleButton>
+        <ToggleButton value="custom">{t("Период", "Range")}</ToggleButton>
       </ToggleButtonGroup>
 
       {mode === "custom" ? (
         <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
           <TextField
             type="date"
-            label="С"
+            label={t("С", "From")}
             value={from}
             onChange={(e) => setFrom(e.target.value)}
             sx={{ flex: 1 }}
           />
           <TextField
             type="date"
-            label="По"
+            label={t("По", "To")}
             value={to}
             onChange={(e) => setTo(e.target.value)}
             sx={{ flex: 1 }}
@@ -278,13 +534,13 @@ export default function AnalyticsScreen({
           direction="row"
           sx={{ alignItems: "center", justifyContent: "space-between" }}
         >
-          <IconButton onClick={() => shift(-1)} aria-label="Раньше">
+          <IconButton onClick={() => shift(-1)} aria-label={t("Раньше", "Earlier")}>
             <ChevronLeftIcon />
           </IconButton>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             {rangeLabel}
           </Typography>
-          <IconButton onClick={() => shift(1)} aria-label="Позже">
+          <IconButton onClick={() => shift(1)} aria-label={t("Позже", "Later")}>
             <ChevronRightIcon />
           </IconButton>
         </Stack>
@@ -294,38 +550,19 @@ export default function AnalyticsScreen({
         color="text.secondary"
         sx={{ display: "block", textAlign: "center", mb: 2 }}
       >
-        сравнение с {formatDate(period.comparison.startDate)} —{" "}
+        {t("сравнение с", "vs")} {formatDate(period.comparison.startDate)} —{" "}
         {formatDate(period.comparison.endDate)}
-        {isOngoing(period) ? " · период ещё идёт" : ""}
+        {isOngoing(period) ? t(" · период ещё идёт", " · period in progress") : ""}
       </Typography>
 
-      {/* Итоги периода — резюме по правилам, в духе AI-инсайта */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 3 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
-          <AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 18 }} />
-          <Typography variant="subtitle2" sx={{ color: "primary.main" }}>
-            Итоги
-          </Typography>
-        </Stack>
-        <Stack spacing={0.5}>
-          {summaryLines.map((line, i) => (
-            <Typography
-              key={i}
-              variant={i === 0 ? "subtitle1" : "body2"}
-              sx={{ fontWeight: i === 0 ? 600 : 400 }}
-              color={i === 0 ? "text.primary" : "text.secondary"}
-            >
-              {line}
-            </Typography>
-          ))}
-        </Stack>
-      </Paper>
+      {/* Итоги периода — карточка-фокус с крупными числами и инсайтами 2×2 */}
+      <SummaryHero hero={hero} />
 
       {/* Активные плато — плашки с ответом на исходную боль */}
       {plateaus.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Typography variant="h2" sx={{ mb: 1 }}>
-            Активные плато
+            {t("Активные плато", "Active plateaus")}
           </Typography>
           <Stack spacing={1}>
             {plateaus.map((p) => (
@@ -344,7 +581,7 @@ export default function AnalyticsScreen({
                   {p.name}
                 </Typography>
                 <Typography variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>
-                  плато {p.weeks} нед
+                  {t("плато", "plateau")} {p.weeks} {t("нед", "wk")}
                 </Typography>
               </Paper>
             ))}
@@ -364,10 +601,10 @@ export default function AnalyticsScreen({
           "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontSize: 14, px: 1.5 },
         }}
       >
-        <Tab label="Объём" value="volume" />
-        <Tab label="Сила" value="strength" />
-        <Tab label="Мышцы" value="muscles" />
-        <Tab label="Восстановление" value="recovery" />
+        <Tab label={t("Объём", "Volume")} value="volume" />
+        <Tab label={t("Прогресс", "Progress")} value="strength" />
+        <Tab label={t("Мышцы", "Muscles")} value="muscles" />
+        <Tab label={t("Восстановление", "Recovery")} value="recovery" />
       </Tabs>
 
       {view === "volume" && (
@@ -404,7 +641,7 @@ export default function AnalyticsScreen({
         </Box>
         <Typography variant="h2">{METRIC_META[metric].format(metricTotal)}</Typography>
         <Typography variant="caption" color="text.secondary">
-          В среднем {METRIC_META[metric].format(avgPerDay)} за активный день
+          {t("В среднем", "Avg")} {METRIC_META[metric].format(avgPerDay)} {t("за активный день", "per active day")}
         </Typography>
         <MetricChart
           points={chartPoints}
@@ -419,41 +656,48 @@ export default function AnalyticsScreen({
       {dist.length > 0 && (
         <Box sx={{ mt: 3 }}>
           <Typography variant="h2" sx={{ mb: 1.5 }}>
-            Распределение
+            {t("Распределение", "Distribution")}
           </Typography>
-          <Stack spacing={1}>
-            {dist.map((slice) => (
-              <DistributionBar key={slice.key} slice={slice} />
-            ))}
-          </Stack>
+          {dist.length >= 3 ? (
+            <RadarChart
+              data={dist.map((slice) => ({ label: slice.label, value: slice.count }))}
+              formatValue={(v) => String(Math.round(v))}
+            />
+          ) : (
+            <Stack spacing={1}>
+              {dist.map((slice) => (
+                <DistributionBar key={slice.key} slice={slice} />
+              ))}
+            </Stack>
+          )}
         </Box>
       )}
 
       {/* Регулярность */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
-        Регулярность
+        {t("Регулярность", "Consistency")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, mb: 1.5, borderRadius: 3 }}>
+      <Paper variant="outlined" sx={{ p: 2, mb: 1.5, borderRadius: 2 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
           <Typography variant="subtitle2" sx={{ flex: 1 }}>
-            Эта неделя
+            {t("Эта неделя", "This week")}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            🔥 серия {cons.currentStreak}
+            🔥 {t("серия", "streak")} {cons.currentStreak}
           </Typography>
         </Stack>
-        <WeekDots active={weekActive} labels={WEEKDAYS_SHORT} todayIndex={todayIdx} />
+        <WeekDots active={weekActive} labels={weekdaysShort()} todayIndex={todayIdx} />
       </Paper>
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
-        <StatTile value={`${cons.activeDays}`} label="Активных дней" />
-        <StatTile value={cons.perWeek.toFixed(1).replace(".", ",")} label="Тренировок в неделю" />
-        <StatTile value={`${cons.longestStreak}`} label="Лучшая серия" />
-        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label="Активных недель" />
+        <StatTile value={`${cons.activeDays}`} label={t("Активных дней", "Active days")} />
+        <StatTile value={cons.perWeek.toFixed(1).replace(".", L(",", "."))} label={t("Тренировок в неделю", "Workouts / week")} />
+        <StatTile value={`${cons.longestStreak}`} label={t("Лучшая серия", "Best streak")} />
+        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label={t("Активных недель", "Active weeks")} />
       </Box>
 
       {/* Календарная heatmap активности */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
-        Активность
+        {t("Активность", "Activity")}
       </Typography>
       <Heatmap grid={heat} />
         </>
@@ -461,22 +705,33 @@ export default function AnalyticsScreen({
 
       {view === "strength" && (
         <>
-      {/* Прогресс силы — дашборд без проваливания в каждое упражнение */}
+      {/* Линза цели «как идёшь к цели» — с селектором цели */}
+      {sessions.length > 0 && (
+        <GoalLensCard goal={lensGoal} verdict={lensVerdict} onChangeGoal={setLensGoal} />
+      )}
+
+      {/* Что развивается — сила / выносливость / скорость */}
       <Typography variant="h2" sx={{ mb: 1.5 }}>
-        Прогресс силы
+        {t("Что развивается", "What's improving")}
+      </Typography>
+      <CapacitiesCard items={capacities} />
+
+      {/* Прогресс силы — дашборд без проваливания в каждое упражнение */}
+      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
+        {t("Прогресс силы", "Strength progress")}
       </Typography>
       {trained.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          Занеси несколько силовых с весом и повторами — появится прогресс.
+          {t("Занеси несколько силовых с весом и повторами — появится прогресс.", "Log a few strength workouts with weight and reps — progress will show here.")}
         </Typography>
       ) : (
         <>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1 }}>
-              <StatusCount value={strengthSummary.up} label="растут" tone="up" />
-              <StatusCount value={strengthSummary.flat} label="стабильны" tone="flat" />
-              <StatusCount value={strengthSummary.down} label="снижаются" tone="flat" />
-              <StatusCount value={strengthSummary.plateau} label="плато" tone="warn" />
+              <StatusCount value={strengthSummary.up} label={t("растут", "rising")} tone="up" />
+              <StatusCount value={strengthSummary.flat} label={t("стабильны", "steady")} tone="flat" />
+              <StatusCount value={strengthSummary.down} label={t("снижаются", "falling")} tone="flat" />
+              <StatusCount value={strengthSummary.plateau} label={t("плато", "plateau")} tone="warn" />
             </Box>
             {strengthSummary.gainers.length > 0 && (
               <>
@@ -485,7 +740,7 @@ export default function AnalyticsScreen({
                   color="text.secondary"
                   sx={{ display: "block", mt: 2, mb: 1 }}
                 >
-                  Лидеры роста e1RM
+                  {t("Лидеры роста e1RM", "e1RM gainers")}
                 </Typography>
                 <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap" }}>
                   {strengthSummary.gainers.map((g) => (
@@ -494,7 +749,7 @@ export default function AnalyticsScreen({
                       size="small"
                       color="primary"
                       variant="outlined"
-                      label={`${g.name} +${Math.round(g.delta)} кг`}
+                      label={`${exerciseName(g)} +${Math.round(g.delta)} ${L("кг", "kg")}`}
                     />
                   ))}
                 </Box>
@@ -511,7 +766,7 @@ export default function AnalyticsScreen({
             }
             sx={{ mt: 1, justifyContent: "space-between", px: 2 }}
           >
-            Детализация по упражнениям · {trained.length}
+            {t("Детализация по упражнениям", "Per-exercise detail")} · {trained.length}
           </Button>
           <Collapse in={strengthOpen} unmountOnExit>
             <Box sx={{ mt: 1 }}>
@@ -522,21 +777,24 @@ export default function AnalyticsScreen({
       )}
 
       {/* Рекорды — свежие сверху, остальные под дропдауном */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
-        Рекорды
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 4, mb: 1.5 }}>
+        <EmojiEventsOutlinedIcon sx={{ color: "#f59e0b", fontSize: 22 }} />
+        <Typography variant="h2">{t("Рекорды", "Records")}</Typography>
         {records.length > 0 && (
-          <Typography component="span" variant="body2" color="primary" sx={{ ml: 1 }}>
-            +{records.length} за период
-          </Typography>
+          <Chip
+            size="small"
+            label={`+${records.length} ${t("за период", "this period")}`}
+            sx={{ height: 22, fontSize: 11, bgcolor: "rgba(74,222,128,0.12)", color: "primary.main" }}
+          />
         )}
-      </Typography>
+      </Stack>
       {records.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          За выбранный период новых рекордов нет.
+          {t("За выбранный период новых рекордов нет.", "No new records for the selected period.")}
         </Typography>
       ) : (
         <>
-          <Stack spacing={1}>
+          <Stack spacing={1.25}>
             {records.slice(0, 2).map((r, i) => (
               <RecordRow key={`${r.type}-${r.exerciseId ?? "g"}-${i}`} record={r} />
             ))}
@@ -551,12 +809,12 @@ export default function AnalyticsScreen({
                     sx={{ transition: "transform .2s", transform: recordsOpen ? "rotate(180deg)" : "none" }}
                   />
                 }
-                sx={{ mt: 1, justifyContent: "space-between", px: 2 }}
+                sx={{ mt: 1.25, justifyContent: "space-between", px: 2 }}
               >
-                Ещё {records.length - 2}
+                {t("Ещё", "More")} {records.length - 2}
               </Button>
               <Collapse in={recordsOpen} unmountOnExit>
-                <Stack spacing={1} sx={{ mt: 1 }}>
+                <Stack spacing={1.25} sx={{ mt: 1.25 }}>
                   {records.slice(2).map((r, i) => (
                     <RecordRow key={`more-${r.type}-${r.exerciseId ?? "g"}-${i}`} record={r} />
                   ))}
@@ -569,11 +827,11 @@ export default function AnalyticsScreen({
 
       {/* Прогресс по программе A→A */}
       {programCompare.length > 0 && (
-        <Box sx={{ mt: 3 }}>
+        <Box sx={{ mt: 4 }}>
           <Typography variant="h2" sx={{ mb: 1.5 }}>
-            Прогресс по программе
+            {t("Прогресс по программе", "Program progress")}
           </Typography>
-          <Stack spacing={1.5}>
+          <Stack spacing={2}>
             {programCompare.map((c) => (
               <ProgramCompareCard key={c.workoutId} c={c} />
             ))}
@@ -588,12 +846,14 @@ export default function AnalyticsScreen({
       {muscles.length > 0 ? (
         <Box>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
-            Мышечные группы
+            {t("Мышечные группы", "Muscle groups")}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-            Эквивалентные подходы с учётом вторичной нагрузки. Классификация
-            упражнений предварительная.
+            {t("Эквивалентные подходы с учётом вторичной нагрузки. Классификация упражнений предварительная.", "Equivalent sets counting secondary load. Exercise classification is preliminary.")}
           </Typography>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 1.5 }}>
+            <BodyMap loads={muscles} />
+          </Paper>
           <Stack spacing={1.25}>
             {muscles.map((load) => (
               <MuscleBar key={load.muscle} load={load} max={muscles[0].adjustedSets} />
@@ -602,14 +862,14 @@ export default function AnalyticsScreen({
         </Box>
       ) : (
         <Typography variant="body2" color="text.secondary">
-          Занеси силовые с весом и повторами — появится нагрузка по мышцам.
+          {t("Занеси силовые с весом и повторами — появится нагрузка по мышцам.", "Log strength workouts with weight and reps — muscle load will show here.")}
         </Typography>
       )}
 
       {balance.length > 0 && (
         <Box sx={{ mt: 3 }}>
           <Typography variant="h2" sx={{ mb: 1.5 }}>
-            Баланс движений
+            {t("Баланс движений", "Movement balance")}
           </Typography>
           <Stack spacing={1.5}>
             {balance.map((row) => (
@@ -623,14 +883,20 @@ export default function AnalyticsScreen({
 
       {view === "recovery" && (
         <>
-      {/* Персональная нагрузка недели */}
+      {/* Баланс отдыха — тяжёлые дни подряд, отдых, предупреждение */}
       <Typography variant="h2" sx={{ mb: 1 }}>
-        Нагрузка недели
+        {t("Баланс отдыха", "Rest balance")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+      <RestBalanceCard balance={rest} />
+
+      {/* Персональная нагрузка недели */}
+      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+        {t("Нагрузка недели", "Weekly load")}
+      </Typography>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
           <Typography variant="h2" sx={{ fontWeight: 700, flex: 1 }}>
-            {load.currentSets} <Typography component="span" variant="body2" color="text.secondary">рабочих подходов</Typography>
+            {load.currentSets} <Typography component="span" variant="body2" color="text.secondary">{t("рабочих подходов", "working sets")}</Typography>
           </Typography>
           <Typography
             variant="body2"
@@ -650,51 +916,82 @@ export default function AnalyticsScreen({
           warn={load.level === "above" || load.level === "wellAbove"}
         />
         <Stack direction="row" sx={{ justifyContent: "space-between", mt: 0.5, mb: 1 }}>
-          <Typography variant="caption" color="text.secondary">ниже</Typography>
-          <Typography variant="caption" color="text.secondary">обычно</Typography>
-          <Typography variant="caption" color="text.secondary">выше</Typography>
+          <Typography variant="caption" color="text.secondary">{t("ниже", "low")}</Typography>
+          <Typography variant="caption" color="text.secondary">{t("обычно", "usual")}</Typography>
+          <Typography variant="caption" color="text.secondary">{t("выше", "high")}</Typography>
         </Stack>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
           {load.ratio != null
-            ? `Твой обычный объём ≈ ${Math.round(load.baselineSets)} подх./нед (по ${load.weeksUsed} нед.)`
-            : "Персональная норма ещё копится — нужно несколько недель."}
+            ? `${t("Твой обычный объём", "Your usual volume")} ≈ ${Math.round(load.baselineSets)} ${t("подх./нед", "sets/wk")} (${t("по", "over")} ${load.weeksUsed} ${t("нед.", "wk")})`
+            : t("Персональная норма ещё копится — нужно несколько недель.", "Your baseline is still building — needs a few weeks.")}
         </Typography>
+        {rest.acwr.ratio != null && (
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 1 }}>
+            <Box
+              sx={{
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+                fontSize: 12,
+                fontWeight: 700,
+                color: rest.acwr.level === "high" ? "warning.main" : "text.secondary",
+                bgcolor:
+                  rest.acwr.level === "high"
+                    ? "rgba(237, 162, 59, 0.12)"
+                    : "action.hover",
+              }}
+            >
+              {t("Острая:хроническая", "Acute:chronic")} ×{rest.acwr.ratio.toFixed(1).replace(".", L(",", "."))}
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              {rest.acwr.level === "high"
+                ? t("резкий скачок нагрузки", "sharp load spike")
+                : rest.acwr.level === "low"
+                  ? t("нагрузка ниже привычной", "load below usual")
+                  : t("в оптимальном коридоре", "in the optimal range")}
+            </Typography>
+          </Stack>
+        )}
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-          Оценка по подходам. Данных о пульсе и RPE нет — предварительная.
+          {t("Оценка по подходам. Данных о пульсе и RPE нет — предварительная.", "Estimated from sets. No heart-rate or RPE data — preliminary.")}
         </Typography>
       </Paper>
 
       {/* Готовность к нагрузке */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
-        Готовность
+        {t("Готовность", "Readiness")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
         <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-          {ready.hasSubjective ? (
+          {ready.hasSignal ? (
             <ScoreRing
-              fraction={ready.subjective! / 5}
-              center={ready.subjective!.toFixed(1).replace(".", ",")}
-              sub="из 5"
+              fraction={ready.score5! / 5}
+              center={ready.score5!.toFixed(1).replace(".", L(",", "."))}
+              sub={t("из 5", "of 5")}
             />
           ) : (
-            <ScoreRing fraction={0} center="—" sub="нет отметки" />
+            <ScoreRing fraction={0} center="—" sub={t("нет отметки", "no entry")} />
           )}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-              {ready.hasSubjective ? "По твоей отметке" : "Предварительная оценка"}
+              {ready.hasSubjective
+                ? t("По твоей отметке", "From your check-in")
+                : ready.feelFromSessions != null
+                  ? t("По самочувствию после тренировок", "From how you felt after workouts")
+                  : t("Предварительная оценка", "Preliminary estimate")}
               {ready.hasSubjective && ready.subjectiveDate
                 ? ` · ${formatDate(ready.subjectiveDate)}`
                 : ""}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {ready.daysSinceStrength != null
-                ? `Последняя силовая ${ready.daysSinceStrength === 0 ? "сегодня" : `${ready.daysSinceStrength} дн. назад`}. `
+                ? `${t("Последняя силовая", "Last strength")} ${ready.daysSinceStrength === 0 ? t("сегодня", "today") : `${ready.daysSinceStrength} ${t("дн. назад", "days ago")}`}. `
                 : ""}
-              Нагрузка недели {ready.loadLevelLabel}.
+              {t("Нагрузка недели", "Weekly load")} {ready.loadLevelLabel}.
             </Typography>
-            {!ready.hasSubjective && (
+            {!ready.hasSignal && (
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                Отметь самочувствие в Профиле — оценка станет точнее.
+                {t("Отметь «Как ты после?» в завершённой тренировке или самочувствие в Профиле — оценка станет точнее.", "Mark “How do you feel?” on a finished workout or your check-in in Profile — the estimate will get more accurate.")}
               </Typography>
             )}
           </Box>
@@ -709,12 +1006,20 @@ export default function AnalyticsScreen({
           color="text.secondary"
           sx={{ display: "block", mt: 3 }}
         >
-          Аналитика ещё формируется — для устойчивых трендов и сравнений нужно
-          несколько тренировок.
+          {t("Аналитика ещё формируется — для устойчивых трендов и сравнений нужно несколько тренировок.", "Analytics is still building — a few workouts are needed for stable trends and comparisons.")}
         </Typography>
       )}
     </Box>
   );
+}
+
+/** Русское склонение по числу: 1 тренировка / 2 тренировки / 5 тренировок. */
+function ruPlural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+  return many;
 }
 
 function addMonthAnchor(anchor: string, delta: number): string {
@@ -722,6 +1027,18 @@ function addMonthAnchor(anchor: string, delta: number): string {
   const next = new Date(d.getFullYear(), d.getMonth() + delta, 1);
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-01`;
 }
+
+/** Моно-иконка метрики (белая/приглушённая) — цвет только у графика и %. */
+const KPI_ICON: Record<MetricKey, typeof FitnessCenterOutlinedIcon> = {
+  workouts: FitnessCenterOutlinedIcon,
+  activeDays: CalendarMonthOutlinedIcon,
+  duration: ScheduleOutlinedIcon,
+  volume: MonitorWeightOutlinedIcon,
+  distance: PlaceOutlinedIcon,
+  exercises: ListAltOutlinedIcon,
+  sets: RepeatRoundedIcon,
+  reps: LoopRoundedIcon,
+};
 
 function KpiCard({
   metric,
@@ -734,6 +1051,7 @@ function KpiCard({
 }) {
   const theme = useTheme();
   const meta = METRIC_META[metric];
+  const Icon = KPI_ICON[metric];
   const { trend, absolute, percent } = comparison;
   // Снижение не красим красным — только зелёный акцент на росте.
   const deltaColor = trend === "up" ? "primary.main" : "text.secondary";
@@ -745,28 +1063,29 @@ function KpiCard({
   const green = theme.palette.primary.main;
   const pts: Pt[] = spark.map((v, i) => [
     (i / Math.max(1, n - 1)) * 100,
-    27 - (v / max) * 24,
+    30 - (v / max) * 22,
   ]);
   const line = smoothPath(pts);
-  const area = areaPath(pts, 28, 0, 100);
+  const area = areaPath(pts, 32, 0, 100);
 
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
-      <Typography variant="caption" color="text.secondary">
-        {meta.label}
-      </Typography>
-      <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, display: "flex", flexDirection: "column" }}>
+      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "text.secondary", mb: 1 }}>
+        <Icon sx={{ fontSize: 17 }} />
+        <Typography variant="caption">{meta.label}</Typography>
+      </Stack>
+      <Typography sx={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>
         {meta.format(comparison.current)}
       </Typography>
       <Box
         component="svg"
-        viewBox="0 0 100 28"
+        viewBox="0 0 100 32"
         preserveAspectRatio="none"
-        sx={{ width: "100%", height: 26, my: 0.5, display: "block" }}
+        sx={{ width: "100%", height: 34, my: 1.25, display: "block" }}
       >
         <defs>
           <linearGradient id={`spark-${gid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={green} stopOpacity={0.3} />
+            <stop offset="0%" stopColor={green} stopOpacity={0.26} />
             <stop offset="100%" stopColor={green} stopOpacity={0} />
           </linearGradient>
         </defs>
@@ -781,13 +1100,15 @@ function KpiCard({
           vectorEffect="non-scaling-stroke"
         />
       </Box>
-      <Typography variant="caption" sx={{ color: deltaColor, fontWeight: 600 }}>
-        {formatPercent(percent)}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-        {sign}
-        {meta.format(Math.abs(absolute))}
-      </Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+        <Typography variant="body2" sx={{ color: deltaColor, fontWeight: 700 }}>
+          {formatPercent(percent)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {sign}
+          {meta.format(Math.abs(absolute))}
+        </Typography>
+      </Stack>
     </Paper>
   );
 }
@@ -797,6 +1118,7 @@ function DistributionBar({
 }: {
   slice: { label: string; count: number; duration: number; share: number };
 }) {
+  const t = useT();
   return (
     <Box>
       <Stack direction="row" sx={{ mb: 0.25 }}>
@@ -804,7 +1126,7 @@ function DistributionBar({
           {slice.label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {slice.count} трен.
+          {slice.count} {t("трен.", "wk")}
           {slice.duration ? ` · ${formatDuration(slice.duration)}` : ""}
         </Typography>
       </Stack>
@@ -823,6 +1145,7 @@ function DistributionBar({
 }
 
 function Heatmap({ grid }: { grid: HeatCell[][] }) {
+  const t = useT();
   // Прозрачность зелёного по уровню; день без тренировки — нейтральная клетка.
   // Колонки тянутся на всю ширину фрейма, клетки квадратные.
   const opacity = [0, 0.3, 0.55, 0.78, 1];
@@ -833,19 +1156,26 @@ function Heatmap({ grid }: { grid: HeatCell[][] }) {
           key={i}
           sx={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}
         >
-          {col.map((cell) => (
-            <Box
-              key={cell.date}
-              title={`${cell.date}${cell.hasSession ? ` · ${cell.sets} подх.` : ""}`}
-              sx={{
-                width: "100%",
-                aspectRatio: "1",
-                borderRadius: "3px",
-                bgcolor: cell.level === 0 ? "action.hover" : "primary.main",
-                opacity: cell.level === 0 ? 1 : opacity[cell.level],
-              }}
-            />
-          ))}
+          {col.map((cell) => {
+            // Тренировка — зелёная по уровню; день восстановления без тренировки
+            // — прозрачно-голубой (цвет восстановления); пусто — нейтрально.
+            const trained = cell.level > 0;
+            return (
+              <Box
+                key={cell.date}
+                title={`${cell.date}${
+                  cell.hasSession ? ` · ${cell.sets} ${t("подх.", "sets")}` : cell.recovery ? ` · ${t("восстановление", "recovery")}` : ""
+                }`}
+                sx={{
+                  width: "100%",
+                  aspectRatio: "1",
+                  borderRadius: "3px",
+                  bgcolor: trained ? "primary.main" : cell.recovery ? "#38bdf8" : "action.hover",
+                  opacity: trained ? opacity[cell.level] : cell.recovery ? 0.32 : 1,
+                }}
+              />
+            );
+          })}
         </Box>
       ))}
     </Box>
@@ -853,6 +1183,7 @@ function Heatmap({ grid }: { grid: HeatCell[][] }) {
 }
 
 function MuscleBar({ load, max }: { load: MuscleLoad; max: number }) {
+  const t = useT();
   return (
     <Box>
       <Stack direction="row" spacing={1} sx={{ mb: 0.25, alignItems: "baseline" }}>
@@ -860,8 +1191,8 @@ function MuscleBar({ load, max }: { load: MuscleLoad; max: number }) {
           {load.label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {load.directSets} прям. · {Math.round(load.adjustedSets)} экв.
-          {load.daysSince != null ? ` · ${load.daysSince} дн. назад` : ""}
+          {load.directSets} {t("прям.", "direct")} · {Math.round(load.adjustedSets)} {t("экв.", "equiv.")}
+          {load.daysSince != null ? ` · ${load.daysSince} ${t("дн. назад", "days ago")}` : ""}
         </Typography>
       </Stack>
       <Box sx={{ height: 8, borderRadius: 4, bgcolor: "action.hover" }}>
@@ -913,27 +1244,65 @@ function BalanceBar({ row }: { row: BalanceRow }) {
   );
 }
 
+const PROGRAM_COLOR = "#f59e0b";
+
 function ProgramCompareCard({ c }: { c: WorkoutComparison }) {
+  const t = useT();
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 0.5 }}>
-        <Typography variant="subtitle2" sx={{ flex: 1 }}>
-          {c.workoutName} · {formatDate(c.prevDate)} → {formatDate(c.currDate)}
-        </Typography>
+    <Box
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: alpha(PROGRAM_COLOR, 0.25),
+        borderLeft: `3px solid ${PROGRAM_COLOR}`,
+        backgroundImage: `linear-gradient(100deg, ${alpha(PROGRAM_COLOR, 0.1)}, transparent 72%)`,
+      }}
+    >
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 1.5 }}>
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: 2,
+            flexShrink: 0,
+            display: "grid",
+            placeItems: "center",
+            color: PROGRAM_COLOR,
+            backgroundImage: `linear-gradient(135deg, ${alpha(PROGRAM_COLOR, 0.28)}, ${alpha(PROGRAM_COLOR, 0.08)})`,
+          }}
+        >
+          <RepeatRoundedIcon fontSize="small" />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
+            {c.workoutName}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {formatDate(c.prevDate)} → {formatDate(c.currDate)}
+          </Typography>
+        </Box>
         {c.deload && (
-          <Chip label="разгрузка" size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+          <Chip label={t("разгрузка", "deload")} size="small" variant="outlined" sx={{ height: 22, fontSize: 11, flexShrink: 0 }} />
         )}
       </Stack>
-      <Typography variant="caption" color="text.secondary">
-        Интервал {c.intervalDays} дн · подходы плана {c.actualSets}/{c.plannedSets}
-        {c.missed.length ? ` · пропущено: ${c.missed.join(", ")}` : ""}
-      </Typography>
-      <Stack spacing={0.5} sx={{ mt: 1 }}>
+
+      <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", rowGap: 0.75, mb: 1.5 }}>
+        <Chip size="small" variant="outlined" icon={<ScheduleOutlinedIcon />} label={`${c.intervalDays} ${t("дн", "d")}`} />
+        <Chip size="small" variant="outlined" icon={<ListAltOutlinedIcon />} label={`${t("план", "plan")} ${c.actualSets}/${c.plannedSets}`} />
+        {c.missed.length > 0 && (
+          <Chip size="small" variant="outlined" color="warning" label={`${t("пропущено", "missed")}: ${c.missed.join(", ")}`} />
+        )}
+      </Stack>
+
+      <Divider sx={{ borderColor: alpha(PROGRAM_COLOR, 0.15) }} />
+
+      <Stack spacing={1.25} sx={{ mt: 1.5 }}>
         {c.deltas.map((d) => (
           <DeltaRow key={d.exerciseId} d={d} deload={c.deload} />
         ))}
       </Stack>
-    </Paper>
+    </Box>
   );
 }
 
@@ -944,39 +1313,46 @@ function DeltaRow({
   d: WorkoutComparison["deltas"][number];
   deload: boolean;
 }) {
+  const t = useT();
+  const kg = t("кг", "kg");
   const weightText =
     d.prevWeight != null && d.currWeight != null
-      ? `${formatWeight(d.prevWeight)} → ${formatWeight(d.currWeight)} кг`
+      ? `${formatWeight(d.prevWeight)} → ${formatWeight(d.currWeight)} ${kg}`
       : d.currWeight != null
-        ? `${formatWeight(d.currWeight)} кг`
+        ? `${formatWeight(d.currWeight)} ${kg}`
         : "—";
   const e1Change =
     d.prevE1rm != null && d.currE1rm != null
       ? Math.round(d.currE1rm - d.prevE1rm)
       : null;
   // Зелёным только рост; снижение (в т.ч. на разгрузке) — нейтрально.
-  const color = d.status === "up" ? "primary.main" : "text.secondary";
+  const up = d.status === "up";
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+    <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
       <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
         {d.name}
       </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {weightText}
-      </Typography>
-      {d.status === "new" ? (
-        <Typography variant="caption" color="text.secondary">
-          новое
+      <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.3 }}>
+          {weightText}
         </Typography>
-      ) : (
-        e1Change != null &&
-        e1Change !== 0 && (
-          <Typography variant="caption" sx={{ color, fontWeight: 600 }}>
-            {e1Change > 0 ? "+" : ""}
-            {e1Change} e1RM{deload && d.status === "down" ? " · разгрузка" : ""}
+        {d.status === "new" ? (
+          <Typography variant="caption" color="text.secondary">
+            {t("новое упражнение", "new exercise")}
           </Typography>
-        )
-      )}
+        ) : (
+          e1Change != null &&
+          e1Change !== 0 && (
+            <Typography
+              variant="caption"
+              sx={{ color: up ? "primary.main" : "text.secondary", fontWeight: 700, lineHeight: 1.3 }}
+            >
+              {e1Change > 0 ? "+" : ""}
+              {e1Change} e1RM{deload && d.status === "down" ? ` · ${t("разгрузка", "deload")}` : ""}
+            </Typography>
+          )
+        )}
+      </Box>
     </Stack>
   );
 }
@@ -984,53 +1360,119 @@ function DeltaRow({
 function formatRecordValue(record: PersonalRecord, value: number): string {
   switch (record.type) {
     case "distance":
-      return `${(value / 1000).toFixed(1).replace(".", ",")} км`;
+      return `${(value / 1000).toFixed(1).replace(".", L(",", "."))} ${L("км", "km")}`;
     case "duration":
       return formatDuration(value);
     case "sessionVolume":
     case "exerciseVolume":
       return formatVolume(value);
     default:
-      return `${Math.round(value)} кг`;
+      return `${Math.round(value)} ${L("кг", "kg")}`;
   }
 }
 
 const RECORD_TITLE: Record<PersonalRecord["type"], string> = {
   e1rm: "e1RM",
-  weight: "Рабочий вес",
-  exerciseVolume: "Тоннаж упражнения",
-  sessionVolume: "Тоннаж тренировки",
-  distance: "Дистанция",
-  duration: "Длительность",
+  get weight() { return L("Рабочий вес", "Working weight"); },
+  get exerciseVolume() { return L("Тоннаж упражнения", "Exercise tonnage"); },
+  get sessionVolume() { return L("Тоннаж тренировки", "Session tonnage"); },
+  get distance() { return L("Дистанция", "Distance"); },
+  get duration() { return L("Длительность", "Duration"); },
 };
 
+/** Цвет и иконка рекорда по его типу — для плашки в карточке. */
+function recordVisual(type: PersonalRecord["type"]): {
+  color: string;
+  Icon: typeof PlaceOutlinedIcon;
+} {
+  switch (type) {
+    case "distance":
+      return { color: "#f472b6", Icon: PlaceOutlinedIcon };
+    case "duration":
+      return { color: "#38bdf8", Icon: ScheduleOutlinedIcon };
+    case "exerciseVolume":
+    case "sessionVolume":
+      return { color: "#a78bfa", Icon: MonitorWeightOutlinedIcon };
+    default:
+      return { color: "#a78bfa", Icon: FitnessCenterOutlinedIcon };
+  }
+}
+
 function RecordRow({ record }: { record: PersonalRecord }) {
+  const t = useT();
+  const { color, Icon } = recordVisual(record.type);
   const improvement =
     record.previousValue == null ? null : record.newValue - record.previousValue;
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-      <Stack direction="row" sx={{ alignItems: "baseline" }}>
-        <Typography variant="subtitle2" sx={{ flex: 1 }}>
-          {record.label}
+    <Box
+      sx={{
+        display: "flex",
+        gap: 1.5,
+        p: 1.75,
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: alpha(color, 0.25),
+        borderLeft: `3px solid ${color}`,
+        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 72%)`,
+      }}
+    >
+      <Box
+        sx={{
+          width: 42,
+          height: 42,
+          borderRadius: 2,
+          flexShrink: 0,
+          display: "grid",
+          placeItems: "center",
+          color,
+          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
+        }}
+      >
+        <Icon fontSize="small" />
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, minWidth: 0 }} noWrap>
+            {record.label}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+            {formatDate(record.achievedAt)}
+          </Typography>
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          {RECORD_TITLE[record.type]}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {formatDate(record.achievedAt)}
-        </Typography>
-      </Stack>
-      <Typography variant="body2" sx={{ mt: 0.25 }}>
-        {RECORD_TITLE[record.type]}: {formatRecordValue(record, record.newValue)}
-        {improvement != null && improvement > 0 && (
-          <Typography component="span" variant="caption" color="primary" sx={{ ml: 1 }}>
-            +{formatRecordValue(record, improvement)}
+        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", flexWrap: "wrap", rowGap: 0.5, mt: 0.5 }}>
+          <Typography sx={{ fontSize: 21, fontWeight: 800, lineHeight: 1.1 }}>
+            {formatRecordValue(record, record.newValue)}
+          </Typography>
+          {improvement != null && improvement > 0 && (
+            <Box
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.25,
+                px: 0.75,
+                py: 0.125,
+                borderRadius: 999,
+                bgcolor: "rgba(74,222,128,0.12)",
+                color: "primary.main",
+              }}
+            >
+              <TrendingUpRoundedIcon sx={{ fontSize: 14 }} />
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                +{formatRecordValue(record, improvement)}
+              </Typography>
+            </Box>
+          )}
+        </Stack>
+        {record.previousValue != null && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+            {t("было", "was")} {formatRecordValue(record, record.previousValue)}
           </Typography>
         )}
-      </Typography>
-      {record.previousValue != null && (
-        <Typography variant="caption" color="text.secondary">
-          было {formatRecordValue(record, record.previousValue)}
-        </Typography>
-      )}
-    </Paper>
+      </Box>
+    </Box>
   );
 }
 
@@ -1043,17 +1485,25 @@ function StatusCount({
   label: string;
   tone: "up" | "flat" | "warn";
 }) {
-  const color =
-    value === 0
-      ? "text.disabled"
-      : tone === "up"
-        ? "primary.main"
-        : tone === "warn"
-          ? "warning.main"
-          : "text.primary";
+  // Акцент только у растущих (зелёный) и плато (янтарь); остальное нейтрально.
+  const accent = tone === "up" ? "#4ade80" : tone === "warn" ? "#f59e0b" : null;
+  const tinted = accent != null && value > 0;
+  const color = value === 0 ? "text.disabled" : (accent ?? "text.primary");
   return (
-    <Box sx={{ textAlign: "center" }}>
-      <Typography variant="h2" sx={{ fontWeight: 700, color }}>
+    <Box
+      sx={{
+        p: 1.25,
+        borderRadius: 2,
+        textAlign: "center",
+        border: "1px solid",
+        borderColor: tinted ? alpha(accent, 0.25) : "divider",
+        backgroundImage: tinted
+          ? `linear-gradient(135deg, ${alpha(accent, 0.1)}, transparent 75%)`
+          : "none",
+        bgcolor: tinted ? "transparent" : "action.hover",
+      }}
+    >
+      <Typography sx={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1.15 }}>
         {value}
       </Typography>
       <Typography variant="caption" color="text.secondary">
@@ -1065,7 +1515,7 @@ function StatusCount({
 
 function StatTile({ value, label }: { value: string; label: string }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
       <Typography variant="h1" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
         {value}
       </Typography>

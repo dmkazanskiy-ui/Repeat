@@ -2,7 +2,10 @@ import * as db from "./db";
 import { newId } from "./id";
 import { nowTime } from "./format";
 import { CATALOG } from "./catalog";
+import { L } from "./i18n";
 import type { IconKey } from "./icons";
+import type { ProgramPreset } from "./programLibrary";
+import type { FocusGoal } from "./workoutBuilder";
 import type {
   BodyEntry,
   CardioKind,
@@ -10,11 +13,13 @@ import type {
   CustomActivity,
   DropStage,
   MobilityKind,
+  MuscleGroup,
   Exercise,
   PlannedExercise,
   ProgramWorkout,
   ProgressPhoto,
   RecoveryEntry,
+  RecoveryType,
   Session,
   SessionExercise,
   SessionKind,
@@ -30,6 +35,8 @@ const KEY_BODY = "body_entries";
 const KEY_PHOTOS = "progress_photos";
 const KEY_PROGRAMS = "programs";
 const KEY_RECOVERY = "recovery";
+const KEY_FOCUS = "focus_goal";
+const KEY_ONBOARDED = "onboarded";
 
 export interface AppData {
   sessions: Session[];
@@ -40,6 +47,8 @@ export interface AppData {
   photos: ProgressPhoto[];
   programs: TrainingProgram[];
   recovery: RecoveryEntry[];
+  focusGoal: FocusGoal | null;
+  onboarded: boolean;
 }
 
 /**
@@ -50,13 +59,14 @@ function baseExercises(): Exercise[] {
   return CATALOG.map((item) => ({
     id: `base:${item.name}`,
     name: item.name,
+    nameEn: item.nameEn,
     muscleGroup: item.muscleGroup,
     custom: false,
   }));
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom, cardio, mobility, body, photos, programs, recovery] =
+  const [sessions, custom, cardio, mobility, body, photos, programs, recovery, focusGoal, onboarded] =
     await Promise.all([
       db.get<Session[]>(KEY_SESSIONS),
       db.get<Exercise[]>(KEY_CUSTOM),
@@ -66,6 +76,8 @@ export async function load(): Promise<AppData> {
       db.get<ProgressPhoto[]>(KEY_PHOTOS),
       db.get<TrainingProgram[]>(KEY_PROGRAMS),
       db.get<RecoveryEntry[]>(KEY_RECOVERY),
+      db.get<FocusGoal>(KEY_FOCUS),
+      db.get<boolean>(KEY_ONBOARDED),
     ]);
   return {
     sessions: sessions ?? [],
@@ -80,11 +92,21 @@ export async function load(): Promise<AppData> {
     photos: photos ?? [],
     programs: programs ?? [],
     recovery: recovery ?? [],
+    focusGoal: focusGoal ?? null,
+    onboarded: onboarded ?? false,
   };
 }
 
 export function saveSessions(sessions: Session[]): Promise<void> {
   return db.set(KEY_SESSIONS, sessions);
+}
+
+export function saveFocusGoal(goal: FocusGoal | null): Promise<void> {
+  return db.set(KEY_FOCUS, goal);
+}
+
+export function saveOnboarded(value: boolean): Promise<void> {
+  return db.set(KEY_ONBOARDED, value);
 }
 
 export function saveCustomExercises(exercises: Exercise[]): Promise<void> {
@@ -198,17 +220,51 @@ const WORKOUT_LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
 export function newProgramWorkout(order: number): ProgramWorkout {
   return {
     id: newId(),
-    name: WORKOUT_LETTERS[order] ?? `День ${order + 1}`,
+    name: WORKOUT_LETTERS[order] ?? `${L("День", "Day")} ${order + 1}`,
     order,
     exercises: [],
   };
 }
 
-export function newProgram(name = "Моя программа"): TrainingProgram {
+export function newProgram(name = L("Моя программа", "My program")): TrainingProgram {
   return {
     id: newId(),
     name,
     workouts: [newProgramWorkout(0), newProgramWorkout(1)],
+    currentWorkoutIndex: 0,
+    cycleNumber: 1,
+    createdAt: new Date().toISOString(),
+    archivedAt: null,
+  };
+}
+
+/**
+ * Собрать программу из пресета библиотеки. Упражнения в пресете хранятся по
+ * имени; `resolveExerciseId` находит существующее или создаёт новое и отдаёт id
+ * (логика создания живёт в App, где есть доступ к списку упражнений).
+ */
+export function buildProgramFromPreset(
+  preset: ProgramPreset,
+  resolveExerciseId: (name: string, group: MuscleGroup) => string,
+): TrainingProgram {
+  return {
+    id: newId(),
+    name: preset.name,
+    description: preset.description,
+    workouts: preset.workouts.map((w, wi) => ({
+      id: newId(),
+      name: w.name,
+      order: wi,
+      exercises: w.exercises.map((ex, ei) => ({
+        id: newId(),
+        exerciseId: resolveExerciseId(ex.name, ex.group),
+        order: ei,
+        targetSets: ex.sets,
+        targetRepMin: ex.repMin,
+        targetRepMax: ex.repMax,
+        targetWeight: null,
+      })),
+    })),
     currentWorkoutIndex: 0,
     cycleNumber: 1,
     createdAt: new Date().toISOString(),
@@ -345,6 +401,7 @@ export function newSession(
     mobilityKind?: MobilityKind | null;
     customKind?: string | null;
     icon?: IconKey | null;
+    recoveryType?: RecoveryType | null;
   } = {},
 ): Session {
   return {
@@ -355,6 +412,10 @@ export function newSession(
     mobilityKind: kind === "mobility" ? (options.mobilityKind ?? null) : null,
     customKind: options.customKind ?? null,
     icon: options.icon ?? null,
+    recovery:
+      kind === "recovery"
+        ? { type: options.recoveryType ?? "full_rest", durationMin: null, note: null }
+        : null,
     time: nowTime(),
     title: null,
     notes: null,
@@ -408,6 +469,12 @@ export function copySessionTo(session: Session, date: string): Session {
     id: newId(),
     date,
     createdAt: new Date().toISOString(),
+    // Копия/повтор — это новая тренировка, а не завершённая: сбрасываем таймер
+    // и итоги, иначе она сразу открывается read-only «Завершена».
+    startedAt: null,
+    endedAt: null,
+    avgHr: null,
+    time: nowTime(),
     exercises: session.exercises.map((exercise) => ({
       ...exercise,
       id: newId(),

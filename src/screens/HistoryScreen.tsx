@@ -3,6 +3,7 @@ import { Box, Typography } from "@mui/material";
 import SessionTimeline from "../components/SessionTimeline";
 import { formatDateFull } from "../lib/format";
 import { sessionsOn } from "../lib/store";
+import { useT } from "../lib/i18n";
 import type { Exercise, Session } from "../lib/types";
 
 interface Props {
@@ -21,6 +22,7 @@ export default function HistoryScreen({
   onDelete,
   onChangeTime,
 }: Props) {
+  const t = useT();
   const dates = useMemo(() => {
     const set = new Set(sessions.map((s) => s.date));
     return [...set].sort((a, b) => (a < b ? 1 : -1));
@@ -29,12 +31,12 @@ export default function HistoryScreen({
   return (
     <Box sx={{ pb: 10 }}>
       <Typography variant="h1" sx={{ mb: 2 }}>
-        История
+        {t("История", "History")}
       </Typography>
 
       {sessions.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-          Пока пусто. Заноси тренировки — они появятся здесь.
+          {t("Пока пусто. Заноси тренировки — они появятся здесь.", "Nothing yet. Log workouts and they'll show up here.")}
         </Typography>
       )}
 
