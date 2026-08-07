@@ -2,6 +2,7 @@ import { useId } from "react";
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
 import { areaPath, smoothPath } from "../lib/chart";
+import { useT } from "../lib/i18n";
 import type { Pt } from "../lib/chart";
 
 export interface ChartPoint {
@@ -24,13 +25,14 @@ interface Props {
  */
 export default function MiniChart({ points, height = 140, format }: Props) {
   const theme = useTheme();
+  const t = useT();
   const gid = useId().replace(/:/g, "");
   const fmt = format ?? ((v: number) => String(Math.round(v)));
 
   if (points.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
-        Пока нет данных для графика.
+        {t("Пока нет данных для графика.", "No chart data yet.")}
       </Typography>
     );
   }
