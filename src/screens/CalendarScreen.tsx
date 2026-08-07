@@ -21,7 +21,7 @@ import {
 } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
 import { daySummary } from "../lib/analytics";
-import { TYPE_COLOR } from "../lib/activityColors";
+import DaySummaryCard from "../components/DaySummaryCard";
 import { useT } from "../lib/i18n";
 import type { Exercise, RecoveryEntry, Session, TrainingProgram } from "../lib/types";
 import type { FocusGoal } from "../lib/workoutBuilder";
@@ -207,39 +207,9 @@ export default function CalendarScreen({
         )}
       </Stack>
 
-      {/* Итог дня — валидная формулировка по составу: силовые как «тренировки»,
-          но день только с отдыхом = «1 восстановление», не тренировка. */}
-      {dayList.length > 0 && (
-        <Box
-          sx={{
-            mb: 1.5,
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "baseline",
-            columnGap: 1.75,
-            rowGap: 0.5,
-          }}
-        >
-          <Typography sx={{ fontWeight: 700, color: TYPE_COLOR[summary.items[0].kind] }}>
-            {summary.headline}
-          </Typography>
-          {summary.tonnage > 0 && (
-            <Typography variant="body2" color="text.secondary">
-              {summary.tonnage.toLocaleString(t("ru-RU", "en-US"))} {t("кг", "kg")}
-            </Typography>
-          )}
-          {summary.durationSec >= 60 && (
-            <Typography variant="body2" color="text.secondary">
-              {Math.round(summary.durationSec / 60)} {t("мин", "min")}
-            </Typography>
-          )}
-          {summary.distanceM > 0 && (
-            <Typography variant="body2" color="text.secondary">
-              {(Math.round(summary.distanceM / 100) / 10).toLocaleString(t("ru-RU", "en-US"))} {t("км", "km")}
-            </Typography>
-          )}
-        </Box>
-      )}
+      {/* Итог дня — карточка со цветовой идентичностью по составу дня
+          (серый/фиолет/красный/бирюза/зелёный, градиент на смешанном). */}
+      {dayList.length > 0 && <DaySummaryCard summary={summary} />}
 
       {dayList.length === 0 ? (
         selected === todayKey ? (
@@ -257,11 +227,15 @@ export default function CalendarScreen({
             onCreate={onCreate}
           />
         ) : (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-            {selected > todayKey
-              ? t("На этот день ничего не запланировано.", "Nothing planned for this day.")
-              : t("В этот день тренировок не было.", "No workouts on this day.")}
-          </Typography>
+          // Прошлый/будущий пустой день — серая карточка итога дня.
+          <DaySummaryCard
+            summary={summary}
+            emptyLabel={
+              selected > todayKey
+                ? t("Ничего не запланировано", "Nothing planned")
+                : t("Не было тренировок", "No workouts")
+            }
+          />
         )
       ) : (
         <SessionTimeline

@@ -4,7 +4,7 @@
 // восстановление). Чистые функции, считаются по фактическим сессиям дня.
 
 import { getLang } from "../i18n";
-import { sessionDurationSec, sessionVolume } from "../types";
+import { sessionDurationSec, sessionSetCount, sessionVolume } from "../types";
 import type { Session, SessionKind } from "../types";
 
 const KIND_ORDER: SessionKind[] = ["strength", "cardio", "mobility", "recovery"];
@@ -22,6 +22,8 @@ export interface DaySummary {
   headline: string;
   /** Тоннаж силовых за день (только выполненные подходы). */
   tonnage: number;
+  /** Суммарно рабочих подходов силовых за день. */
+  sets: number;
   /** Суммарная активная длительность, сек. */
   durationSec: number;
   /** Суммарная дистанция кардио, м. */
@@ -58,12 +60,16 @@ function labelFor(kind: SessionKind, n: number): string {
 export function daySummary(sessions: Session[]): DaySummary {
   const counts = new Map<SessionKind, number>();
   let tonnage = 0;
+  let sets = 0;
   let durationSec = 0;
   let distanceM = 0;
 
   for (const s of sessions) {
     counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1);
-    if (s.kind === "strength") tonnage += sessionVolume(s);
+    if (s.kind === "strength") {
+      tonnage += sessionVolume(s);
+      sets += sessionSetCount(s);
+    }
     durationSec += sessionDurationSec(s) ?? 0;
     distanceM += s.cardio?.distanceM ?? 0;
   }
@@ -79,6 +85,7 @@ export function daySummary(sessions: Session[]): DaySummary {
     items,
     headline: items.map((i) => i.label).join(" · "),
     tonnage: Math.round(tonnage),
+    sets,
     durationSec,
     distanceM,
     recoveryOnly,
