@@ -16,6 +16,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
 import { newPlannedExercise, newProgramWorkout } from "../lib/store";
+import { exerciseName } from "../lib/types";
 import type {
   Exercise,
   MuscleGroup,
@@ -45,6 +46,8 @@ function move<T>(items: T[], index: number, dir: number): T[] {
   return copy;
 }
 
+import { useT } from "../lib/i18n";
+
 export default function ProgramEditor({
   program,
   exercises,
@@ -53,6 +56,7 @@ export default function ProgramEditor({
   onArchive,
   onCreateExercise,
 }: Props) {
+  const t = useT();
   const [pickingFor, setPickingFor] = useState<string | null>(null);
 
   function updateWorkout(id: string, patch: (w: ProgramWorkout) => ProgramWorkout) {
@@ -80,21 +84,32 @@ export default function ProgramEditor({
   return (
     <Box sx={{ pb: 6 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
-        <IconButton onClick={onBack} edge="start" aria-label="Назад">
+        <IconButton onClick={onBack} edge="start" aria-label={t("Назад", "Back")}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="body2" color="text.secondary">
-          Программа
+          {t("Программа", "Program")}
         </Typography>
       </Stack>
 
       <TextField
         fullWidth
         variant="standard"
-        placeholder="Название программы"
+        placeholder={t("Название программы", "Program name")}
         value={program.name}
         onChange={(e) => onChange({ ...program, name: e.target.value })}
         slotProps={{ input: { style: { fontSize: 24, fontWeight: 700 } } }}
+        sx={{ mb: 1.5 }}
+      />
+
+      <TextField
+        fullWidth
+        multiline
+        minRows={1}
+        variant="standard"
+        placeholder={t("Описание: для чего программа, как устроена", "Description: what it is for, how it works")}
+        value={program.description ?? ""}
+        onChange={(e) => onChange({ ...program, description: e.target.value || null })}
         sx={{ mb: 3 }}
       />
 
@@ -110,7 +125,7 @@ export default function ProgramEditor({
             />
             <IconButton
               size="small"
-              aria-label="Выше"
+              aria-label={t("Выше", "Move up")}
               disabled={wi === 0}
               onClick={() => onChange({ ...program, workouts: reindex(move(workouts, wi, -1)) })}
             >
@@ -118,7 +133,7 @@ export default function ProgramEditor({
             </IconButton>
             <IconButton
               size="small"
-              aria-label="Ниже"
+              aria-label={t("Ниже", "Move down")}
               disabled={wi === workouts.length - 1}
               onClick={() => onChange({ ...program, workouts: reindex(move(workouts, wi, 1)) })}
             >
@@ -126,7 +141,7 @@ export default function ProgramEditor({
             </IconButton>
             <IconButton
               size="small"
-              aria-label="Удалить тренировку"
+              aria-label={t("Удалить тренировку", "Delete workout")}
               onClick={() =>
                 onChange({
                   ...program,
@@ -142,16 +157,16 @@ export default function ProgramEditor({
             {[...workout.exercises]
               .sort((a, b) => a.order - b.order)
               .map((pe, pi, arr) => {
-                const name = exercises.find((e) => e.id === pe.exerciseId)?.name;
+                const name = exerciseName(exercises.find((e) => e.id === pe.exerciseId));
                 return (
                   <Box key={pe.id}>
                     <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
                       <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
-                        {name ?? "Упражнение"}
+                        {name ?? t("Упражнение", "Exercise")}
                       </Typography>
                       <IconButton
                         size="small"
-                        aria-label="Выше"
+                        aria-label={t("Выше", "Move up")}
                         disabled={pi === 0}
                         onClick={() =>
                           updateWorkout(workout.id, (w) => ({
@@ -164,7 +179,7 @@ export default function ProgramEditor({
                       </IconButton>
                       <IconButton
                         size="small"
-                        aria-label="Ниже"
+                        aria-label={t("Ниже", "Move down")}
                         disabled={pi === arr.length - 1}
                         onClick={() =>
                           updateWorkout(workout.id, (w) => ({
@@ -177,7 +192,7 @@ export default function ProgramEditor({
                       </IconButton>
                       <IconButton
                         size="small"
-                        aria-label="Убрать"
+                        aria-label={t("Убрать", "Remove")}
                         onClick={() =>
                           updateWorkout(workout.id, (w) => ({
                             ...w,
@@ -190,14 +205,14 @@ export default function ProgramEditor({
                     </Stack>
                     <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
                       <NumberField
-                        label="Подх."
+                        label={t("Подх.", "Sets")}
                         integer
                         value={pe.targetSets}
                         onChange={(v) => patchPlanned(workout.id, pe.id, { targetSets: v ?? 1 })}
                         sx={{ width: 64 }}
                       />
                       <NumberField
-                        label="Повт."
+                        label={t("Повт.", "Reps")}
                         integer
                         value={pe.targetRepMin ?? null}
                         onChange={(v) => patchPlanned(workout.id, pe.id, { targetRepMin: v })}
@@ -211,7 +226,7 @@ export default function ProgramEditor({
                         sx={{ width: 64 }}
                       />
                       <NumberField
-                        label="Вес, кг"
+                        label={t("Вес, кг", "Weight, kg")}
                         value={pe.targetWeight ?? null}
                         onChange={(v) => patchPlanned(workout.id, pe.id, { targetWeight: v })}
                         sx={{ flex: 1 }}
@@ -228,7 +243,7 @@ export default function ProgramEditor({
             onClick={() => setPickingFor(workout.id)}
             sx={{ mt: 1 }}
           >
-            Упражнение
+            {t("Упражнение", "Exercise")}
           </Button>
         </Paper>
       ))}
@@ -244,14 +259,14 @@ export default function ProgramEditor({
           })
         }
       >
-        Добавить тренировку
+        {t("Добавить тренировку", "Add workout")}
       </Button>
 
       <Button fullWidth variant="contained" onClick={onBack} sx={{ mt: 2 }}>
-        Готово
+        {t("Готово", "Done")}
       </Button>
       <Button fullWidth color="error" onClick={onArchive} sx={{ mt: 1 }}>
-        Архивировать программу
+        {t("Архивировать программу", "Archive program")}
       </Button>
 
       <ExercisePickerDialog

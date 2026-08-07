@@ -3,147 +3,235 @@ import {
   Box,
   Button,
   Chip,
-  FormControlLabel,
   IconButton,
   Paper,
   Stack,
-  Switch,
+  Tab,
+  Tabs,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import EditIcon from "@mui/icons-material/Edit";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import type { Exercise, TrainingProgram } from "../lib/types";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import type { TrainingProgram } from "../lib/types";
+import { PROGRAM_PRESETS } from "../lib/programLibrary";
+import type { ProgramPreset } from "../lib/programLibrary";
+import { catalogNameEn } from "../lib/catalog";
 
 interface Props {
   programs: TrainingProgram[];
-  exercises: Exercise[];
   onBack?: () => void;
-  onStart: (program: TrainingProgram, workoutIndex: number, deload: boolean) => void;
-  onEdit: (program: TrainingProgram) => void;
+  onOpen: (program: TrainingProgram) => void;
   onCreate: () => void;
+  onAddPreset: (preset: ProgramPreset) => void;
 }
+
+type LibTab = "mine" | "library";
+
+function IconTile() {
+  return (
+    <Box
+      sx={{
+        width: 46,
+        height: 46,
+        borderRadius: 2,
+        flexShrink: 0,
+        display: "grid",
+        placeItems: "center",
+        bgcolor: "action.hover",
+        color: "primary.main",
+      }}
+    >
+      <FitnessCenterIcon fontSize="small" />
+    </Box>
+  );
+}
+
+import { useT } from "../lib/i18n";
 
 export default function ProgramsScreen({
   programs,
-  exercises,
   onBack,
-  onStart,
-  onEdit,
+  onOpen,
   onCreate,
+  onAddPreset,
 }: Props) {
-  const [deload, setDeload] = useState(false);
-  const active = programs.filter((p) => !p.archivedAt);
-  const program = active[0] ?? null;
+  const t = useT();
+  const [tab, setTab] = useState<LibTab>("mine");
+  const [preview, setPreview] = useState<ProgramPreset | null>(null);
+  const mine = programs.filter((p) => !p.archivedAt);
 
-  const nameOf = (id: string) =>
-    exercises.find((e) => e.id === id)?.name ?? "Упражнение";
+  // Превью готовой программы из библиотеки.
+  if (preview) {
+    return (
+      <Box sx={{ pb: 10 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
+          <IconButton onClick={() => setPreview(null)} edge="start" aria-label={t("Назад", "Back")}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h1" sx={{ flex: 1 }} noWrap>
+            {preview.name}
+          </Typography>
+        </Stack>
+        <Chip size="small" variant="outlined" label={preview.subtitle} sx={{ mb: 1.5 }} />
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {preview.description}
+        </Typography>
+
+        <Typography variant="h2" sx={{ mb: 1.5 }}>
+          {t("Тренировки в программе", "Workouts in program")}
+        </Typography>
+        <Stack spacing={1}>
+          {preview.workouts.map((w) => (
+            <Paper key={w.name} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+              <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+                <IconTile />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="subtitle2" noWrap>
+                    {w.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+                    {w.exercises.length} {t("упр.", "ex.")} · {w.exercises.slice(0, 3).map((e) => catalogNameEn(e.name)).join(" · ")}
+                    {w.exercises.length > 3 ? "…" : ""}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
+
+        <Button
+          fullWidth
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => onAddPreset(preview)}
+          sx={{ mt: 2 }}
+        >
+          {t("Добавить в мои программы", "Add to my programs")}
+        </Button>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ pb: 10 }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
         {onBack && (
-          <IconButton onClick={onBack} edge="start" aria-label="Назад">
+          <IconButton onClick={onBack} edge="start" aria-label={t("Назад", "Back")}>
             <ArrowBackIcon />
           </IconButton>
         )}
-        <Typography variant="h1">Программа</Typography>
+        <Typography variant="h1">{t("Программы", "Programs")}</Typography>
       </Stack>
 
-      {!program ? (
-        <>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Собери сплит A/B/C/D — и запускай тренировку дня в один тап, с
-            переносом весов и предзаполнением из плана.
-          </Typography>
-          <Button
-            fullWidth
-            variant="contained"
-            startIcon={<AddIcon />}
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{
+          mb: 2,
+          minHeight: 40,
+          "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontSize: 14 },
+        }}
+      >
+        <Tab label={t("Мои программы", "My programs")} value="mine" />
+        <Tab label={t("Библиотека", "Library")} value="library" />
+      </Tabs>
+
+      {tab === "mine" && (
+        <Stack spacing={1}>
+          {/* Карточка создания */}
+          <Paper
+            variant="outlined"
             onClick={onCreate}
+            sx={{
+              p: 1.5,
+              borderRadius: 2,
+              cursor: "pointer",
+              borderStyle: "dashed",
+              borderColor: "primary.main",
+            }}
           >
-            Создать программу
-          </Button>
-        </>
-      ) : (
-        <>
-          <Stack
-            direction="row"
-            sx={{ alignItems: "center", justifyContent: "space-between", mb: 0.5 }}
-          >
-            <Typography variant="h2">{program.name}</Typography>
-            <Button size="small" startIcon={<EditIcon />} onClick={() => onEdit(program)}>
-              Изменить
-            </Button>
-          </Stack>
-          <Typography variant="caption" color="text.secondary">
-            Круг {program.cycleNumber}
-          </Typography>
+            <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+              <Box
+                sx={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 2,
+                  flexShrink: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  color: "primary.main",
+                }}
+              >
+                <AddIcon />
+              </Box>
+              <Typography variant="subtitle2" sx={{ color: "primary.main" }}>
+                {t("Создать программу", "Create program")}
+              </Typography>
+            </Stack>
+          </Paper>
 
-          <Stack spacing={1} sx={{ mt: 2 }}>
-            {[...program.workouts]
-              .sort((a, b) => a.order - b.order)
-              .map((workout, index) => {
-                const isNext = index === program.currentWorkoutIndex;
-                const names = workout.exercises
-                  .map((pe) => nameOf(pe.exerciseId))
-                  .slice(0, 3)
-                  .join(" · ");
-                return (
-                  <Paper
-                    key={workout.id}
-                    variant="outlined"
-                    onClick={() => onStart(program, index, deload)}
-                    sx={{
-                      p: 1.5,
-                      borderRadius: 2,
-                      cursor: "pointer",
-                      borderColor: isNext ? "primary.main" : undefined,
-                    }}
-                  >
-                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                      <Typography variant="subtitle2" sx={{ flex: 1 }}>
-                        {workout.name}
+          {mine.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+              {t("Пока нет своих программ. Создай с нуля или возьми готовую из библиотеки.", "No programs yet. Create one from scratch or grab a ready one from the library.")}
+            </Typography>
+          ) : (
+            mine.map((program) => {
+              const count = program.workouts.length;
+              return (
+                <Paper
+                  key={program.id}
+                  variant="outlined"
+                  onClick={() => onOpen(program)}
+                  sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}
+                >
+                  <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+                    <IconTile />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" noWrap>
+                        {program.name}
                       </Typography>
-                      {isNext && (
-                        <Chip
-                          label="следующая"
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      )}
-                      <PlayArrowIcon fontSize="small" sx={{ color: "primary.main" }} />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      {workout.exercises.length === 0
-                        ? "Пусто — добавь упражнения"
-                        : `${names}${workout.exercises.length > 3 ? "…" : ""}`}
-                    </Typography>
-                  </Paper>
-                );
-              })}
-          </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        {count} {count === 1 ? t("тренировка", "workout") : t("тренировки", "workouts")} · {t("круг", "cycle")} {program.cycleNumber}
+                      </Typography>
+                    </Box>
+                    <ChevronRightIcon sx={{ color: "text.disabled" }} />
+                  </Stack>
+                </Paper>
+              );
+            })
+          )}
+        </Stack>
+      )}
 
-          <FormControlLabel
-            control={
-              <Switch checked={deload} onChange={(e) => setDeload(e.target.checked)} />
-            }
-            label="Разгрузочная неделя"
-            sx={{ mt: 1 }}
-          />
-
-          <Button
-            fullWidth
-            variant="contained"
-            startIcon={<PlayArrowIcon />}
-            onClick={() => onStart(program, program.currentWorkoutIndex, deload)}
-            sx={{ mt: 1 }}
-          >
-            Начать тренировку дня
-          </Button>
-        </>
+      {tab === "library" && (
+        <Stack spacing={1}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+            {t("Готовые программы. Открой, посмотри тренировки и добавь к себе — потом меняй как захочешь.", "Ready-made programs. Open one, review its workouts and add it — then tweak it however you like.")}
+          </Typography>
+          {PROGRAM_PRESETS.map((preset) => (
+            <Paper
+              key={preset.key}
+              variant="outlined"
+              onClick={() => setPreview(preset)}
+              sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}
+            >
+              <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+                <IconTile />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="subtitle2" noWrap>
+                    {preset.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {preset.subtitle}
+                  </Typography>
+                </Box>
+                <ChevronRightIcon sx={{ color: "text.disabled" }} />
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
       )}
     </Box>
   );
