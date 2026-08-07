@@ -10,6 +10,7 @@ export * from "./records";
 export * from "./muscles";
 export * from "./muscle";
 export * from "./load";
+export * from "./daySummary";
 export * from "./sessionLoad";
 export * from "./rest";
 export * from "./autoreg";
