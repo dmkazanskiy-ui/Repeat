@@ -12,6 +12,7 @@ export * from "./muscle";
 export * from "./load";
 export * from "./sessionLoad";
 export * from "./rest";
+export * from "./autoreg";
 export * from "./plateau";
 export * from "./program";
 export * from "./recovery";

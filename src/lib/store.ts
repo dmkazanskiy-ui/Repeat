@@ -298,6 +298,9 @@ export function startProgramWorkout(
   workout: ProgramWorkout,
   date: string,
   lastSession?: Session | null,
+  // Авторегуляция: карта корректировок по plannedExerciseId. Когда задана —
+  // вес/повторы/число подходов берутся из неё (предложение), иначе перенос как есть.
+  adjust?: Record<string, { weight: number | null; reps: number | null; sets: number }>,
 ): Session {
   const exercises: SessionExercise[] = [...workout.exercises]
     .sort((a, b) => a.order - b.order)
@@ -305,13 +308,14 @@ export function startProgramWorkout(
       const prev = lastSession?.exercises.find(
         (e) => e.plannedExerciseId === pe.id || e.exerciseId === pe.exerciseId,
       );
-      const count = Math.max(1, pe.targetSets || 1);
+      const adj = adjust?.[pe.id];
+      const count = Math.max(1, adj?.sets ?? pe.targetSets ?? 1);
       const sets: WorkoutSet[] = Array.from({ length: count }, (_, i) => {
         const prevSet = prev?.sets[i] ?? prev?.sets[(prev?.sets.length ?? 1) - 1];
         return {
           id: newId(),
-          weight: prevSet?.weight ?? pe.targetWeight ?? null,
-          reps: prevSet?.reps ?? pe.targetRepMin ?? null,
+          weight: adj ? adj.weight : (prevSet?.weight ?? pe.targetWeight ?? null),
+          reps: adj ? adj.reps : (prevSet?.reps ?? pe.targetRepMin ?? null),
           done: false,
         };
       });

@@ -41,6 +41,12 @@ import {
 } from "./lib/store";
 import { newId } from "./lib/id";
 import { today } from "./lib/format";
+import {
+  acuteChronicLoad,
+  autoregPlan,
+  autoregToast,
+  readiness,
+} from "./lib/analytics";
 import CalendarScreen from "./screens/CalendarScreen";
 import HistoryScreen from "./screens/HistoryScreen";
 import AnalyticsScreen from "./screens/AnalyticsScreen";
@@ -327,14 +333,30 @@ export default function App() {
       const workout = [...program.workouts].sort((a, b) => a.order - b.order)[index];
       if (!workout) return;
       const last = lastSessionOfWorkout(sessions, workout.id);
+      // Авторегуляция: корректируем перенос по факту прошлого раза и готовности.
+      // На разгрузке не вмешиваемся — там нагрузка уже намеренно снижена.
+      const ready = readiness(sessions, recovery, date);
+      const acwr = acuteChronicLoad(sessions, date);
+      const plan = deload
+        ? null
+        : autoregPlan({
+            workout,
+            lastSession: last,
+            exercises,
+            readinessScore: ready.score,
+            readinessHasSignal: ready.hasSignal,
+            acwrLevel: acwr.level,
+          });
       const session = startProgramWorkout(
         { ...program, currentWorkoutIndex: index },
         workout,
         date,
         last,
+        plan?.byPlanned,
       );
       session.deload = deload;
       commit([...sessions, session]);
+      if (plan?.hasSignal) setToast(autoregToast(plan, exercises));
       // Продвигаем цикл от выбранного дня, а не всегда от текущего.
       commitPrograms(
         programs.map((p) =>
@@ -351,7 +373,7 @@ export default function App() {
       setOpenId(session.id);
       setEditing(true);
     },
-    [sessions, programs, commit, commitPrograms],
+    [sessions, programs, recovery, exercises, commit, commitPrograms],
   );
 
   const pasteSession = useCallback(() => {
