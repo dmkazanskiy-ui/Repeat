@@ -1,16 +1,35 @@
 import type { CardioKind } from "./types";
+import { L, getLang } from "./i18n";
 
-const MONTHS = [
+const MONTHS_RU = [
   "января", "февраля", "марта", "апреля", "мая", "июня",
   "июля", "августа", "сентября", "октября", "ноября", "декабря",
 ];
-
-const MONTHS_NOM = [
+const MONTHS_EN = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const MONTHS_NOM_RU = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ];
+const MONTHS_NOM_EN = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
-export const WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const WEEKDAYS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Короткие дни недели (Пн–Вс) на текущем языке. */
+export function weekdaysShort(): string[] {
+  return getLang() === "ru" ? WEEKDAYS_RU : WEEKDAYS_EN;
+}
+
+/** Десятичный разделитель текущего языка. */
+function dec(value: number): string {
+  return String(value).replace(".", L(",", "."));
+}
 
 /** Локальная дата в YYYY-MM-DD (не UTC — иначе поздние тренировки уедут на день назад). */
 export function toDateKey(date: Date): string {
@@ -29,12 +48,18 @@ export function parseDateKey(key: string): Date {
 }
 
 export function monthTitle(date: Date): string {
-  return `${MONTHS_NOM[date.getMonth()]} ${date.getFullYear()}`;
+  const months = getLang() === "ru" ? MONTHS_NOM_RU : MONTHS_NOM_EN;
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 export function formatDate(key: string): string {
   const date = parseDateKey(key);
-  const label = `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  const ru = getLang() === "ru";
+  const months = ru ? MONTHS_RU : MONTHS_EN;
+  // РУ: «5 августа»; EN: «Aug 5».
+  const label = ru
+    ? `${date.getDate()} ${months[date.getMonth()]}`
+    : `${months[date.getMonth()]} ${date.getDate()}`;
   return date.getFullYear() === new Date().getFullYear()
     ? label
     : `${label} ${date.getFullYear()}`;
@@ -42,9 +67,9 @@ export function formatDate(key: string): string {
 
 export function formatDateFull(key: string): string {
   const diff = daysBetween(today(), key);
-  if (diff === 0) return `Сегодня, ${formatDate(key)}`;
-  if (diff === 1) return `Вчера, ${formatDate(key)}`;
-  if (diff === -1) return `Завтра, ${formatDate(key)}`;
+  if (diff === 0) return `${L("Сегодня", "Today")}, ${formatDate(key)}`;
+  if (diff === 1) return `${L("Вчера", "Yesterday")}, ${formatDate(key)}`;
+  if (diff === -1) return `${L("Завтра", "Tomorrow")}, ${formatDate(key)}`;
   return formatDate(key);
 }
 
@@ -103,12 +128,13 @@ export function nowTime(): string {
 /** Тоннаж: «4 820 кг» с неразрывными пробелами в разрядах. */
 export function formatVolume(kg: number): string {
   if (!kg) return "—";
-  return `${Math.round(kg).toLocaleString("ru-RU")} кг`;
+  const locale = getLang() === "ru" ? "ru-RU" : "en-US";
+  return `${Math.round(kg).toLocaleString(locale)} ${L("кг", "kg")}`;
 }
 
 export function formatWeight(value: number | null): string {
   if (value == null) return "—";
-  return String(Number(value.toFixed(2))).replace(".", ",");
+  return dec(Number(value.toFixed(2)));
 }
 
 export function formatDuration(seconds: number | null): string {
@@ -116,8 +142,10 @@ export function formatDuration(seconds: number | null): string {
   const total = Math.round(seconds / 60);
   const hours = Math.floor(total / 60);
   const minutes = total % 60;
-  if (hours === 0) return `${minutes} мин`;
-  return minutes === 0 ? `${hours} ч` : `${hours} ч ${minutes} мин`;
+  const h = L("ч", "h");
+  const min = L("мин", "min");
+  if (hours === 0) return `${minutes} ${min}`;
+  return minutes === 0 ? `${hours} ${h}` : `${hours} ${h} ${minutes} ${min}`;
 }
 
 /** Короткие отрезки в виде 1:30 — «2 мин» для интервала бесполезно. */
@@ -133,8 +161,8 @@ export function formatDistance(
   kind: CardioKind | null,
 ): string {
   if (meters == null) return "—";
-  if (kind === "swim") return `${Math.round(meters)} м`;
-  return `${(meters / 1000).toFixed(2).replace(".", ",")} км`;
+  if (kind === "swim") return `${Math.round(meters)} ${L("м", "m")}`;
+  return `${dec(Number((meters / 1000).toFixed(2)))} ${L("км", "km")}`;
 }
 
 /**
@@ -151,6 +179,6 @@ export function formatPace(
   const perUnit = seconds / (meters / unit);
   const minutes = Math.floor(perUnit / 60);
   const rest = Math.round(perUnit % 60);
-  const label = kind === "swim" ? "/100 м" : "/км";
+  const label = kind === "swim" ? L("/100 м", "/100 m") : L("/км", "/km");
   return `${minutes}:${`${rest}`.padStart(2, "0")}${label}`;
 }

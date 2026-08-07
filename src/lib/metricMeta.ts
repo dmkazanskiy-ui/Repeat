@@ -1,12 +1,13 @@
 import { formatDuration, formatVolume } from "./format";
 import type { MetricKey } from "./analytics";
+import { L } from "./i18n";
 
 function int(v: number): string {
   return String(Math.round(v));
 }
 
 function km(v: number): string {
-  return v ? `${(v / 1000).toFixed(1).replace(".", ",")} км` : "—";
+  return v ? `${(v / 1000).toFixed(1).replace(".", L(",", "."))} ${L("км", "km")}` : "—";
 }
 
 /** Подпись и форматтер для каждой метрики — общий источник для KPI и графика. */
@@ -14,24 +15,24 @@ export const METRIC_META: Record<
   MetricKey,
   { label: string; format: (v: number) => string }
 > = {
-  workouts: { label: "Тренировки", format: int },
-  activeDays: { label: "Дни", format: int },
-  duration: { label: "Длительность", format: (v) => formatDuration(v || null) },
-  volume: { label: "Тоннаж", format: (v) => formatVolume(v) },
-  distance: { label: "Дистанция", format: km },
-  exercises: { label: "Упражнения", format: int },
-  sets: { label: "Подходы", format: int },
-  reps: { label: "Повторы", format: int },
+  workouts: { get label() { return L("Тренировки", "Workouts"); }, format: int },
+  activeDays: { get label() { return L("Дни", "Days"); }, format: int },
+  duration: { get label() { return L("Длительность", "Duration"); }, format: (v) => formatDuration(v || null) },
+  volume: { get label() { return L("Тоннаж", "Tonnage"); }, format: (v) => formatVolume(v) },
+  distance: { get label() { return L("Дистанция", "Distance"); }, format: km },
+  exercises: { get label() { return L("Упражнения", "Exercises"); }, format: int },
+  sets: { get label() { return L("Подходы", "Sets"); }, format: int },
+  reps: { get label() { return L("Повторы", "Reps"); }, format: int },
 };
 
 /** Метрики главного графика в порядке показа (activeDays только в KPI). */
 export const CHART_METRICS: MetricKey[] = [
+  "workouts",
   "volume",
   "sets",
   "reps",
   "duration",
   "distance",
-  "workouts",
 ];
 
 /** Все метрики KPI-ленты. */

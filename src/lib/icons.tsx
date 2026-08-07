@@ -24,6 +24,10 @@ import SpaIcon from "@mui/icons-material/Spa";
 import WavesIcon from "@mui/icons-material/Waves";
 import BoltIcon from "@mui/icons-material/Bolt";
 import TimerIcon from "@mui/icons-material/Timer";
+import HotTubIcon from "@mui/icons-material/HotTub";
+import AcUnitIcon from "@mui/icons-material/AcUnit";
+import BedIcon from "@mui/icons-material/Bed";
+import HealingIcon from "@mui/icons-material/Healing";
 
 /** Набор иконок для видов тренировок; ключ хранится в данных. */
 export const ICONS = {
@@ -53,6 +57,10 @@ export const ICONS = {
   waves: WavesIcon,
   bolt: BoltIcon,
   timer: TimerIcon,
+  hottub: HotTubIcon,
+  cold: AcUnitIcon,
+  sleep: BedIcon,
+  healing: HealingIcon,
 } as const;
 
 export type IconKey = keyof typeof ICONS;
