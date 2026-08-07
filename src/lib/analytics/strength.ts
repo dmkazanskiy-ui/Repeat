@@ -1,5 +1,6 @@
-import { bestE1rm, epley, setVolume } from "../types";
+import { bestE1rm, epley, exerciseName, setVolume } from "../types";
 import type { Exercise, Session, SessionExercise } from "../types";
+import { L } from "../i18n";
 import { isWorkingSet } from "./metrics";
 import { diffDays } from "./period";
 import type { ExercisePerformancePoint } from "./types";
@@ -138,7 +139,7 @@ export function trainedExercises(
 
     result.push({
       id,
-      name: exercises.find((e) => e.id === id)?.name ?? "Упражнение",
+      name: (() => { const ex = exercises.find((e) => e.id === id); return ex ? exerciseName(ex) : L("Упражнение", "Exercise"); })(),
       points,
       bestWeight: Math.max(0, ...points.map((p) => p.weight ?? 0)),
       bestReps: Math.max(0, ...points.map((p) => p.reps ?? 0)),

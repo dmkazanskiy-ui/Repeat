@@ -1,4 +1,4 @@
-import { sessionDurationSec, setVolume } from "../types";
+import { countsDoneOnly, sessionDurationSec, setVolume } from "../types";
 import type { Session, WorkoutSet } from "../types";
 import { bucketKey, bucketStarts } from "./period";
 import type {
@@ -19,9 +19,13 @@ function workingSets(session: Session): WorkoutSet[] {
   return session.exercises.flatMap((ex) => ex.sets.filter(isWorkingSet));
 }
 
-/** Тоннаж рабочих подходов силовой (с учётом дропов, без разминок). */
+/** Тоннаж рабочих подходов силовой — честный, по выполненным подходам. */
 export function workingVolume(session: Session): number {
-  return workingSets(session).reduce((sum, set) => sum + setVolume(set), 0);
+  const doneOnly = countsDoneOnly(session);
+  return workingSets(session).reduce(
+    (sum, set) => sum + (doneOnly && !set.done ? 0 : setVolume(set)),
+    0,
+  );
 }
 
 /** Рабочие повторы: повторы подхода плюс повторы его дроп-ступеней. */

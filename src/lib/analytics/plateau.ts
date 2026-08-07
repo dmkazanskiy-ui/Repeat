@@ -7,6 +7,7 @@ import { epley } from "../types";
 import type { Exercise, Session, SessionExercise } from "../types";
 import { isWorkingSet } from "./metrics";
 import { weekStart } from "./period";
+import { exerciseName } from "../types";
 
 const IMPROVEMENT = 1.015; // +1.5% к пику считается прорывом, а не плато
 
@@ -135,7 +136,7 @@ export function activePlateaus(
     if (p.currentWeeks >= minWeeks) {
       result.push({
         id,
-        name: exercises.find((e) => e.id === id)?.name ?? "Упражнение",
+        name: exerciseName(exercises.find((e) => e.id === id)),
         weeks: p.currentWeeks,
       });
     }

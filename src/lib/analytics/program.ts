@@ -1,5 +1,6 @@
-import { epley, isDone, setVolume } from "../types";
+import { epley, exerciseName, isDone, setVolume } from "../types";
 import type { Exercise, Session, SessionExercise, TrainingProgram } from "../types";
+import { L } from "../i18n";
 import { isWorkingSet } from "./metrics";
 import { diffDays } from "./period";
 
@@ -83,8 +84,10 @@ function compareSessions(
   workoutName: string,
   exercises: Exercise[],
 ): WorkoutComparison {
-  const nameOf = (id: string) =>
-    exercises.find((e) => e.id === id)?.name ?? "Упражнение";
+  const nameOf = (id: string) => {
+    const ex = exercises.find((e) => e.id === id);
+    return ex ? exerciseName(ex) : L("Упражнение", "Exercise");
+  };
   const prevById = new Map(prev.exercises.map((e) => [e.exerciseId, e]));
 
   const deltas: ExerciseDelta[] = curr.exercises.map((entry) => {

@@ -10,6 +10,7 @@ import { isWorkingSet } from "./metrics";
 import { weekStart } from "./period";
 import type { Confidence } from "./types";
 import type { LoadLevel } from "./muscle";
+import { L } from "../i18n";
 
 /** Рабочие подходы силовой сессии (разминка не в счёт). */
 export function workingSetsOf(session: Session): number {
@@ -39,10 +40,10 @@ const LEVEL_FROM_RATIO = (ratio: number): LoadLevel =>
   ratio < 0.8 ? "below" : ratio <= 1.2 ? "usual" : ratio <= 1.6 ? "above" : "wellAbove";
 
 const LOAD_LABEL: Record<LoadLevel, string> = {
-  below: "ниже обычного",
-  usual: "в пределах обычного",
-  above: "выше обычного",
-  wellAbove: "значительно выше обычного",
+  get below() { return L("ниже обычного", "below usual"); },
+  get usual() { return L("в пределах обычного", "around usual"); },
+  get above() { return L("выше обычного", "above usual"); },
+  get wellAbove() { return L("значительно выше обычного", "well above usual"); },
 };
 
 export interface LoadBaseline {
@@ -96,6 +97,8 @@ export interface HeatCell {
   sets: number;
   hasSession: boolean;
   level: number; // 0 нет тренировки, 1 лёгкая … 4 высокая
+  /** В этот день было восстановление (отдых/массаж/баня…) без тренировки. */
+  recovery: boolean;
 }
 
 /**
@@ -107,6 +110,7 @@ export function heatmap(
   sessions: Session[],
   weeks = 12,
   asOf: string = today(),
+  recoveryDates: Set<string> = new Set(),
 ): HeatCell[][] {
   const firstWeek = weekStart(addDays(asOf, -7 * (weeks - 1)));
   const byDate = new Map<string, { sets: number; any: boolean }>();
@@ -136,7 +140,7 @@ export function heatmap(
           level = r < 0.66 ? 1 : r < 1.15 ? 2 : r < 1.75 ? 3 : 4;
         }
       }
-      col.push({ date, sets, hasSession, level });
+      col.push({ date, sets, hasSession, level, recovery: !hasSession && recoveryDates.has(date) });
     }
     grid.push(col);
   }

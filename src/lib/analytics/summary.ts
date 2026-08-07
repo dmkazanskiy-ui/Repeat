@@ -11,6 +11,7 @@ import { muscleLoads } from "./muscle";
 import { programProgress } from "./program";
 import { newRecordsInPeriod } from "./records";
 import type { AnalyticsPeriod } from "./types";
+import { exerciseName } from "../types";
 
 export interface SummaryFacts {
   workouts: number;
@@ -40,7 +41,7 @@ export function summaryFacts(
     for (const ex of s.exercises) {
       const e = bestE1rm(ex);
       if (e != null && (best == null || e > best.value)) {
-        best = { name: exercises.find((x) => x.id === ex.exerciseId)?.name ?? "упражнение", value: e };
+        best = { name: exerciseName(exercises.find((x) => x.id === ex.exerciseId)), value: e };
       }
     }
   }

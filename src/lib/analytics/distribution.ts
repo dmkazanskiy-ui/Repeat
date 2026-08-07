@@ -1,13 +1,15 @@
 import { sessionDurationSec } from "../types";
 import type { Session } from "../types";
 import type { ActivitySlice } from "./types";
+import { L } from "../i18n";
 
 const LABELS: Record<string, string> = {
-  strength: "Силовые",
-  run: "Бег",
-  bike: "Велосипед",
-  swim: "Плавание",
-  other: "Другое",
+  get strength() { return L("Силовые", "Strength"); },
+  get run() { return L("Бег", "Running"); },
+  get walk() { return L("Ходьба", "Walking"); },
+  get bike() { return L("Велосипед", "Cycling"); },
+  get swim() { return L("Плавание", "Swimming"); },
+  get other() { return L("Другое", "Other"); },
 };
 
 /** Категория активности для диаграммы распределения. */
@@ -16,8 +18,10 @@ export function activityKey(session: Session): string {
   if (session.kind === "cardio") {
     switch (session.cardioKind) {
       case "run":
-      case "treadmill":
+      case "treadmill_run":
         return "run";
+      case "treadmill":
+        return "walk";
       case "bike":
         return "bike";
       case "swim":

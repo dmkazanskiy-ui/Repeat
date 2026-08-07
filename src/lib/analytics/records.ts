@@ -1,8 +1,9 @@
-import { epley, sessionDurationSec } from "../types";
+import { epley, exerciseName, sessionDurationSec } from "../types";
 import type { Exercise, Session } from "../types";
 import { workingVolume } from "./metrics";
 import { exerciseWorkingVolume } from "./strength";
 import type { PersonalRecord, PrType } from "./types";
+import { L } from "../i18n";
 
 interface Peak {
   value: number;
@@ -60,16 +61,16 @@ export function newRecordsInPeriod(
   const before = sessions.filter((s) => s.date < start);
   const during = sessions.filter((s) => s.date >= start && s.date <= end);
   const nameOf = (id: string) =>
-    exercises.find((e) => e.id === id)?.name ?? "Упражнение";
+    exerciseName(exercises.find((e) => e.id === id));
 
   const beforeEx = exercisePeaks(before);
   const duringEx = exercisePeaks(during);
   const records: PersonalRecord[] = [];
 
   const exerciseTypes: Array<[PrType, Map<string, Peak>, Map<string, Peak>, string]> = [
-    ["e1rm", duringEx.e1rm, beforeEx.e1rm, "кг"],
-    ["weight", duringEx.weight, beforeEx.weight, "кг"],
-    ["exerciseVolume", duringEx.volume, beforeEx.volume, "кг"],
+    ["e1rm", duringEx.e1rm, beforeEx.e1rm, L("кг", "kg")],
+    ["weight", duringEx.weight, beforeEx.weight, L("кг", "kg")],
+    ["exerciseVolume", duringEx.volume, beforeEx.volume, L("кг", "kg")],
   ];
 
   for (const [type, dur, prev, unit] of exerciseTypes) {
@@ -92,9 +93,9 @@ export function newRecordsInPeriod(
   // min — порог значимости: слишком короткие/мелкие результаты не рекорды.
   // Длительность < 60 с (случайно оставленный таймер) рекордом не считаем.
   const globals: Array<[PrType, (s: Session) => number, string, string, number]> = [
-    ["sessionVolume", workingVolume, "Тоннаж тренировки", "кг", 1],
-    ["distance", (s) => (s.kind === "cardio" ? (s.cardio?.distanceM ?? 0) : 0), "Дистанция", "м", 1],
-    ["duration", (s) => sessionDurationSec(s) ?? 0, "Длительность", "с", 60],
+    ["sessionVolume", workingVolume, L("Тоннаж тренировки", "Session tonnage"), L("кг", "kg"), 1],
+    ["distance", (s) => (s.kind === "cardio" ? (s.cardio?.distanceM ?? 0) : 0), L("Дистанция", "Distance"), L("м", "m"), 1],
+    ["duration", (s) => sessionDurationSec(s) ?? 0, L("Длительность", "Duration"), L("с", "s"), 60],
   ];
 
   for (const [type, value, label, unit, min] of globals) {
