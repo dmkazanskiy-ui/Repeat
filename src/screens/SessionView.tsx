@@ -1,5 +1,9 @@
-import { Box, Button, Chip, IconButton, Paper, Stack, Typography } from "@mui/material";
+import { Box, Button, Chip, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
+import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
+import { useMemo, useState } from "react";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import MoodPad from "../components/MoodPad";
 import EditIcon from "@mui/icons-material/Edit";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { ActivityIcon } from "../lib/icons";
@@ -12,15 +16,21 @@ import {
   formatWeight,
 } from "../lib/format";
 import {
+  MOOD_CONTEXTS,
   SESSION_LABELS,
   activityIcon,
   activityLabel,
+  exerciseName,
   exerciseVolume,
   groupExercises,
+  moodContextFor,
+  moodReading,
   sessionDurationSec,
   sessionSetCount,
   sessionVolume,
 } from "../lib/types";
+import { typeColor } from "../lib/activityColors";
+import { useT } from "../lib/i18n";
 import type { Exercise, Session, WorkoutSet } from "../lib/types";
 
 function sessionTitle(session: Session): string {
@@ -34,6 +44,7 @@ interface Props {
   onEdit: () => void;
   onDelete: () => void;
   onCopyToClipboard: () => void;
+  onChange: (session: Session) => void;
 }
 
 /** Подход текстом: «80×5», дропы дописываются стрелкой «→70×6». */
@@ -52,25 +63,52 @@ export default function SessionView({
   onEdit,
   onDelete,
   onCopyToClipboard,
+  onChange,
 }: Props) {
+  const t = useT();
   const duration = sessionDurationSec(session);
+  const moodCtx = moodContextFor(session.kind);
+  const moodCfg = MOOD_CONTEXTS[moodCtx];
+  const [moodOpen, setMoodOpen] = useState(false);
+  // Акцент экрана — цвет типа активности, как на карточке этой тренировки.
+  const theme = useTheme();
+  const color = typeColor(session.kind);
+  const editorTheme = useMemo(
+    () =>
+      createTheme(theme, {
+        palette: { primary: theme.palette.augmentColor({ color: { main: color } }) },
+      }),
+    [theme, color],
+  );
 
   return (
+    <ThemeProvider theme={editorTheme}>
     <Box sx={{ pb: 6 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
-        <IconButton onClick={onBack} edge="start" aria-label="Назад">
+        <IconButton onClick={onBack} edge="start" aria-label={t("Назад", "Back")}>
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
           {formatDateFull(session.date)}
           {session.time ? ` · ${session.time}` : ""}
         </Typography>
-        <Chip label="Завершена" size="small" color="primary" variant="outlined" />
+        <Chip label={t("Завершена", "Completed")} size="small" color="primary" variant="outlined" />
       </Stack>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 2 }}>
-        <Box sx={{ color: "primary.main" }}>
-          <ActivityIcon icon={activityIcon(session)} fontSize="large" />
+        <Box
+          sx={{
+            width: 52,
+            height: 52,
+            borderRadius: 2,
+            flexShrink: 0,
+            display: "grid",
+            placeItems: "center",
+            color,
+            backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
+          }}
+        >
+          <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
         </Box>
         <Box>
           <Typography variant="h1">{sessionTitle(session)}</Typography>
@@ -78,7 +116,7 @@ export default function SessionView({
             <Typography variant="body2" color="text.secondary">
               {[
                 duration != null ? formatDuration(duration) : null,
-                session.avgHr != null ? `${session.avgHr} уд/мин` : null,
+                session.avgHr != null ? `${session.avgHr} ${t("уд/мин", "bpm")}` : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -87,14 +125,57 @@ export default function SessionView({
         </Box>
       </Stack>
 
+      {/* Самочувствие после — точка на 2D-карте (оси под контекст). У
+          восстановления «Как зашло» живёт в своём редакторе. */}
+      <Paper variant="outlined" sx={{ borderRadius: 2, mb: 2, overflow: "hidden" }}>
+        <Box
+          component="button"
+          onClick={() => setMoodOpen((v) => !v)}
+          sx={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            p: 1.75,
+            border: "none",
+            bgcolor: "transparent",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            color: "text.primary",
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <Typography variant="subtitle2">{t("Как ты после?", "How do you feel?")}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {session.mood ? moodReading(moodCtx, session.mood) : t("отметь точку на карте", "mark a point on the map")}
+            </Typography>
+          </Box>
+          {session.mood && (
+            <Box sx={{ width: 12, height: 12, borderRadius: "50%", bgcolor: "primary.main", flexShrink: 0 }} />
+          )}
+          <ExpandMoreRoundedIcon
+            sx={{ color: "text.secondary", transition: "transform .2s", transform: moodOpen ? "rotate(180deg)" : "none" }}
+          />
+        </Box>
+        <Collapse in={moodOpen}>
+          <MoodPad
+            value={session.mood ?? null}
+            onChange={(m) => onChange({ ...session, mood: m })}
+            yLabels={moodCfg.y}
+            xLabels={moodCfg.x}
+            color={color}
+          />
+        </Collapse>
+      </Paper>
+
       {session.kind === "strength" && session.exercises.length > 0 && (
         <>
           <Stack direction="row" spacing={1} sx={{ mb: 1.5, alignItems: "baseline" }}>
             <Typography variant="subtitle2">
-              Тоннаж {formatVolume(sessionVolume(session))}
+              {t("Тоннаж", "Tonnage")} {formatVolume(sessionVolume(session))}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              · {sessionSetCount(session)} подх.
+              · {sessionSetCount(session)} {t("подх.", "sets")}
             </Typography>
           </Stack>
 
@@ -111,7 +192,7 @@ export default function SessionView({
               >
                 {isSuper && (
                   <Chip
-                    label="Супер-сет"
+                    label={t("Супер-сет", "Superset")}
                     size="small"
                     color="primary"
                     variant="outlined"
@@ -125,7 +206,7 @@ export default function SessionView({
                     <Paper key={item.id} variant="outlined" sx={{ p: 1.5, mb: isSuper ? 1 : 1.5 }}>
                       <Stack direction="row" sx={{ mb: 0.5, alignItems: "baseline" }}>
                         <Typography variant="subtitle2" sx={{ flex: 1 }}>
-                          {exercise?.name ?? "Упражнение"}
+                          {exerciseName(exercise)}
                         </Typography>
                         {volume > 0 && (
                           <Typography variant="caption" color="text.secondary">
@@ -152,12 +233,12 @@ export default function SessionView({
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
           <Stack direction="row" spacing={3}>
             <ViewStat
-              label="Дистанция"
+              label={t("Дистанция", "Distance")}
               value={formatDistance(session.cardio.distanceM, session.cardioKind)}
             />
-            <ViewStat label="Время" value={formatDuration(session.cardio.durationSec)} />
+            <ViewStat label={t("Время", "Time")} value={formatDuration(session.cardio.durationSec)} />
             <ViewStat
-              label="Темп"
+              label={t("Темп", "Pace")}
               value={formatPace(
                 session.cardio.distanceM,
                 session.cardio.durationSec,
@@ -165,9 +246,14 @@ export default function SessionView({
               )}
             />
           </Stack>
-          {session.cardio.avgHr != null && (
+          {(session.cardio.avgHr != null || session.cardio.inclineDeg != null) && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-              Средний пульс {session.cardio.avgHr}
+              {[
+                session.cardio.avgHr != null ? `${t("Средний пульс", "Avg HR")} ${session.cardio.avgHr}` : null,
+                session.cardio.inclineDeg != null ? `${t("Наклон", "Incline")} ${session.cardio.inclineDeg}°` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Typography>
           )}
         </Paper>
@@ -188,7 +274,7 @@ export default function SessionView({
         onClick={onEdit}
         sx={{ mt: 1 }}
       >
-        Редактировать
+        {t("Редактировать", "Edit")}
       </Button>
       <Button
         fullWidth
@@ -197,12 +283,13 @@ export default function SessionView({
         onClick={onCopyToClipboard}
         sx={{ mt: 1 }}
       >
-        Скопировать тренировку
+        {t("Скопировать тренировку", "Copy workout")}
       </Button>
       <Button fullWidth color="error" onClick={onDelete} sx={{ mt: 1 }}>
-        Удалить тренировку
+        {t("Удалить тренировку", "Delete workout")}
       </Button>
     </Box>
+    </ThemeProvider>
   );
 }
 

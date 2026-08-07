@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import {
   Box,
   Button,
@@ -16,15 +17,24 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
+import type { Theme } from "@mui/material/styles";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import EditIcon from "@mui/icons-material/Edit";
+import RestTimer from "../components/RestTimer";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
 import StopIcon from "@mui/icons-material/Stop";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
+import { ActivityIcon } from "../lib/icons";
+import { typeColor } from "../lib/activityColors";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
+import { useT } from "../lib/i18n";
 import {
   linkExercises,
   newDrop,
@@ -41,15 +51,22 @@ import {
   formatPace,
   formatVolume,
   nowTime,
+  today,
 } from "../lib/format";
 import {
   CARDIO_LABELS,
+  INTENSITY_OPTIONS,
   MOBILITY_LABELS,
+  activityIcon,
   activityLabel,
+  exerciseName,
   distanceUnit,
+  hasIncline,
   exerciseVolume,
   groupExercises,
+  liveElapsedSec,
   segmentTotals,
+  sessionDoneSetCount,
   sessionDurationSec,
   sessionSetCount,
   sessionVolume,
@@ -81,6 +98,18 @@ interface Props {
   onExitEditing?: () => void;
 }
 
+// Цель отдыха между подходами — запоминаем последнюю выбранную.
+const REST_KEY = "repeat_rest_sec";
+function loadRestSec(): number {
+  try {
+    const v = Number(localStorage.getItem(REST_KEY));
+    if (v >= 15 && v <= 600) return v;
+  } catch {
+    /* ignore */
+  }
+  return 90;
+}
+
 /** Секунды в «1:23:45» или «12:07» — для тикающего таймера тренировки. */
 function formatTimer(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -89,6 +118,65 @@ function formatTimer(seconds: number): string {
   const mm = `${m}`.padStart(h ? 2 : 1, "0");
   const ss = `${s}`.padStart(2, "0");
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * При завершении отмечаем выполненными все заполненные подходы (где есть вес
+ * или повторы) — чтобы не кликать каждую галочку вручную. Пустые не трогаем.
+ */
+function markFilledSetsDone(exercises: SessionExercise[]): SessionExercise[] {
+  return exercises.map((ex) => ({
+    ...ex,
+    sets: ex.sets.map((s) =>
+      s.weight != null || s.reps != null ? { ...s, done: true } : s,
+    ),
+  }));
+}
+
+/** Круговой таймер: кольцо — прогресс подходов, центр — прошедшее время. */
+function CircularTimer({
+  elapsedSec,
+  progress,
+  label,
+  color,
+  theme,
+}: {
+  elapsedSec: number;
+  progress: number;
+  label: string;
+  color: string;
+  theme: Theme;
+}) {
+  const size = 148;
+  const stroke = 8;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = c * Math.min(1, Math.max(0, progress));
+  return (
+    <Box sx={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <Box component="svg" width={size} height={size} sx={{ display: "block", transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={theme.palette.divider} strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${c}`}
+        />
+      </Box>
+      <Stack sx={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" }}>
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        <Typography sx={{ fontSize: 25, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+          {formatTimer(elapsedSec)}
+        </Typography>
+      </Stack>
+    </Box>
+  );
 }
 
 export default function SessionEditor({
@@ -116,6 +204,26 @@ export default function SessionEditor({
   const pressTimer = useRef<number | null>(null);
   const suppressClick = useRef(false);
 
+  // Таймер отдыха между подходами. Цель запоминается (localStorage), −15/+15 её
+  // подстраивают; отсчёт стартует, когда отмечаешь подход выполненным.
+  const [restTarget, setRestTarget] = useState(loadRestSec);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  function startRest() {
+    setRestEndsAt(Date.now() + restTarget * 1000);
+  }
+  function adjustRest(deltaSec: number) {
+    setRestTarget((prev) => {
+      const next = Math.max(15, Math.min(600, prev + deltaSec));
+      try {
+        localStorage.setItem(REST_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+    setRestEndsAt((prev) => (prev == null ? prev : prev + deltaSec * 1000));
+  }
+
   // Тикаем раз в секунду, только пока тренировка идёт (запущена, не завершена).
   const [nowMs, setNowMs] = useState(() => Date.now());
   const running = Boolean(session.startedAt && !session.endedAt);
@@ -124,6 +232,40 @@ export default function SessionEditor({
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [running]);
+
+  const theme = useTheme();
+  const t = useT();
+  const paused = Boolean(session.pausedAt);
+  const color = typeColor(session.kind);
+  // Акцент внутри редактора — цвет типа активности (силовая фиолет, кардио
+  // розовый и т.д.), а не глобальный зелёный. Подменяем primary в теме на цвет
+  // типа для всего поддерева: так разом красятся кнопки, инпуты (фокус),
+  // чекбоксы и чипы — единый визуал без ручной правки каждого элемента.
+  const onColor = theme.palette.getContrastText(color);
+  const editorTheme = useMemo(
+    () =>
+      createTheme(theme, {
+        // augmentColor выводит main/light/dark/contrastText ИЗ цвета типа —
+        // иначе мёрж поверх зелёной палитры оставляет .dark/.light зелёными
+        // (и, например, hover/dark contained-кнопки уходит в зелень).
+        palette: { primary: theme.palette.augmentColor({ color: { main: color } }) },
+      }),
+    [theme, color],
+  );
+  const totalSets = sessionSetCount(session);
+  const doneSets = sessionDoneSetCount(session);
+  const setsProgress = totalSets > 0 ? doneSets / totalSets : 0;
+  const volume = sessionVolume(session);
+  const elapsedSec = liveElapsedSec(session, nowMs);
+  const statusLabel = session.endedAt
+    ? t("Завершена", "Completed")
+    : running
+      ? paused
+        ? t("На паузе", "Paused")
+        : t("В процессе", "In progress")
+      : session.date > today()
+        ? t("Запланирована", "Planned")
+        : t("Не начата", "Not started");
 
   function startPress(id: string) {
     if (pressTimer.current) window.clearTimeout(pressTimer.current);
@@ -236,35 +378,92 @@ export default function SessionEditor({
     });
   }
 
+  // Кардио: длительность живёт в двух местах — таймер (startedAt/endedAt) и
+  // поле «Время, мин» (cardio.durationSec), из которого считаются темп на
+  // карточке и аналитика выносливости/скорости. Если завершили таймером, а
+  // время руками не вводили — подтягиваем его из таймера, иначе внутри просят
+  // «указать время», а темп/аналитика молча пропадают.
+  function fillCardioDuration(next: Session): Session {
+    if (next.kind !== "cardio" || !next.cardio || next.cardio.durationSec != null) {
+      return next;
+    }
+    const dur = sessionDurationSec(next);
+    return dur && dur > 0
+      ? { ...next, cardio: { ...next.cardio, durationSec: dur } }
+      : next;
+  }
+
   function commitFinish(min: number | null, hr: number | null) {
     const now = new Date();
-    // Длительность задаёт стартовое время: end − N минут. Работает и без
-    // «Начать» (backdate), и с таймером.
-    const startedAt =
-      min != null && min > 0
-        ? new Date(now.getTime() - min * 60_000).toISOString()
-        : (session.startedAt ?? now.toISOString());
-    onChange({
+    // При правке уже завершённой сохраняем исходное время финиша (не сдвигаем
+    // тренировку на «сейчас»); при первом завершении финиш = сейчас.
+    const endedAt = session.endedAt ?? now.toISOString();
+    // Явная длительность = единственный источник: задаёт старт (end − N минут)
+    // и обнуляет накопленные паузы, иначе `sessionDurationSec` вычтет их ещё раз
+    // и покажет меньше введённого. Работает и с таймером, и без «Начать».
+    const override = min != null && min > 0;
+    const startedAt = override
+      ? new Date(Date.parse(endedAt) - min * 60_000).toISOString()
+      : (session.startedAt ?? endedAt);
+    const base: Session = {
       ...session,
       startedAt,
-      endedAt: now.toISOString(),
+      endedAt,
+      pausedMs: override ? 0 : (session.pausedMs ?? null),
+      pausedAt: null,
       avgHr: hr,
       time: session.time ?? nowTime(),
-    });
+      exercises: markFilledSetsDone(session.exercises),
+    };
+    // Кардио: держим «Время, мин» в синхроне с заданной длительностью, иначе
+    // темп/дистанция считались бы от старого значения.
+    const next =
+      override && base.kind === "cardio" && base.cardio
+        ? { ...base, cardio: { ...base.cardio, durationSec: min * 60 } }
+        : fillCardioDuration(base);
+    onChange(next);
     setFinishing(false);
     onExitEditing?.();
+  }
+
+  /** Открыть диалог длительности для уже завершённой — с текущими значениями. */
+  function editDuration() {
+    const sec = sessionDurationSec(session);
+    setFinishMin(sec != null ? Math.round(sec / 60) : null);
+    setFinishHr(session.avgHr ?? session.cardio?.avgHr ?? null);
+    setFinishing(true);
   }
 
   /**
    * Завершить. Если длительность уже известна — идёт таймер или введено время
    * кардио — не спрашиваем ничего, сразу закрываем. Иначе просим ввести.
    */
+  // Пауза / продолжить: копим время на паузе в pausedMs.
+  function togglePause() {
+    if (session.pausedAt) {
+      const extra = Date.now() - Date.parse(session.pausedAt);
+      onChange({ ...session, pausedMs: (session.pausedMs ?? 0) + extra, pausedAt: null });
+    } else {
+      onChange({ ...session, pausedAt: new Date().toISOString() });
+    }
+  }
+
   function handleFinish() {
     if (running && session.startedAt) {
-      const elapsedMin = Math.round(
-        Math.max(0, (nowMs - Date.parse(session.startedAt)) / 1000) / 60,
+      // Реальный старт и паузы сохраняем — длительность посчитается корректно.
+      const extraPause = session.pausedAt ? Date.now() - Date.parse(session.pausedAt) : 0;
+      onChange(
+        fillCardioDuration({
+          ...session,
+          endedAt: new Date().toISOString(),
+          pausedMs: (session.pausedMs ?? 0) + extraPause,
+          pausedAt: null,
+          avgHr: session.avgHr ?? session.cardio?.avgHr ?? null,
+          time: session.time ?? nowTime(),
+          exercises: markFilledSetsDone(session.exercises),
+        }),
       );
-      commitFinish(elapsedMin, session.avgHr ?? session.cardio?.avgHr ?? null);
+      onExitEditing?.();
       return;
     }
     const cardioDur =
@@ -279,110 +478,260 @@ export default function SessionEditor({
   }
 
   return (
-    <Box sx={{ pb: 6 }}>
-      <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
-        <IconButton onClick={onBack} edge="start" aria-label="Назад">
+    <ThemeProvider theme={editorTheme}>
+    <Box sx={{ pb: restEndsAt != null ? 14 : 6 }}>
+      {/* Шапка: назад · статус-точка · дата/время · Завершить/Готово */}
+      <Stack direction="row" spacing={1} sx={{ mb: 1.5, alignItems: "center" }}>
+        <IconButton onClick={onBack} edge="start" aria-label={t("Назад", "Back")}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-          {formatDateFull(session.date)}
-        </Typography>
-        {/* Время старта: раскладывает несколько тренировок в дне по порядку
-            и подписывает карточку. По умолчанию — момент создания. */}
-        <TextField
-          type="time"
-          variant="standard"
-          value={session.time ?? ""}
-          onChange={(event) =>
-            onChange({ ...session, time: event.target.value || null })
-          }
-          slotProps={{ input: { disableUnderline: true } }}
-          sx={{ width: 68, "& input": { textAlign: "right", fontSize: 14 } }}
+        <Box
+          sx={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            flexShrink: 0,
+            bgcolor:
+              running && !paused
+                ? color
+                : paused
+                  ? "warning.main"
+                  : session.endedAt
+                    ? color
+                    : "text.disabled",
+          }}
         />
+        <Stack direction="row" spacing={0.5} sx={{ flex: 1, alignItems: "center", minWidth: 0 }}>
+          <Typography variant="body2" color="text.secondary" noWrap>
+            {formatDateFull(session.date)} ·
+          </Typography>
+          {/* Время старта — редактируется тапом (нативный пикер). */}
+          <Box
+            component="input"
+            type="time"
+            value={session.time ?? ""}
+            aria-label={t("Время тренировки", "Workout time")}
+            onChange={(e: ChangeEvent<HTMLInputElement>) =>
+              onChange({ ...session, time: e.target.value || null })
+            }
+            sx={{
+              background: "transparent",
+              border: "none",
+              color: alpha(color, 0.9),
+              font: "inherit",
+              fontWeight: 600,
+              cursor: "pointer",
+              p: 0,
+              colorScheme: "dark",
+              "&:focus": { outline: "none" },
+            }}
+          />
+        </Stack>
+        {session.endedAt
+          ? onExitEditing && (
+              <Button size="small" onClick={onExitEditing}>
+                {t("Готово", "Done")}
+              </Button>
+            )
+          : running && (
+              <Button size="small" color="error" variant="outlined" onClick={handleFinish}>
+                {t("Завершить", "Finish")}
+              </Button>
+            )}
       </Stack>
 
-      <TextField
-        fullWidth
-        variant="standard"
-        placeholder={activityLabel(session) ?? "Название тренировки"}
-        value={session.title ?? ""}
-        onChange={(event) =>
-          onChange({ ...session, title: event.target.value || null })
-        }
-        slotProps={{ input: { style: { fontSize: 24, fontWeight: 700 } } }}
-        sx={{ mb: 3 }}
-      />
-
-      {/* Жизненный цикл. Главное действие — «Завершить»: длительность и пульс
-          можно ввести вручную, «Начать» жать необязательно. Таймер — опция для
-          тех, кто хочет засечь время вживую. */}
-      {session.endedAt ? (
-        <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
-          <Chip label="Завершена" size="small" color="primary" variant="outlined" />
-          <Typography variant="body2" color="text.secondary">
-            {formatDuration(sessionDurationSec(session))}
-            {session.avgHr ? ` · ${session.avgHr} уд/мин` : ""}
-          </Typography>
-          {onExitEditing && (
-            <Button size="small" sx={{ ml: "auto" }} onClick={onExitEditing}>
-              Готово
-            </Button>
-          )}
+      {/* Hero-блок тренировки */}
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 2,
+          mb: 2,
+          borderRadius: 2,
+          borderColor: alpha(color, 0.28),
+          backgroundImage: `linear-gradient(150deg, ${alpha(color, 0.12)}, transparent 60%)`,
+        }}
+      >
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              borderRadius: 2,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              color,
+              backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
+            }}
+          >
+            <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <TextField
+              fullWidth
+              variant="standard"
+              placeholder={activityLabel(session) ?? t("Название тренировки", "Workout name")}
+              value={session.title ?? ""}
+              onChange={(event) => onChange({ ...session, title: event.target.value || null })}
+              slotProps={{ input: { disableUnderline: true, style: { fontSize: 19, fontWeight: 700 } } }}
+            />
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 0.25 }}>
+              <Chip
+                label={statusLabel}
+                size="small"
+                variant={running && !paused ? "filled" : "outlined"}
+                sx={{
+                  height: 22,
+                  fontSize: 11,
+                  ...(running && !paused
+                    ? { bgcolor: color, color: onColor }
+                    : { borderColor: alpha(color, 0.5), color }),
+                }}
+              />
+              {(running || session.endedAt) && (
+                <Typography variant="caption" color="text.secondary">
+                  {formatDuration(session.endedAt ? sessionDurationSec(session) : elapsedSec)}
+                </Typography>
+              )}
+              {session.endedAt && (
+                <Button
+                  size="small"
+                  startIcon={<EditIcon sx={{ fontSize: 15 }} />}
+                  onClick={editDuration}
+                  sx={{ minWidth: 0, py: 0, px: 0.5, fontSize: 11 }}
+                >
+                  {t("Изменить", "Edit")}
+                </Button>
+              )}
+            </Stack>
+          </Box>
         </Stack>
-      ) : running ? (
-        <Box sx={{ mb: 3 }}>
-          <Typography
-            variant="h1"
-            sx={{ fontVariantNumeric: "tabular-nums", mb: 1 }}
+
+        {/* Таймер + прогресс во время выполнения. Если справа есть контент
+            (силовая: тоннаж/подходы) — 50/50; иначе таймер по центру. */}
+        {running && (
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              mt: 2,
+              alignItems: "center",
+              justifyContent: session.kind === "strength" ? "flex-start" : "center",
+            }}
           >
-            {formatTimer(
-              session.startedAt
-                ? Math.max(0, Math.floor((nowMs - Date.parse(session.startedAt)) / 1000))
-                : 0,
+            <Stack
+              spacing={1}
+              sx={{ alignItems: "center", flex: session.kind === "strength" ? 1 : "0 1 auto" }}
+            >
+              <CircularTimer
+                elapsedSec={elapsedSec}
+                progress={setsProgress}
+                label={paused ? t("На паузе", "Paused") : t("Тренировка идёт", "In progress")}
+                color={color}
+                theme={theme}
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={paused ? <PlayArrowRoundedIcon /> : <PauseRoundedIcon />}
+                onClick={togglePause}
+              >
+                {paused ? t("Продолжить", "Resume") : t("Пауза", "Pause")}
+              </Button>
+            </Stack>
+            {session.kind === "strength" && (
+              <Stack spacing={1.5} sx={{ flex: 1, minWidth: 0 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {t("Тоннаж", "Tonnage")}
+                  </Typography>
+                  <Typography sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>
+                    {formatVolume(volume)}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {t("Подходы", "Sets")}
+                  </Typography>
+                  <Typography sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>
+                    {doneSets} {t("из", "of")} {totalSets}
+                  </Typography>
+                  <Box sx={{ mt: 0.5, height: 5, borderRadius: 999, bgcolor: "action.hover", overflow: "hidden" }}>
+                    <Box sx={{ height: "100%", width: `${Math.round(setsProgress * 100)}%`, bgcolor: color }} />
+                  </Box>
+                </Box>
+              </Stack>
             )}
-          </Typography>
-          <Button
-            fullWidth
-            variant="contained"
-            color="error"
-            startIcon={<StopIcon />}
-            onClick={handleFinish}
-          >
-            Завершить тренировку
-          </Button>
-        </Box>
-      ) : (
-        <Box sx={{ mb: 3 }}>
-          <Button
-            fullWidth
-            variant="contained"
-            startIcon={<PlayArrowIcon />}
-            onClick={() =>
-              onChange({
-                ...session,
-                startedAt: new Date().toISOString(),
-                time: session.time ?? nowTime(),
-              })
-            }
-          >
-            Начать тренировку
-          </Button>
-          <Button
-            fullWidth
-            size="small"
-            startIcon={<StopIcon />}
-            sx={{ mt: 0.5 }}
-            onClick={handleFinish}
-          >
-            Завершить тренировку
-          </Button>
-        </Box>
-      )}
+          </Stack>
+        )}
+
+        {/* Завершённая — итог; не начатая — кнопка «Начать» */}
+        {session.endedAt ? (
+          session.kind === "strength" && (
+            <Stack direction="row" spacing={3} sx={{ mt: 2 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">{t("Тоннаж", "Tonnage")}</Typography>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{formatVolume(volume)}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">{t("Подходы", "Sets")}</Typography>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{totalSets}</Typography>
+              </Box>
+              {session.avgHr && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">{t("Пульс", "HR")}</Typography>
+                  <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{session.avgHr}</Typography>
+                </Box>
+              )}
+            </Stack>
+          )
+        ) : !running ? (
+          <Stack spacing={0.5} sx={{ mt: 2 }}>
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<PlayArrowIcon />}
+              onClick={() =>
+                onChange({
+                  ...session,
+                  startedAt: new Date().toISOString(),
+                  time: session.time ?? nowTime(),
+                })
+              }
+            >
+              {t("Начать тренировку", "Start workout")}
+            </Button>
+            <Button fullWidth size="small" startIcon={<StopIcon />} onClick={handleFinish}>
+              {t("Завершить без таймера", "Finish without timer")}
+            </Button>
+          </Stack>
+        ) : null}
+      </Paper>
+
+      {/* Тяжесть тренировки — субъективно, питает аналитику нагрузки. */}
+      <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
+        <Typography variant="body2" color="text.secondary">
+          {t("Тяжесть", "Effort")}
+        </Typography>
+        {INTENSITY_OPTIONS.map((opt) => {
+          const active = session.intensity === opt.value;
+          return (
+            <Chip
+              key={opt.value}
+              label={opt.label}
+              size="small"
+              onClick={() => onChange({ ...session, intensity: active ? null : opt.value })}
+              variant={active ? "filled" : "outlined"}
+              sx={active ? { bgcolor: color, color: onColor } : undefined}
+            />
+          );
+        })}
+      </Stack>
 
       {session.kind !== "strength" && (
         <TextField
           select
-          label="Вид"
+          label={t("Вид", "Type")}
           fullWidth
           value={kindValue}
           onChange={(event) => pickKind(event.target.value)}
@@ -412,12 +761,12 @@ export default function SessionEditor({
           <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Stack direction="row" spacing={1}>
               <NumberField
-                label={`Дистанция, ${unit}`}
+                label={`${t("Дистанция", "Distance")}, ${unit}`}
                 fullWidth
                 value={
                   session.cardio?.distanceM == null
                     ? null
-                    : unit === "км"
+                    : session.cardioKind !== "swim"
                       ? session.cardio.distanceM / 1000
                       : session.cardio.distanceM
                 }
@@ -427,12 +776,12 @@ export default function SessionEditor({
                     distanceM:
                       value == null
                         ? null
-                        : Math.round(unit === "км" ? value * 1000 : value),
+                        : Math.round(session.cardioKind !== "swim" ? value * 1000 : value),
                   })
                 }
               />
               <NumberField
-                label="Время, мин"
+                label={t("Время, мин", "Time, min")}
                 fullWidth
                 value={
                   session.cardio?.durationSec == null
@@ -447,9 +796,21 @@ export default function SessionEditor({
               />
             </Stack>
 
+            {hasIncline(session.cardioKind) && (
+              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                <NumberField
+                  label={t("Наклон, °", "Incline, °")}
+                  fullWidth
+                  value={session.cardio?.inclineDeg ?? null}
+                  onChange={(value) => patchCardio({ inclineDeg: value })}
+                />
+                <Box sx={{ flex: 1 }} />
+              </Stack>
+            )}
+
             <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: "center" }}>
               <NumberField
-                label="Средний пульс"
+                label={t("Средний пульс", "Avg heart rate")}
                 fullWidth
                 integer
                 value={session.cardio?.avgHr ?? null}
@@ -457,7 +818,7 @@ export default function SessionEditor({
               />
               <Box sx={{ flex: 1 }}>
                 <Typography variant="caption" color="text.secondary">
-                  Темп
+                  {t("Темп", "Pace")}
                 </Typography>
                 <Typography variant="body1" sx={{ fontWeight: 600 }}>
                   {formatPace(
@@ -473,7 +834,7 @@ export default function SessionEditor({
           {/* Интервалы. Одна строка — это блок, повторённый N раз, поэтому
               «10 × 400 м через 90 с» вводится один раз, а не десять. */}
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Интервалы
+            {t("Интервалы", "Intervals")}
           </Typography>
 
           {segments.map((segment, index) => {
@@ -489,11 +850,11 @@ export default function SessionEditor({
                   }}
                 >
                   <Typography variant="caption" color="text.secondary">
-                    Блок {index + 1}
+                    {t("Блок", "Block")} {index + 1}
                   </Typography>
                   <IconButton
                     size="small"
-                    aria-label="Убрать блок"
+                    aria-label={t("Убрать блок", "Remove block")}
                     onClick={() =>
                       patchCardio({
                         segments: segments.filter((s) => s.id !== segment.id),
@@ -506,19 +867,19 @@ export default function SessionEditor({
 
                 <Stack direction="row" spacing={1}>
                   <NumberField
-                    label="Повторов"
+                    label={t("Повторов", "Reps")}
                     integer
                     value={segment.repeat}
                     sx={{ width: 100 }}
                     onChange={(value) => patchSegment(segment.id, { repeat: value ?? 1 })}
                   />
                   <NumberField
-                    label={`Отрезок, ${unit}`}
+                    label={`${t("Отрезок", "Segment")}, ${unit}`}
                     fullWidth
                     value={
                       segment.distanceM == null
                         ? null
-                        : unit === "км"
+                        : session.cardioKind !== "swim"
                           ? segment.distanceM / 1000
                           : segment.distanceM
                     }
@@ -527,7 +888,7 @@ export default function SessionEditor({
                         distanceM:
                           value == null
                             ? null
-                            : Math.round(unit === "км" ? value * 1000 : value),
+                            : Math.round(session.cardioKind !== "swim" ? value * 1000 : value),
                       })
                     }
                   />
@@ -535,7 +896,7 @@ export default function SessionEditor({
 
                 <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
                   <NumberField
-                    label="Время, мин"
+                    label={t("Время, мин", "Time, min")}
                     fullWidth
                     value={
                       segment.durationSec == null
@@ -549,7 +910,7 @@ export default function SessionEditor({
                     }
                   />
                   <NumberField
-                    label="Отдых, с"
+                    label={t("Отдых, с", "Rest, s")}
                     fullWidth
                     integer
                     value={segment.restSec}
@@ -563,8 +924,8 @@ export default function SessionEditor({
                   sx={{ display: "block", mt: 1 }}
                 >
                   {repeat} × {formatDistance(segment.distanceM, session.cardioKind)}
-                  {segment.durationSec ? ` за ${formatClock(segment.durationSec)}` : ""}
-                  {" · темп "}
+                  {segment.durationSec ? ` ${t("за", "in")} ${formatClock(segment.durationSec)}` : ""}
+                  {` · ${t("темп", "pace")} `}
                   {formatPace(segment.distanceM, segment.durationSec, session.cardioKind)}
                 </Typography>
               </Paper>
@@ -577,12 +938,12 @@ export default function SessionEditor({
               startIcon={<AddIcon />}
               onClick={() => patchCardio({ segments: [...segments, newSegment()] })}
             >
-              Блок
+              {t("Блок", "Block")}
             </Button>
             {segments.length > 0 && (
               <>
                 <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-                  Итого {formatDistance(totals.distanceM, session.cardioKind)} ·{" "}
+                  {t("Итого", "Total")} {formatDistance(totals.distanceM, session.cardioKind)} ·{" "}
                   {formatDuration(totals.durationSec)}
                 </Typography>
                 <Button
@@ -594,7 +955,7 @@ export default function SessionEditor({
                     })
                   }
                 >
-                  В итог
+                  {t("В итог", "To total")}
                 </Button>
               </>
             )}
@@ -611,10 +972,10 @@ export default function SessionEditor({
               sx={{ mb: 1.5, alignItems: "baseline" }}
             >
               <Typography variant="subtitle2">
-                Тоннаж {formatVolume(sessionVolume(session))}
+                {t("Тоннаж", "Tonnage")} {formatVolume(sessionVolume(session))}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                · {sessionSetCount(session)} подх.
+                · {sessionSetCount(session)} {t("подх.", "sets")}
               </Typography>
             </Stack>
           )}
@@ -625,11 +986,11 @@ export default function SessionEditor({
               spacing={1}
               sx={{ mb: 1.5, alignItems: "center" }}
             >
-              <Typography variant="caption" sx={{ color: "primary.main", flex: 1 }}>
-                Выберите упражнение, чтобы объединить в супер-сет
+              <Typography variant="caption" sx={{ color, flex: 1 }}>
+                {t("Выберите упражнение, чтобы объединить в супер-сет", "Pick an exercise to group into a superset")}
               </Typography>
               <Button size="small" onClick={() => setLinkingId(null)}>
-                Отмена
+                {t("Отмена", "Cancel")}
               </Button>
             </Stack>
           )}
@@ -649,7 +1010,7 @@ export default function SessionEditor({
                           mb: 1.5,
                           pl: 1,
                           borderLeft: "3px solid",
-                          borderColor: "primary.main",
+                          borderColor: color,
                         }
                       : { mb: 1.5 }
                   }
@@ -661,10 +1022,10 @@ export default function SessionEditor({
                       sx={{ mb: 0.5, alignItems: "center" }}
                     >
                       <Chip
-                        label="Супер-сет"
+                        label={t("Супер-сет", "Superset")}
                         size="small"
-                        color="primary"
                         variant="outlined"
+                        sx={{ borderColor: alpha(color, 0.5), color }}
                       />
                       <Button
                         size="small"
@@ -680,14 +1041,14 @@ export default function SessionEditor({
                           })
                         }
                       >
-                        Разъединить
+                        {t("Разъединить", "Ungroup")}
                       </Button>
                     </Stack>
                   )}
 
                   {group.map((item, gi) => {
                     const exercise = exercises.find((e) => e.id === item.exerciseId);
-                    const volume = exerciseVolume(item);
+                    const volume = exerciseVolume(item, !session.endedAt);
                     const isSource = linkingId === item.id;
                     return (
                       <Paper
@@ -697,7 +1058,7 @@ export default function SessionEditor({
                           p: 1.5,
                           mb: isSuper ? 1 : 1.5,
                           ...(isSource && {
-                            borderColor: "primary.main",
+                            borderColor: color,
                             borderWidth: 2,
                           }),
                         }}
@@ -725,7 +1086,7 @@ export default function SessionEditor({
                             {isSuper && (
                               <Typography
                                 variant="caption"
-                                sx={{ color: "primary.main", fontWeight: 700 }}
+                                sx={{ color, fontWeight: 700 }}
                               >
                                 {letter}
                                 {gi + 1}
@@ -736,7 +1097,7 @@ export default function SessionEditor({
                               noWrap
                               sx={{ minWidth: 0 }}
                             >
-                              {exercise?.name ?? "Упражнение"}
+                              {exerciseName(exercise)}
                             </Typography>
                           </Box>
                   {volume > 0 && (
@@ -750,7 +1111,7 @@ export default function SessionEditor({
                   )}
                   <IconButton
                     size="small"
-                    aria-label="Убрать упражнение"
+                    aria-label={t("Убрать упражнение", "Remove exercise")}
                     onClick={() =>
                       onChange({
                         ...session,
@@ -780,7 +1141,7 @@ export default function SessionEditor({
                               patchSet(item.id, set.id, { warmup: !set.warmup })
                             }
                             aria-label={
-                              set.warmup ? "Разминочный подход" : "Рабочий подход"
+                              set.warmup ? t("Разминочный подход", "Warm-up set") : t("Рабочий подход", "Working set")
                             }
                             sx={{
                               width: 16,
@@ -794,10 +1155,10 @@ export default function SessionEditor({
                               color: set.warmup ? "warning.main" : "text.secondary",
                             }}
                           >
-                            {set.warmup ? "Р" : index + 1}
+                            {set.warmup ? t("Р", "W") : index + 1}
                           </Box>
                           <NumberField
-                            placeholder="кг"
+                            placeholder={t("кг", "kg")}
                             value={set.weight}
                             onChange={(value) =>
                               patchSet(item.id, set.id, { weight: value })
@@ -805,7 +1166,7 @@ export default function SessionEditor({
                             sx={{ flex: 1, opacity: set.warmup ? 0.5 : 1 }}
                           />
                           <NumberField
-                            placeholder="повт"
+                            placeholder={t("повт", "reps")}
                             integer
                             value={set.reps}
                             onChange={(value) =>
@@ -815,13 +1176,17 @@ export default function SessionEditor({
                           />
                           <Checkbox
                             checked={set.done}
-                            onChange={(event) =>
-                              patchSet(item.id, set.id, { done: event.target.checked })
-                            }
+                            onChange={(event) => {
+                              const checked = event.target.checked;
+                              patchSet(item.id, set.id, { done: checked });
+                              // Отметил рабочий подход в идущей тренировке → пошёл отдых.
+                              if (checked && !set.warmup && !session.endedAt) startRest();
+                            }}
+                            sx={{ "&.Mui-checked": { color } }}
                           />
                           <IconButton
                             size="small"
-                            aria-label="Убрать подход"
+                            aria-label={t("Убрать подход", "Remove set")}
                             onClick={() =>
                               patchExercise(item.id, (ex) => ({
                                 ...ex,
@@ -850,7 +1215,7 @@ export default function SessionEditor({
                               ↳
                             </Typography>
                             <NumberField
-                              placeholder="кг"
+                              placeholder={t("кг", "kg")}
                               value={drop.weight}
                               onChange={(value) =>
                                 patchDrop(item.id, set.id, drop.id, { weight: value })
@@ -858,7 +1223,7 @@ export default function SessionEditor({
                               sx={{ flex: 1 }}
                             />
                             <NumberField
-                              placeholder="повт"
+                              placeholder={t("повт", "reps")}
                               integer
                               value={drop.reps}
                               onChange={(value) =>
@@ -870,7 +1235,7 @@ export default function SessionEditor({
                             <Box sx={{ width: 42 }} />
                             <IconButton
                               size="small"
-                              aria-label="Убрать дроп"
+                              aria-label={t("Убрать дроп", "Remove drop")}
                               onClick={() =>
                                 patchSet(item.id, set.id, {
                                   drops: drops.filter((d) => d.id !== drop.id),
@@ -896,7 +1261,7 @@ export default function SessionEditor({
                           }
                           sx={{ ml: 2.5, mt: 0.5, minWidth: 0, fontSize: 12 }}
                         >
-                          + дроп
+                          {t("+ дроп", "+ drop")}
                         </Button>
                       </Box>
                     );
@@ -916,7 +1281,7 @@ export default function SessionEditor({
                   }
                   sx={{ mt: 1 }}
                 >
-                  Подход
+                  {t("Подход", "Set")}
                 </Button>
                       </Paper>
                     );
@@ -932,7 +1297,7 @@ export default function SessionEditor({
             startIcon={<AddIcon />}
             onClick={() => setPicking(true)}
           >
-            Добавить упражнение
+            {t("Добавить упражнение", "Add exercise")}
           </Button>
         </>
       )}
@@ -941,7 +1306,7 @@ export default function SessionEditor({
         fullWidth
         multiline
         minRows={2}
-        label="Заметки"
+        label={t("Заметки", "Notes")}
         value={session.notes ?? ""}
         onChange={(event) =>
           onChange({ ...session, notes: event.target.value || null })
@@ -950,13 +1315,13 @@ export default function SessionEditor({
       />
 
       <Button fullWidth variant="contained" onClick={onBack} sx={{ mt: 2 }}>
-        Сохранить
+        {t("Сохранить", "Save")}
       </Button>
 
       <Divider sx={{ my: 3 }} />
 
       <Typography variant="caption" color="text.secondary">
-        Повторить эту тренировку в другой день
+        {t("Повторить эту тренировку в другой день", "Repeat this workout on another day")}
       </Typography>
       {/* Поле даты тянется, кнопка занимает ровно своё — иначе инпут
           оказывался уже кнопки и выглядел сломанным. */}
@@ -976,7 +1341,7 @@ export default function SessionEditor({
           }}
           sx={{ flexShrink: 0, whiteSpace: "nowrap" }}
         >
-          Повторить
+          {t("Повторить", "Repeat")}
         </Button>
       </Stack>
 
@@ -987,11 +1352,11 @@ export default function SessionEditor({
         onClick={onCopyToClipboard}
         sx={{ mt: 2 }}
       >
-        Скопировать тренировку
+        {t("Скопировать тренировку", "Copy workout")}
       </Button>
 
       <Button fullWidth color="error" onClick={onDelete} sx={{ mt: 1 }}>
-        Удалить тренировку
+        {t("Удалить тренировку", "Delete workout")}
       </Button>
 
       <ExercisePickerDialog
@@ -1008,18 +1373,22 @@ export default function SessionEditor({
       />
 
       <Dialog open={finishing} onClose={() => setFinishing(false)} fullWidth>
-        <DialogTitle>Завершить тренировку</DialogTitle>
+        <DialogTitle>
+          {session.endedAt
+            ? t("Длительность и пульс", "Duration & heart rate")
+            : t("Завершить тренировку", "Finish workout")}
+        </DialogTitle>
         <DialogContent>
           <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
             <NumberField
-              label="Длительность, мин"
+              label={t("Длительность, мин", "Duration, min")}
               integer
               value={finishMin}
               onChange={setFinishMin}
               fullWidth
             />
             <NumberField
-              label="Средний пульс"
+              label={t("Средний пульс", "Avg heart rate")}
               integer
               value={finishHr}
               onChange={setFinishHr}
@@ -1027,16 +1396,27 @@ export default function SessionEditor({
             />
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
-            Можно оставить пустым — заполни, если знаешь.
+            {t("Можно оставить пустым — заполни, если знаешь.", "Leave blank — fill in if you know it.")}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setFinishing(false)}>Отмена</Button>
+          <Button onClick={() => setFinishing(false)}>{t("Отмена", "Cancel")}</Button>
           <Button variant="contained" onClick={() => commitFinish(finishMin, finishHr)}>
-            Завершить
+            {session.endedAt ? t("Сохранить", "Save") : t("Завершить", "Finish")}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {restEndsAt != null && (
+        <RestTimer
+          endsAt={restEndsAt}
+          target={restTarget}
+          color={color}
+          onAdjust={adjustRest}
+          onSkip={() => setRestEndsAt(null)}
+        />
+      )}
     </Box>
+    </ThemeProvider>
   );
 }

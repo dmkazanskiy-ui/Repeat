@@ -1,10 +1,13 @@
 import { useRef, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
+import { useT } from "../lib/i18n";
 
 interface Props {
   children: React.ReactNode;
   onDelete: () => void;
+  /** Цвет рамки карточки (готовый rgba). По умолчанию — нейтральный divider. */
+  accent?: string;
 }
 
 /** Ширина красной панели, которая выезжает из-под карточки. */
@@ -22,7 +25,8 @@ const AXIS_LOCK = 10;
  * Жест уступает вертикальной прокрутке: пока палец не ушёл по горизонтали
  * дальше, чем по вертикали, карточка не двигается.
  */
-export default function SwipeToDelete({ children, onDelete }: Props) {
+export default function SwipeToDelete({ children, onDelete, accent }: Props) {
+  const t = useT();
   const [offset, setOffset] = useState(0);
   const [animating, setAnimating] = useState(false);
 
@@ -83,29 +87,49 @@ export default function SwipeToDelete({ children, onDelete }: Props) {
   }
 
   return (
-    <Box sx={{ position: "relative", overflow: "hidden", borderRadius: 2.5 }}>
+    <Box
+      sx={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 2,
+        // Единый оутлайн и скругление живут снаружи (на этом контейнере), а не
+        // на карточке: рамка рисуется поверх края и перекрывает угловой шов,
+        // поэтому красный фон удаления больше не просвечивает на углах.
+        border: "1px solid",
+        borderColor: accent ?? "divider",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+      }}
+    >
+      {/* Красный фон — на весь фрейм за карточкой, чтобы при свайпе не было
+          ощущения отдельной панели. Иконка «Удалить» — в правой зоне, где
+          карточка отъезжает. */}
       <Box
         onClick={onDelete}
         sx={{
           position: "absolute",
-          top: 0,
-          bottom: 0,
-          right: 0,
-          width: ACTION_WIDTH,
+          inset: 0,
           bgcolor: "error.main",
           color: "#fff",
           display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 0.25,
+          justifyContent: "flex-end",
           cursor: "pointer",
           // Пока панель закрыта, она не должна перехватывать нажатия.
           pointerEvents: open ? "auto" : "none",
         }}
       >
-        <DeleteOutlineIcon fontSize="small" />
-        <Typography variant="caption">Удалить</Typography>
+        <Box
+          sx={{
+            width: ACTION_WIDTH,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 0.25,
+          }}
+        >
+          <DeleteOutlineIcon fontSize="small" />
+          <Typography variant="caption">{t("Удалить", "Delete")}</Typography>
+        </Box>
       </Box>
 
       <Box

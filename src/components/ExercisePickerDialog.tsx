@@ -19,6 +19,8 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
 import { MUSCLE_GROUPS, MUSCLE_LABELS } from "../lib/catalog";
+import { exerciseName } from "../lib/types";
+import { useT } from "../lib/i18n";
 import type { Exercise, MuscleGroup } from "../lib/types";
 
 interface Props {
@@ -36,6 +38,7 @@ export default function ExercisePickerDialog({
   onPick,
   onCreate,
 }: Props) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<MuscleGroup | null>(null);
   const [creating, setCreating] = useState(false);
@@ -46,14 +49,16 @@ export default function ExercisePickerDialog({
     const q = query.trim().toLowerCase();
     const scoped = group ? exercises.filter((e) => e.muscleGroup === group) : exercises;
     if (!q) return scoped;
-    // Совпадение с начала названия важнее совпадения в середине:
-    // «жим» сначала покажет «Жим штанги лёжа», а не «Французский жим».
+    // Ищем и по русскому названию, и по английскому (nameEn) — чтобы EN-поиск
+    // тоже находил. Совпадение с начала названия важнее середины.
+    const hay = (e: Exercise) => `${e.name} ${e.nameEn ?? ""}`.toLowerCase();
+    const shown = (e: Exercise) => exerciseName(e).toLowerCase();
     return scoped
-      .filter((e) => e.name.toLowerCase().includes(q))
+      .filter((e) => hay(e).includes(q))
       .sort((a, b) => {
-        const aStarts = a.name.toLowerCase().startsWith(q) ? 0 : 1;
-        const bStarts = b.name.toLowerCase().startsWith(q) ? 0 : 1;
-        return aStarts - bStarts || a.name.localeCompare(b.name, "ru");
+        const aStarts = shown(a).startsWith(q) || a.name.toLowerCase().startsWith(q) ? 0 : 1;
+        const bStarts = shown(b).startsWith(q) || b.name.toLowerCase().startsWith(q) ? 0 : 1;
+        return aStarts - bStarts || shown(a).localeCompare(shown(b));
       });
   }, [exercises, group, query]);
 
@@ -82,8 +87,8 @@ export default function ExercisePickerDialog({
       <DialogTitle
         sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}
       >
-        {creating ? "Своё упражнение" : "Упражнение"}
-        <IconButton onClick={close} size="small" aria-label="Закрыть">
+        {creating ? t("Своё упражнение", "Custom exercise") : t("Упражнение", "Exercise")}
+        <IconButton onClick={close} size="small" aria-label={t("Закрыть", "Close")}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -92,7 +97,7 @@ export default function ExercisePickerDialog({
         {creating ? (
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
-              label="Название"
+              label={t("Название", "Name")}
               value={newName}
               autoFocus
               fullWidth
@@ -103,7 +108,7 @@ export default function ExercisePickerDialog({
             />
             <TextField
               select
-              label="Группа мышц"
+              label={t("Группа мышц", "Muscle group")}
               value={newGroup}
               fullWidth
               onChange={(event) => setNewGroup(event.target.value as MuscleGroup)}
@@ -116,17 +121,17 @@ export default function ExercisePickerDialog({
             </TextField>
             <Stack direction="row" spacing={1}>
               <Button fullWidth onClick={() => setCreating(false)}>
-                Назад
+                {t("Назад", "Back")}
               </Button>
               <Button fullWidth variant="contained" onClick={submitNew}>
-                Добавить
+                {t("Добавить", "Add")}
               </Button>
             </Stack>
           </Stack>
         ) : (
           <>
             <TextField
-              placeholder="Поиск по 200+ упражнениям"
+              placeholder={t("Поиск по 200+ упражнениям", "Search 200+ exercises")}
               value={query}
               fullWidth
               autoComplete="off"
@@ -153,7 +158,7 @@ export default function ExercisePickerDialog({
               }}
             >
               <Chip
-                label="Все"
+                label={t("Все", "All")}
                 size="small"
                 color={group === null ? "primary" : "default"}
                 variant={group === null ? "filled" : "outlined"}
@@ -182,7 +187,7 @@ export default function ExercisePickerDialog({
                   }}
                 >
                   <ListItemText
-                    primary={exercise.name}
+                    primary={exerciseName(exercise)}
                     secondary={
                       group === null ? MUSCLE_LABELS[exercise.muscleGroup] : undefined
                     }
@@ -191,13 +196,13 @@ export default function ExercisePickerDialog({
               ))}
               {results.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 2 }}>
-                  Ничего не нашлось. Добавь своё упражнение.
+                  {t("Ничего не нашлось. Добавь своё упражнение.", "Nothing found. Add a custom exercise.")}
                 </Typography>
               )}
             </List>
 
             <Button fullWidth onClick={() => setCreating(true)} sx={{ mt: 1 }}>
-              + Своё упражнение
+              + {t("Своё упражнение", "Custom exercise")}
             </Button>
           </>
         )}
