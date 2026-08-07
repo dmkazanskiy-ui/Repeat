@@ -20,6 +20,16 @@ export interface DaySummary {
   items: DaySummaryItem[];
   /** Готовая строка-итог: «2 тренировки · 1 кардио» / «1 восстановление». */
   headline: string;
+  /**
+   * Короткий итог одной строкой: все тренировочные виды считаются «тренировками»
+   * (силовая+кардио+мобилити → «3 тренировки»), а если тренировок не было —
+   * «N восстановлений». Не переполняет заголовок и не ломает вёрстку.
+   */
+  shortHeadline: string;
+  /** Тренировочные сессии дня (не восстановление). */
+  trainingCount: number;
+  /** Сессии восстановления дня. */
+  recoveryCount: number;
   /** Тоннаж силовых за день (только выполненные подходы). */
   tonnage: number;
   /** Суммарно рабочих подходов силовых за день. */
@@ -81,9 +91,24 @@ export function daySummary(sessions: Session[]): DaySummary {
 
   const recoveryOnly = items.length > 0 && items.every((i) => i.kind === "recovery");
 
+  // Короткий итог: все тренировочные виды — одним словом «тренировки», иначе
+  // (только отдых) — «N восстановлений». Так заголовок всегда влезает.
+  const trainingCount = sessions.filter((s) => s.kind !== "recovery").length;
+  const recoveryCount = sessions.filter((s) => s.kind === "recovery").length;
+  const ru = getLang() === "ru";
+  const shortHeadline =
+    trainingCount > 0
+      ? `${trainingCount} ${ru ? ruPlural(trainingCount, "тренировка", "тренировки", "тренировок") : trainingCount === 1 ? "workout" : "workouts"}`
+      : recoveryCount > 0
+        ? `${recoveryCount} ${ru ? ruPlural(recoveryCount, "восстановление", "восстановления", "восстановлений") : recoveryCount === 1 ? "recovery" : "recovery sessions"}`
+        : "";
+
   return {
     items,
     headline: items.map((i) => i.label).join(" · "),
+    shortHeadline,
+    trainingCount,
+    recoveryCount,
     tonnage: Math.round(tonnage),
     sets,
     durationSec,

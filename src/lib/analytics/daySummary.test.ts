@@ -29,6 +29,7 @@ describe("daySummary", () => {
   it("две силовые → «2 тренировки»", () => {
     const sum = daySummary([strength(), strength()]);
     expect(sum.headline).toBe("2 тренировки");
+    expect(sum.shortHeadline).toBe("2 тренировки");
     expect(sum.recoveryOnly).toBe(false);
     expect(sum.tonnage).toBe(1000); // 2 × 100×5
   });
@@ -36,13 +37,18 @@ describe("daySummary", () => {
   it("только восстановление → «1 восстановление», не тренировка", () => {
     const sum = daySummary([recovery()]);
     expect(sum.headline).toBe("1 восстановление");
+    expect(sum.shortHeadline).toBe("1 восстановление");
     expect(sum.recoveryOnly).toBe(true);
     expect(sum.tonnage).toBe(0);
   });
 
-  it("смешанный день — порядок силовая → кардио → восстановление", () => {
+  it("смешанный день: детальный headline по типам, короткий — общий счёт тренировок", () => {
     const sum = daySummary([recovery(), cardio(), strength()]);
     expect(sum.headline).toBe("1 тренировка · 1 кардио · 1 восстановление");
+    // Все тренировочные виды (силовая+кардио) → «2 тренировки», отдых не считаем.
+    expect(sum.shortHeadline).toBe("2 тренировки");
+    expect(sum.trainingCount).toBe(2);
+    expect(sum.recoveryCount).toBe(1);
     expect(sum.recoveryOnly).toBe(false);
     expect(sum.distanceM).toBe(5000);
   });

@@ -38,6 +38,12 @@ export interface HeroData {
   dailyVolume: number[];
   /** По каждому дню графика: было восстановление, но не было тренировки. */
   recoveryDays: boolean[];
+  /**
+   * Индекс выделенного столбца (итог дня: неделя Пн–Вс, подсвечен выбранный
+   * день). Заданный — столбец зелёный, остальные серо-прозрачные. undefined —
+   * обычная раскраска (недельный hero).
+   */
+  highlightIndex?: number;
   // Инсайты-дропдаун «Показатели» — опциональны (для итога дня не нужны).
   cardio?: Insight;
   best?: Insight;
@@ -54,24 +60,43 @@ const RECOVERY_COLOR = "#38bdf8";
  * данным. День с восстановлением и без тренировки — голубым фиксированным баром
  * (тоннажа нет, но день не пустой), как в heatmap «Активность».
  */
-function HeroBars({ values, recoveryDays }: { values: number[]; recoveryDays: boolean[] }) {
+function HeroBars({
+  values,
+  recoveryDays,
+  highlightIndex,
+}: {
+  values: number[];
+  recoveryDays: boolean[];
+  highlightIndex?: number;
+}) {
   const theme = useTheme();
   const green = theme.palette.primary.main;
+  const gray = theme.palette.text.secondary;
   const present = values.length ? values : [0];
   const max = Math.max(1, ...present);
+  const highlightMode = highlightIndex != null;
   return (
     <Box sx={{ display: "flex", alignItems: "flex-end", gap: "3px", height: 104, width: "100%" }}>
       {present.map((v, i) => {
         const recovery = recoveryDays[i] && v <= 0;
-        const color = recovery ? RECOVERY_COLOR : green;
-        // У восстановления тоннажа нет — рисуем невысокий, но заметный бар.
-        const heightPct = recovery ? 22 : Math.max(5, (v / max) * 100);
+        const isHi = highlightIndex === i;
+        // Режим итога дня: выбранный день зелёный, прошлые серо-прозрачные.
+        let color = recovery ? RECOVERY_COLOR : green;
+        let opacity = 1;
+        if (highlightMode && !isHi) {
+          color = gray;
+          opacity = 0.4;
+        }
+        if (isHi) color = green;
+        // У восстановления и у пустого выбранного дня — невысокий, но заметный бар.
+        const heightPct = v <= 0 && (recovery || isHi) ? 22 : Math.max(5, (v / max) * 100);
         return (
           <Box
             key={i}
             sx={{
               flex: 1,
               height: `${heightPct}%`,
+              opacity,
               borderRadius: "3px 3px 0 0",
               background: `linear-gradient(to top, ${alpha(color, 0.25)}, ${color})`,
             }}
@@ -256,7 +281,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
           </Typography>
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
-          <HeroBars values={hero.dailyVolume} recoveryDays={hero.recoveryDays} />
+          <HeroBars values={hero.dailyVolume} recoveryDays={hero.recoveryDays} highlightIndex={hero.highlightIndex} />
         </Box>
       </Stack>
 

@@ -24,29 +24,35 @@ import { daySummary } from "../lib/analytics";
 import SummaryHero from "../components/analytics/SummaryHero";
 import type { HeroData } from "../components/analytics/SummaryHero";
 import { useT } from "../lib/i18n";
-import { countsDoneOnly, exerciseVolume } from "../lib/types";
+import { sessionDurationSec, sessionVolume } from "../lib/types";
 import type { Exercise, RecoveryEntry, Session, TrainingProgram } from "../lib/types";
 
 /** Итог дня в формате hero-карточки аналитики (переиспользуем «Итоги недели»). */
-function buildDayHero(dayList: Session[], t: ReturnType<typeof useT>): HeroData {
+function buildDayHero(
+  dayList: Session[],
+  allSessions: Session[],
+  selected: string,
+  t: ReturnType<typeof useT>,
+): HeroData {
   const sum = daySummary(dayList);
 
-  // Бары справа — тоннаж по упражнениям силовых дня (эквалайзер дня). Нет
-  // силовых → один бар: голубой для восстановления, иначе низкий.
+  // Бары — неделя Пн–Вс, где лежит выбранный день. Высота = «активность» дня
+  // (тоннаж силовой / минуты кардио-мобилити / мелкий бар восстановления);
+  // подсвечен столбец выбранного дня (Пн → 1-й столбец и т.д.).
+  const week = weekGrid(selected);
   const bars: number[] = [];
   const rec: boolean[] = [];
-  for (const s of dayList) {
-    if (s.kind === "strength") {
-      for (const ex of s.exercises) {
-        bars.push(exerciseVolume(ex, countsDoneOnly(s)));
-        rec.push(false);
-      }
+  for (const key of week) {
+    const day = sessionsOn(allSessions, key);
+    let mag = 0;
+    for (const s of day) {
+      if (s.kind === "strength") mag += sessionVolume(s);
+      else if (s.kind === "cardio" || s.kind === "mobility") mag += sessionDurationSec(s) ?? 0;
     }
+    bars.push(mag);
+    rec.push(mag <= 0 && day.some((s) => s.kind === "recovery"));
   }
-  if (bars.length === 0) {
-    bars.push(0);
-    rec.push(dayList.some((s) => s.kind === "recovery"));
-  }
+  const highlightIndex = Math.max(0, week.indexOf(selected));
 
   let volumeText = "—";
   let volumeLabel = t("Тоннаж дня", "Day tonnage");
@@ -66,12 +72,13 @@ function buildDayHero(dayList: Session[], t: ReturnType<typeof useT>): HeroData 
     title: t("Итог дня", "Day summary"),
     changeLabel: "",
     changePercent: null,
-    workoutsText: sum.headline,
+    workoutsText: sum.shortHeadline,
     daysText: parts.join(" · "),
     volumeText,
     volumeLabel,
     dailyVolume: bars,
     recoveryDays: rec,
+    highlightIndex,
   };
 }
 import type { FocusGoal } from "../lib/workoutBuilder";
@@ -124,7 +131,10 @@ export default function CalendarScreen({
   );
   const marked = useMemo(() => datesWithSessions(sessions), [sessions]);
   const dayList = sessionsOn(sessions, selected);
-  const dayHero = useMemo(() => (dayList.length > 0 ? buildDayHero(dayList, t) : null), [dayList, t]);
+  const dayHero = useMemo(
+    () => (dayList.length > 0 ? buildDayHero(dayList, sessions, selected, t) : null),
+    [dayList, sessions, selected, t],
+  );
   const todayKey = today();
   const cursorMonth = cursor.getMonth();
 
