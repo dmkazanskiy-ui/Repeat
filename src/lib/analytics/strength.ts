@@ -103,6 +103,60 @@ export function strengthTrend(points: ExercisePerformancePoint[]): StrengthTrend
   return "flat";
 }
 
+// --- Прогресс по выбираемой метрике (тоннаж / макс. вес / прогноз макс) ---
+
+export type StrengthMetric = "volume" | "weight" | "e1rm";
+/** База сравнения: последняя тренировка к предыдущей / первая к последней за период. */
+export type CompareMode = "session" | "period";
+
+/** Значение метрики в точке (null — нет данных). */
+export function metricValue(p: ExercisePerformancePoint, m: StrengthMetric): number | null {
+  if (m === "volume") return p.workoutVolume > 0 ? p.workoutVolume : null;
+  if (m === "weight") return p.weight;
+  return p.e1rm;
+}
+
+/** Тренд по произвольной метрике (МНК, deadband 2%); те же пороги достаточности. */
+export function metricTrend(points: ExercisePerformancePoint[], m: StrengthMetric): StrengthTrend {
+  const pts = points
+    .map((p) => ({ date: p.date, v: metricValue(p, m) }))
+    .filter((p): p is { date: string; v: number } => p.v != null);
+  if (pts.length < 4) return "insufficient";
+  const spanDays = diffDays(pts[0].date, pts[pts.length - 1].date);
+  if (spanDays < 21) return "insufficient";
+
+  const xs = pts.map((p) => diffDays(pts[0].date, p.date));
+  const ys = pts.map((p) => p.v);
+  const n = xs.length;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - meanX) * (ys[i] - meanY);
+    den += (xs[i] - meanX) ** 2;
+  }
+  const slope = den === 0 ? 0 : num / den;
+  const projected = slope * spanDays;
+  const deadband = meanY * 0.02;
+  if (projected > deadband) return "up";
+  if (projected < -deadband) return "down";
+  return "flat";
+}
+
+/** Изменение метрики в % по режиму сравнения; null, если точек мало. */
+export function metricDelta(
+  points: ExercisePerformancePoint[],
+  m: StrengthMetric,
+  mode: CompareMode,
+): number | null {
+  const vs = points.map((p) => metricValue(p, m)).filter((v): v is number => v != null);
+  if (vs.length < 2) return null;
+  const last = vs[vs.length - 1];
+  const base = mode === "session" ? vs[vs.length - 2] : vs[0];
+  return base === 0 ? null : ((last - base) / base) * 100;
+}
+
 export interface ExerciseInsight {
   id: string;
   name: string;

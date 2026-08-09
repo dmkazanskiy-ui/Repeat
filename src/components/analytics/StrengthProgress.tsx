@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Chip,
@@ -13,9 +13,9 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
 import MiniChart from "../MiniChart";
 import { addDays, formatDate, formatVolume, today } from "../../lib/format";
-import { exercisePlateau } from "../../lib/analytics";
+import { exercisePlateau, metricDelta, metricTrend, metricValue } from "../../lib/analytics";
 import { L, useT } from "../../lib/i18n";
-import type { ExerciseInsight, StrengthTrend } from "../../lib/analytics";
+import type { CompareMode, ExerciseInsight, StrengthMetric, StrengthTrend } from "../../lib/analytics";
 import type { Session } from "../../lib/types";
 
 const RANGES: Array<{ key: string; label: string; days: number | null }> = [
@@ -26,27 +26,80 @@ const RANGES: Array<{ key: string; label: string; days: number | null }> = [
   { key: "all", get label() { return L("Всё", "All"); }, days: null },
 ];
 
+const METRICS: Array<{ key: StrengthMetric; label: string }> = [
+  { key: "volume", get label() { return L("Тоннаж", "Tonnage"); } },
+  { key: "weight", get label() { return L("Макс. вес", "Top weight"); } },
+  { key: "e1rm", get label() { return L("Прогноз макс", "Est. max"); } },
+];
+
+const COMPARES: Array<{ key: CompareMode; label: string }> = [
+  { key: "session", get label() { return L("К прошлой", "vs last"); } },
+  { key: "period", get label() { return L("За период", "Over period"); } },
+];
+
 const TREND_LABEL: Record<StrengthTrend, string> = {
   get up() { return L("растёт", "rising"); },
-  get flat() { return L("стабилен", "steady"); },
-  get down() { return L("снижается", "falling"); },
+  get flat() { return L("держится", "steady"); },
+  get down() { return L("откат", "dropped"); },
   get insufficient() { return L("мало данных", "not enough data"); },
 };
 
 const PURPLE = "#a78bfa";
 
-function ExerciseRow({ ex, sessions }: { ex: ExerciseInsight; sessions: Session[] }) {
+/** Цвет тренда: рост зелёный, откат — янтарь (не тревожно-красный), иначе серый. */
+function trendColor(trend: StrengthTrend): string {
+  if (trend === "up") return "#4ade80";
+  if (trend === "down") return "#f59e0b";
+  return "#94a3b3";
+}
+
+function fmtMetric(metric: StrengthMetric, value: number, kg: string): string {
+  return metric === "volume" ? formatVolume(value) : `${Math.round(value)} ${kg}`;
+}
+
+function ExerciseRow({
+  ex,
+  sessions,
+  metric,
+  compare,
+}: {
+  ex: ExerciseInsight;
+  sessions: Session[];
+  metric: StrengthMetric;
+  compare: CompareMode;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState("3m");
   const plateau = exercisePlateau(sessions, ex.id);
+  const kg = t("кг", "kg");
+  const metricLabel = METRICS.find((m) => m.key === metric)!.label;
 
   const days = RANGES.find((r) => r.key === range)?.days ?? null;
   const cutoff = days ? addDays(today(), -days) : "0000-00-00";
   const chartPoints = ex.points
-    .filter((p) => p.e1rm != null && p.date >= cutoff)
-    .map((p) => ({ label: formatDate(p.date), value: p.e1rm as number }));
-  const trendColor = ex.trend === "up" ? "#4ade80" : "#94a3b3";
+    .filter((p) => metricValue(p, metric) != null && p.date >= cutoff)
+    .map((p) => ({ label: formatDate(p.date), value: metricValue(p, metric) as number }));
+
+  // Текущее значение метрики — последняя точка с данными.
+  const latest = [...ex.points].reverse().map((p) => metricValue(p, metric)).find((v) => v != null) ?? null;
+
+  const delta = metricDelta(ex.points, metric, compare);
+  const trend: StrengthTrend =
+    compare === "period"
+      ? metricTrend(ex.points, metric)
+      : delta == null
+        ? "insufficient"
+        : delta > 2
+          ? "up"
+          : delta < -2
+            ? "down"
+            : "flat";
+  const tc = trendColor(trend);
+  const deltaText =
+    delta != null && trend !== "insufficient"
+      ? ` ${delta > 0 ? "+" : ""}${Math.round(delta)}%`
+      : "";
 
   return (
     <Box sx={{ borderRadius: 2, overflow: "hidden", border: "1px solid", borderColor: alpha(PURPLE, 0.22) }}>
@@ -74,13 +127,13 @@ function ExerciseRow({ ex, sessions }: { ex: ExerciseInsight; sessions: Session[
           </Typography>
           <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 0.5, mt: 0.25 }}>
             <Typography variant="caption" color="text.secondary">
-              {t("Лучший e1RM", "Best e1RM")} {Math.round(ex.bestE1rm)} {t("кг", "kg")}
+              {metricLabel} {latest != null ? fmtMetric(metric, latest, kg) : "—"}
             </Typography>
             <Chip
               size="small"
               variant="outlined"
-              label={`e1RM ${TREND_LABEL[ex.trend]}`}
-              sx={{ height: 20, fontSize: 10.5, color: trendColor, borderColor: alpha(trendColor, 0.4) }}
+              label={`${TREND_LABEL[trend]}${deltaText}`}
+              sx={{ height: 20, fontSize: 10.5, color: tc, borderColor: alpha(tc, 0.4) }}
             />
             {plateau.currentWeeks >= 3 && (
               <Chip
@@ -119,34 +172,25 @@ function ExerciseRow({ ex, sessions }: { ex: ExerciseInsight; sessions: Session[
           </ToggleButtonGroup>
 
           {chartPoints.length > 0 ? (
-            <MiniChart points={chartPoints} format={(v) => `${Math.round(v)}`} />
+            <MiniChart
+              points={chartPoints}
+              format={metric === "volume" ? (v) => formatVolume(v) : (v) => `${Math.round(v)}`}
+            />
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-              {t("В этом диапазоне нет данных с e1RM.", "No e1RM data in this range.")}
+              {t("В этом диапазоне нет данных.", "No data in this range.")}
             </Typography>
           )}
 
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: 1,
-              mt: 1.5,
-            }}
-          >
-            <Metric label={t("Лучший вес", "Best weight")} value={`${ex.bestWeight} ${t("кг", "kg")}`} />
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, mt: 1.5 }}>
+            <Metric label={t("Лучший вес", "Best weight")} value={`${ex.bestWeight} ${kg}`} />
             <Metric label={t("Лучшие повторы", "Best reps")} value={`${ex.bestReps}`} />
-            <Metric label={t("Лучший объём", "Best volume")} value={formatVolume(ex.bestVolume)} />
+            <Metric label={t("Лучший тоннаж", "Best tonnage")} value={formatVolume(ex.bestVolume)} />
+            <Metric label={t("Прогноз макс", "Est. max")} value={`${Math.round(ex.bestE1rm)} ${kg}`} />
             <Metric label={t("Тренировок", "Workouts")} value={`${ex.sessions}`} />
             <Metric label={t("Последний рекорд", "Last record")} value={formatDate(ex.lastPrDate)} />
             {plateau.currentWeeks > 0 && (
               <Metric label={t("Плато сейчас", "Current plateau")} value={`${plateau.currentWeeks} ${t("нед", "wk")}`} />
-            )}
-            {plateau.longestWeeks > 0 && plateau.longestFrom && (
-              <Metric
-                label={t("Самое долгое плато", "Longest plateau")}
-                value={`${plateau.longestWeeks} ${t("нед", "wk")} · ${formatDate(plateau.longestFrom)}`}
-              />
             )}
           </Box>
         </Box>
@@ -176,6 +220,21 @@ export default function StrengthProgress({
   sessions: Session[];
 }) {
   const t = useT();
+  const [metric, setMetric] = useState<StrengthMetric>("volume");
+  const [compare, setCompare] = useState<CompareMode>("session");
+
+  // Растущие сверху, откаты ниже, «мало данных» — в конце.
+  const sorted = useMemo(() => {
+    return [...exercises].sort((a, b) => {
+      const da = metricDelta(a.points, metric, compare);
+      const db = metricDelta(b.points, metric, compare);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return db - da;
+    });
+  }, [exercises, metric, compare]);
+
   if (exercises.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -186,10 +245,28 @@ export default function StrengthProgress({
       </Typography>
     );
   }
+
   return (
     <Stack spacing={1.25}>
-      {exercises.map((ex) => (
-        <ExerciseRow key={ex.id} ex={ex} sessions={sessions} />
+      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+        <ToggleButtonGroup value={metric} exclusive size="small" onChange={(_, v) => v && setMetric(v)}>
+          {METRICS.map((m) => (
+            <ToggleButton key={m.key} value={m.key} sx={{ fontSize: 12, py: 0.4, px: 1.25, textTransform: "none" }}>
+              {m.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        <ToggleButtonGroup value={compare} exclusive size="small" onChange={(_, v) => v && setCompare(v)}>
+          {COMPARES.map((c) => (
+            <ToggleButton key={c.key} value={c.key} sx={{ fontSize: 12, py: 0.4, px: 1.25, textTransform: "none" }}>
+              {c.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Stack>
+
+      {sorted.map((ex) => (
+        <ExerciseRow key={ex.id} ex={ex} sessions={sessions} metric={metric} compare={compare} />
       ))}
     </Stack>
   );
