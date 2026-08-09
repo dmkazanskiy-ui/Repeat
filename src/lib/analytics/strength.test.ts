@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExercisePerformancePoint } from "./types";
-import { metricDelta, metricValue, metricTrend } from "./strength";
+import { metricDelta, metricSeries, metricValue, metricTrend } from "./strength";
 
 const pt = (date: string, weight: number, reps: number, vol: number): ExercisePerformancePoint => ({
   date,
@@ -34,6 +34,22 @@ describe("metricDelta", () => {
   });
   it("мало точек → null", () => {
     expect(metricDelta([pts[0]], "weight", "session")).toBeNull();
+  });
+});
+
+describe("metricSeries", () => {
+  it("тоннаж агрегируется по неделям (сумма), вес — по тренировкам", () => {
+    const pts = [
+      pt("2026-07-06", 100, 5, 2000), // неделя A (Пн 06.07)
+      pt("2026-07-08", 100, 5, 2500), // та же неделя A
+      pt("2026-07-15", 110, 5, 3000), // неделя B
+    ];
+    const vol = metricSeries(pts, "volume");
+    expect(vol).toHaveLength(2); // две недели
+    expect(vol[0].v).toBe(4500); // 2000 + 2500
+    expect(vol[1].v).toBe(3000);
+    // Вес — по каждой тренировке, без агрегации.
+    expect(metricSeries(pts, "weight")).toHaveLength(3);
   });
 });
 

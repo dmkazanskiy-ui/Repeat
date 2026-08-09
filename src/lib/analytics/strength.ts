@@ -2,7 +2,7 @@ import { bestE1rm, epley, exerciseName, setVolume } from "../types";
 import type { Exercise, Session, SessionExercise } from "../types";
 import { L } from "../i18n";
 import { isWorkingSet } from "./metrics";
-import { diffDays } from "./period";
+import { diffDays, weekStart } from "./period";
 import type { ExercisePerformancePoint } from "./types";
 
 // Единственный источник формулы e1RM для всего приложения.
@@ -116,11 +116,34 @@ export function metricValue(p: ExercisePerformancePoint, m: StrengthMetric): num
   return p.e1rm;
 }
 
-/** Тренд по произвольной метрике (МНК, deadband 2%); те же пороги достаточности. */
-export function metricTrend(points: ExercisePerformancePoint[], m: StrengthMetric): StrengthTrend {
-  const pts = points
+/**
+ * Серия значений метрики для тренда/дельты/графика. Тоннаж агрегируется ПО
+ * НЕДЕЛЯМ (сумма за неделю) — посессионный объём слишком шумный, неделя =
+ * единица прогресса. Вес и прогноз макс — по тренировкам (это максимумы, не суммы).
+ */
+export function metricSeries(
+  points: ExercisePerformancePoint[],
+  m: StrengthMetric,
+): Array<{ date: string; v: number }> {
+  if (m === "volume") {
+    const byWeek = new Map<string, number>();
+    for (const p of points) {
+      if (p.workoutVolume <= 0) continue;
+      const wk = weekStart(p.date);
+      byWeek.set(wk, (byWeek.get(wk) ?? 0) + p.workoutVolume);
+    }
+    return [...byWeek.entries()]
+      .map(([date, v]) => ({ date, v }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  return points
     .map((p) => ({ date: p.date, v: metricValue(p, m) }))
     .filter((p): p is { date: string; v: number } => p.v != null);
+}
+
+/** Тренд по произвольной метрике (МНК, deadband 2%); те же пороги достаточности. */
+export function metricTrend(points: ExercisePerformancePoint[], m: StrengthMetric): StrengthTrend {
+  const pts = metricSeries(points, m);
   if (pts.length < 4) return "insufficient";
   const spanDays = diffDays(pts[0].date, pts[pts.length - 1].date);
   if (spanDays < 21) return "insufficient";
@@ -150,7 +173,7 @@ export function metricDelta(
   m: StrengthMetric,
   mode: CompareMode,
 ): number | null {
-  const vs = points.map((p) => metricValue(p, m)).filter((v): v is number => v != null);
+  const vs = metricSeries(points, m).map((p) => p.v);
   if (vs.length < 2) return null;
   const last = vs[vs.length - 1];
   const base = mode === "session" ? vs[vs.length - 2] : vs[0];

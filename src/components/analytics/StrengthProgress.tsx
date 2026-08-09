@@ -12,8 +12,9 @@ import { alpha } from "@mui/material/styles";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
 import MiniChart from "../MiniChart";
+import WeightRepsChart from "./WeightRepsChart";
 import { addDays, formatDate, formatVolume, today } from "../../lib/format";
-import { exercisePlateau, metricDelta, metricTrend, metricValue } from "../../lib/analytics";
+import { exercisePlateau, metricDelta, metricSeries, metricTrend, metricValue } from "../../lib/analytics";
 import { L, useT } from "../../lib/i18n";
 import type { CompareMode, ExerciseInsight, StrengthMetric, StrengthTrend } from "../../lib/analytics";
 import type { Session } from "../../lib/types";
@@ -77,9 +78,13 @@ function ExerciseRow({
 
   const days = RANGES.find((r) => r.key === range)?.days ?? null;
   const cutoff = days ? addDays(today(), -days) : "0000-00-00";
-  const chartPoints = ex.points
-    .filter((p) => metricValue(p, metric) != null && p.date >= cutoff)
-    .map((p) => ({ label: formatDate(p.date), value: metricValue(p, metric) as number }));
+  const inRange = ex.points.filter((p) => p.date >= cutoff);
+  // Макс. вес — график «вес + размер точки = повторы»; тоннаж/прогноз — линия
+  // (тоннаж уже агрегирован по неделям в metricSeries).
+  const weightPoints = inRange
+    .filter((p) => p.weight != null)
+    .map((p) => ({ label: formatDate(p.date), weight: p.weight as number, reps: p.reps ?? 0 }));
+  const chartPoints = metricSeries(inRange, metric).map((s) => ({ label: formatDate(s.date), value: s.v }));
 
   // Текущее значение метрики — последняя точка с данными.
   const latest = [...ex.points].reverse().map((p) => metricValue(p, metric)).find((v) => v != null) ?? null;
@@ -171,7 +176,15 @@ function ExerciseRow({
             ))}
           </ToggleButtonGroup>
 
-          {chartPoints.length > 0 ? (
+          {metric === "weight" ? (
+            weightPoints.length > 0 ? (
+              <WeightRepsChart points={weightPoints} />
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                {t("В этом диапазоне нет данных.", "No data in this range.")}
+              </Typography>
+            )
+          ) : chartPoints.length > 0 ? (
             <MiniChart
               points={chartPoints}
               format={metric === "volume" ? (v) => formatVolume(v) : (v) => `${Math.round(v)}`}
