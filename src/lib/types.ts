@@ -294,6 +294,8 @@ export interface PlannedExercise {
   exerciseId: string;
   order: number;
   targetSets: number;
+  /** Волна недель это упражнение не трогает (подсобка всегда 3×12). */
+  waveExempt?: boolean;
   targetRepMin?: number | null;
   targetRepMax?: number | null;
   targetWeight?: number | null;
@@ -303,6 +305,34 @@ export interface PlannedExercise {
 }
 
 /** Тренировка-день программы (A/B/C/D или своё название). */
+/**
+ * Тип недели в волне (мезоцикле): лёгкая / средняя / тяжёлая. Задаёт число
+ * рабочих подходов и диапазон повторов; вес считается от последней недели ТОГО
+ * ЖЕ типа, а `percent` — только ориентир на первый заход, пока такой недели
+ * ещё не было. `light` исключает неделю из плато и базовой нагрузки.
+ */
+export interface WeekType {
+  id: string;
+  name: string;
+  sets: number;
+  repMin?: number | null;
+  repMax?: number | null;
+  /** Ориентир в % от известного рабочего веса — только при отсутствии истории. */
+  percent?: number | null;
+  light?: boolean;
+}
+
+/**
+ * Волна недель программы. Идёт по календарю: `startWeek` — понедельник недели,
+ * в которой волна стояла на `startIndex`. Пропущенные недели волну не ломают —
+ * они просто остаются без данных.
+ */
+export interface ProgramWave {
+  weeks: WeekType[];
+  startWeek: string;
+  startIndex: number;
+}
+
 export interface ProgramWorkout {
   id: string;
   name: string;
@@ -324,6 +354,8 @@ export interface TrainingProgram {
   currentWorkoutIndex: number;
   /** Сколько полных кругов пройдено. */
   cycleNumber: number;
+  /** Волна недель (лёгкая → средняя → тяжёлая). Нет — значит все недели равны. */
+  wave?: ProgramWave | null;
   createdAt: string;
   archivedAt?: string | null;
 }
@@ -373,6 +405,8 @@ export interface Session {
   plan?: PlannedExercise[] | null;
   /** Разгрузочная неделя — из подсчёта плато и baseline исключается. */
   deload?: boolean;
+  /** Снапшот типа недели волны на момент старта — правка волны историю не меняет. */
+  weekType?: { id: string; name: string } | null;
   /** Субъективная тяжесть тренировки (легко/средне/тяжело). */
   intensity?: SessionIntensity | null;
   /**

@@ -18,6 +18,7 @@ import { currentStreak } from "../lib/analytics/consistency";
 import { readiness } from "../lib/analytics/recovery";
 import { restBalance } from "../lib/analytics/rest";
 import { useT } from "../lib/i18n";
+import { currentWeekType } from "../lib/wave";
 import {
   SESSION_LABELS,
   activityLabel,
@@ -68,6 +69,8 @@ export default function TodayGuide({
     () => programs.find((p) => !p.archivedAt) ?? null,
     [programs],
   );
+  // Тип недели волны — чтобы гайд сразу говорил, какая сегодня неделя.
+  const weekType = activeProgram ? currentWeekType(activeProgram, today()) : null;
 
   // Следующая тренировка цикла активной программы.
   const nextWorkout = useMemo(() => {
@@ -165,7 +168,11 @@ export default function TodayGuide({
           icon="gym"
           eyebrow={t("Тренировка дня", "Workout of the day")}
           title={nextWorkout.workout.name}
-          sub={`${activeProgram.name} · ${t("круг", "cycle")} ${activeProgram.cycleNumber} · ${t("веса подтянутся", "weights carried over")}`}
+          sub={
+            weekType
+              ? `${activeProgram.name} · ${weekType.name.toLowerCase()} ${t("неделя", "week")} · ${weekType.sets} ${t("подх.", "sets")}`
+              : `${activeProgram.name} · ${t("круг", "cycle")} ${activeProgram.cycleNumber} · ${t("веса подтянутся", "weights carried over")}`
+          }
           onClick={() => onStartProgramDay(activeProgram, nextWorkout.index)}
         />
       ) : (

@@ -17,6 +17,8 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { exerciseName } from "../lib/types";
 import type { Exercise, TrainingProgram } from "../lib/types";
+import { currentWeekType, defaultWave, setCurrentWeek, waveIndexFor } from "../lib/wave";
+import { today } from "../lib/format";
 
 interface Props {
   program: TrainingProgram;
@@ -25,6 +27,8 @@ interface Props {
   onStart: (program: TrainingProgram, workoutIndex: number, deload: boolean) => void;
   onEdit: (program: TrainingProgram) => void;
   onDelete: (program: TrainingProgram) => void;
+  /** Сохранить программу (волна недель правится прямо отсюда). */
+  onChange: (program: TrainingProgram) => void;
 }
 
 import { useT } from "../lib/i18n";
@@ -36,9 +40,13 @@ export default function ProgramDetail({
   onStart,
   onEdit,
   onDelete,
+  onChange,
 }: Props) {
   const t = useT();
   const [deload, setDeload] = useState(false);
+  const wave = program.wave ?? null;
+  const week = currentWeekType(program, today());
+  const activeIndex = wave ? waveIndexFor(wave, today()) : -1;
   const nameOf = (id: string) =>
     exerciseName(exercises.find((e) => e.id === id));
   const workouts = [...program.workouts].sort((a, b) => a.order - b.order);
@@ -128,11 +136,58 @@ export default function ProgramDetail({
         })}
       </Stack>
 
-      <FormControlLabel
-        control={<Switch checked={deload} onChange={(e) => setDeload(e.target.checked)} />}
-        label={t("Разгрузочная неделя", "Deload week")}
-        sx={{ mt: 1 }}
-      />
+      {/* Волна недель: тип недели считается по календарю, но его можно поправить. */}
+      {wave ? (
+        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mt: 2 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
+              {t("Волна недель", "Week wave")}
+            </Typography>
+            <Button size="small" onClick={() => onEdit(program)}>
+              {t("Настроить", "Configure")}
+            </Button>
+          </Stack>
+          <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", rowGap: 0.75 }}>
+            {wave.weeks.map((type, index) => (
+              <Chip
+                key={type.id}
+                size="small"
+                label={`${type.name} · ${type.sets}`}
+                color={index === activeIndex ? "primary" : "default"}
+                variant={index === activeIndex ? "filled" : "outlined"}
+                onClick={() =>
+                  onChange({ ...program, wave: setCurrentWeek(wave, today(), index) })
+                }
+              />
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            {week
+              ? t(
+                  `Сейчас ${week.name.toLowerCase()} неделя · ${week.sets} подх${week.light ? " · в плато не идёт" : ""}. `,
+                  `Current week: ${week.name.toLowerCase()} · ${week.sets} sets${week.light ? " · excluded from plateaus" : ""}. `,
+                )
+              : ""}
+            {t("Не та неделя? Нажми нужную.", "Wrong week? Tap the right one.")}
+          </Typography>
+        </Paper>
+      ) : (
+        <>
+          <FormControlLabel
+            control={<Switch checked={deload} onChange={(e) => setDeload(e.target.checked)} />}
+            label={t("Разгрузочная неделя", "Deload week")}
+            sx={{ mt: 1 }}
+          />
+          <Button
+            fullWidth
+            variant="outlined"
+            onClick={() => onChange({ ...program, wave: defaultWave(today()) })}
+            sx={{ mt: 1 }}
+          >
+            {t("Включить волну недель", "Turn on the week wave")}
+          </Button>
+        </>
+      )}
 
       <Button
         fullWidth

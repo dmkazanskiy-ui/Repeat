@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
   IconButton,
   Paper,
   Stack,
@@ -16,6 +17,9 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import type { PickerSection } from "../components/ExercisePickerDialog";
 import { similarExercises } from "../lib/exerciseSuggest";
+import { defaultWave } from "../lib/wave";
+import { newId } from "../lib/id";
+import { today } from "../lib/format";
 import NumberField from "../components/NumberField";
 import { newPlannedExercise, newProgramWorkout } from "../lib/store";
 import { exerciseName } from "../lib/types";
@@ -25,6 +29,7 @@ import type {
   PlannedExercise,
   ProgramWorkout,
   TrainingProgram,
+  WeekType,
 } from "../lib/types";
 
 interface Props {
@@ -100,6 +105,42 @@ export default function ProgramEditor({
 
   const workouts = [...program.workouts].sort((a, b) => a.order - b.order);
 
+  function patchWeek(index: number, patch: Partial<WeekType>) {
+    const wave = program.wave;
+    if (!wave) return;
+    onChange({
+      ...program,
+      wave: {
+        ...wave,
+        weeks: wave.weeks.map((w, i) => (i === index ? { ...w, ...patch } : w)),
+      },
+    });
+  }
+
+  function addWeek() {
+    const wave = program.wave;
+    if (!wave) return;
+    onChange({
+      ...program,
+      wave: {
+        ...wave,
+        weeks: [
+          ...wave.weeks,
+          { id: newId(), name: t("Неделя", "Week"), sets: 3, repMin: 6, repMax: 8, percent: 100 },
+        ],
+      },
+    });
+  }
+
+  function removeWeek(index: number) {
+    const wave = program.wave;
+    if (!wave || wave.weeks.length < 2) return;
+    onChange({
+      ...program,
+      wave: { ...wave, weeks: wave.weeks.filter((_, i) => i !== index) },
+    });
+  }
+
   return (
     <Box sx={{ pb: 6 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
@@ -131,6 +172,108 @@ export default function ProgramEditor({
         onChange={(e) => onChange({ ...program, description: e.target.value || null })}
         sx={{ mb: 3 }}
       />
+
+      {/* Волна недель: подходы, повторы и ориентир по весу для каждого типа */}
+      <Paper variant="outlined" sx={{ p: 1.5, mb: 3, borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
+            {t("Волна недель", "Week wave")}
+          </Typography>
+          {program.wave ? (
+            <Button size="small" color="error" onClick={() => onChange({ ...program, wave: null })}>
+              {t("Выключить", "Turn off")}
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              onClick={() => onChange({ ...program, wave: defaultWave(today()) })}
+            >
+              {t("Включить", "Turn on")}
+            </Button>
+          )}
+        </Stack>
+
+        {program.wave ? (
+          <>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+              {t(
+                "Недели идут по кругу и меняются по календарю. Вес считается от прошлой недели того же типа; процент — ориентир на первый раз.",
+                "Weeks rotate and switch by calendar. Weight comes from the last week of the same type; the percentage is a first-time estimate.",
+              )}
+            </Typography>
+            <Stack spacing={1.5}>
+              {program.wave.weeks.map((type, index) => (
+                <Box key={type.id}>
+                  <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+                    <TextField
+                      variant="standard"
+                      value={type.name}
+                      onChange={(e) => patchWeek(index, { name: e.target.value })}
+                      sx={{ flex: 1 }}
+                    />
+                    <Chip
+                      size="small"
+                      label={t("в плато не идёт", "skip in plateaus")}
+                      color={type.light ? "warning" : "default"}
+                      variant={type.light ? "filled" : "outlined"}
+                      onClick={() => patchWeek(index, { light: !type.light })}
+                    />
+                    <IconButton
+                      size="small"
+                      aria-label={t("Убрать неделю", "Remove week")}
+                      disabled={program.wave!.weeks.length < 2}
+                      onClick={() => removeWeek(index)}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                    <NumberField
+                      label={t("Подх.", "Sets")}
+                      integer
+                      value={type.sets}
+                      onChange={(v) => patchWeek(index, { sets: Math.max(1, v ?? 1) })}
+                      sx={{ width: 64 }}
+                    />
+                    <NumberField
+                      label={t("Повт.", "Reps")}
+                      integer
+                      value={type.repMin ?? null}
+                      onChange={(v) => patchWeek(index, { repMin: v })}
+                      sx={{ width: 64 }}
+                    />
+                    <Typography sx={{ alignSelf: "center", color: "text.secondary" }}>–</Typography>
+                    <NumberField
+                      label=" "
+                      integer
+                      value={type.repMax ?? null}
+                      onChange={(v) => patchWeek(index, { repMax: v })}
+                      sx={{ width: 64 }}
+                    />
+                    <NumberField
+                      label={t("% веса", "% weight")}
+                      integer
+                      value={type.percent ?? null}
+                      onChange={(v) => patchWeek(index, { percent: v })}
+                      sx={{ flex: 1 }}
+                    />
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+            <Button size="small" startIcon={<AddIcon />} onClick={addWeek} sx={{ mt: 1 }}>
+              {t("Тип недели", "Week type")}
+            </Button>
+          </>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            {t(
+              "Без волны все недели одинаковые: подходы берутся из плана.",
+              "Without a wave every week is the same: sets come from the plan.",
+            )}
+          </Typography>
+        )}
+      </Paper>
 
       {workouts.map((workout, wi) => (
         <Paper key={workout.id} variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
@@ -221,6 +364,18 @@ export default function ProgramEditor({
                       >
                         <ArrowDownwardIcon fontSize="small" />
                       </IconButton>
+                      {program.wave && (
+                        <Chip
+                          size="small"
+                          label={t("фикс. подходы", "fixed sets")}
+                          color={pe.waveExempt ? "warning" : "default"}
+                          variant={pe.waveExempt ? "filled" : "outlined"}
+                          onClick={() =>
+                            patchPlanned(workout.id, pe.id, { waveExempt: !pe.waveExempt })
+                          }
+                          sx={{ height: 22, fontSize: 11 }}
+                        />
+                      )}
                       <IconButton
                         size="small"
                         aria-label={t("Убрать", "Remove")}

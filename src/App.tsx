@@ -16,6 +16,12 @@ import AddIcon from "@mui/icons-material/Add";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import { LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
+import {
+  currentWeekType,
+  lastSameTypeSession,
+  wavePlan,
+  waveToast,
+} from "./lib/wave";
 import type { Lang } from "./lib/i18n";
 import {
   advanceProgram,
@@ -45,6 +51,7 @@ import {
   acuteChronicLoad,
   autoregPlan,
   autoregToast,
+  dayModifier,
   readiness,
 } from "./lib/analytics";
 import CalendarScreen from "./screens/CalendarScreen";
@@ -397,30 +404,50 @@ export default function App() {
       const workout = [...program.workouts].sort((a, b) => a.order - b.order)[index];
       if (!workout) return;
       const last = lastSessionOfWorkout(sessions, workout.id);
-      // Авторегуляция: корректируем перенос по факту прошлого раза и готовности.
-      // На разгрузке не вмешиваемся — там нагрузка уже намеренно снижена.
       const ready = readiness(sessions, recovery, date);
       const acwr = acuteChronicLoad(sessions, date);
-      const plan = deload
-        ? null
-        : autoregPlan({
-            workout,
-            lastSession: last,
-            exercises,
-            readinessScore: ready.score,
-            readinessHasSignal: ready.hasSignal,
-            acwrLevel: acwr.level,
-          });
+      // Готовность и нагрузка дают модификатор дня; он одинаково подчиняет себе
+      // и волну, и обычную авторегуляцию.
+      const { modifier } = dayModifier(ready.score, ready.hasSignal, acwr.level);
+      const weekType = currentWeekType(program, date);
+
+      // Волна недель задаёт коридор (подходы, повторы, от какого веса плясать),
+      // авторегуляция двигает внутри него. Без волны — прежняя авторегуляция.
+      const wave =
+        weekType && !deload
+          ? wavePlan({
+              workout,
+              weekType,
+              lastSameType: lastSameTypeSession(sessions, workout.id, weekType.id),
+              lastAny: last,
+              exercises,
+              modifier,
+            })
+          : null;
+      const plan =
+        wave || deload
+          ? null
+          : autoregPlan({
+              workout,
+              lastSession: last,
+              exercises,
+              readinessScore: ready.score,
+              readinessHasSignal: ready.hasSignal,
+              acwrLevel: acwr.level,
+            });
       const session = startProgramWorkout(
         { ...program, currentWorkoutIndex: index },
         workout,
         date,
         last,
-        plan?.byPlanned,
+        wave?.byPlanned ?? plan?.byPlanned,
       );
-      session.deload = deload;
+      // Лёгкая неделя — это разгрузка: в плато и базовую нагрузку не идёт.
+      session.deload = deload || Boolean(weekType?.light);
+      session.weekType = weekType ? { id: weekType.id, name: weekType.name } : null;
       commit([...sessions, session]);
-      if (plan?.hasSignal) setToast(autoregToast(plan, exercises));
+      if (wave?.hasSignal) setToast(waveToast(wave, exercises));
+      else if (plan?.hasSignal) setToast(autoregToast(plan, exercises));
       // Продвигаем цикл от выбранного дня, а не всегда от текущего.
       commitPrograms(
         programs.map((p) =>
@@ -528,6 +555,9 @@ export default function App() {
             onBack={() => setOpenProgramId(null)}
             onStart={startProgramDay}
             onEdit={(p) => setProgramEditId(p.id)}
+            onChange={(p) =>
+              commitPrograms(programs.map((item) => (item.id === p.id ? p : item)))
+            }
             onDelete={(p) => {
               archiveProgram(p.id);
               setOpenProgramId(null);

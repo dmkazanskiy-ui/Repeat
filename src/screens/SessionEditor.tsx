@@ -644,6 +644,15 @@ export default function SessionEditor({
                     : { borderColor: alpha(color, 0.5), color }),
                 }}
               />
+              {/* Тип недели волны — снапшот на момент старта дня программы. */}
+              {session.weekType && (
+                <Chip
+                  label={`${session.weekType.name} ${t("неделя", "week")}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 22, fontSize: 11, borderColor: "divider", color: "text.secondary" }}
+                />
+              )}
               {(running || session.endedAt) && (
                 <Typography variant="caption" color="text.secondary">
                   {formatDuration(session.endedAt ? sessionDurationSec(session) : elapsedSec)}

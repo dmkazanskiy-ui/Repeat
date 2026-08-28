@@ -64,7 +64,7 @@ function prevPerformance(prev: SessionExercise | undefined): {
   return { baseWeight: weights.length ? Math.max(...weights) : null, reps };
 }
 
-function dayModifier(
+export function dayModifier(
   readinessScore: number | null,
   readinessHasSignal: boolean,
   acwrLevel: AcwrLevel,
