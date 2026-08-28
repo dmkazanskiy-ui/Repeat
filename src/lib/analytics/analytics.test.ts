@@ -387,6 +387,40 @@ describe("прогресс по программе A→A", () => {
     const progress = programProgress(program, [doneWorkout("2026-07-22", 80)], [bench]);
     expect(progress).toEqual([]);
   });
+
+  it("занятый другим упражнением слот — это замена, а не пропуск", () => {
+    const dumbbell: Exercise = {
+      id: "base:Гантели",
+      name: "Жим гантелей лёжа",
+      muscleGroup: "chest",
+      custom: false,
+    };
+    const swapped = doneWorkout("2026-07-22", 30);
+    swapped.exercises[0].exerciseId = "base:Гантели"; // слот pe1 остался
+
+    const progress = programProgress(
+      program,
+      [doneWorkout("2026-07-15", 80), swapped],
+      [bench, dumbbell],
+    );
+    expect(progress[0].missed).toEqual([]);
+    expect(progress[0].swaps).toEqual([
+      { from: "Жим штанги лёжа", to: "Жим гантелей лёжа" },
+    ]);
+  });
+
+  it("упражнение вовсе не сделано — остаётся пропуском", () => {
+    const skipped = doneWorkout("2026-07-22", 80);
+    skipped.exercises = [];
+
+    const progress = programProgress(
+      program,
+      [doneWorkout("2026-07-15", 80), skipped],
+      [bench],
+    );
+    expect(progress[0].missed).toEqual(["Жим штанги лёжа"]);
+    expect(progress[0].swaps).toEqual([]);
+  });
 });
 
 describe("нагрузка и baseline", () => {

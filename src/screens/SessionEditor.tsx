@@ -11,6 +11,8 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  ListItemIcon,
+  Menu,
   MenuItem,
   Paper,
   Stack,
@@ -30,11 +32,15 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
 import StopIcon from "@mui/icons-material/Stop";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
+import LinkIcon from "@mui/icons-material/Link";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
+import type { PickerSection } from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
 import { clampRestSec, loadRestEnabled, loadRestSec, saveRestSec } from "../lib/restTimer";
+import { lastWorkingWeight, recentExercises, similarExercises } from "../lib/exerciseSuggest";
 import { useT } from "../lib/i18n";
 import {
   linkExercises,
@@ -86,6 +92,8 @@ import type {
 
 interface Props {
   session: Session;
+  /** Вся история — для подбора замены и переноса веса нового упражнения. */
+  sessions: Session[];
   exercises: Exercise[];
   cardioKinds: CustomActivity[];
   mobilityKinds: CustomActivity[];
@@ -97,6 +105,13 @@ interface Props {
   onCopyToClipboard: () => void;
   /** Выйти из режима правки завершённой тренировки — обратно в read-only. */
   onExitEditing?: () => void;
+  /** Упражнение заменили: App предложит заменить его и в программе. */
+  onReplaced?: (info: {
+    plannedExerciseId: string | null;
+    exerciseId: string;
+    fromName: string;
+    toName: string;
+  }) => void;
 }
 
 /** Секунды в «1:23:45» или «12:07» — для тикающего таймера тренировки. */
@@ -170,6 +185,7 @@ function CircularTimer({
 
 export default function SessionEditor({
   session,
+  sessions,
   exercises,
   cardioKinds,
   mobilityKinds,
@@ -180,8 +196,14 @@ export default function SessionEditor({
   onCopyTo,
   onCopyToClipboard,
   onExitEditing,
+  onReplaced,
 }: Props) {
-  const [picking, setPicking] = useState(false);
+  // Пикер упражнений: добавление нового или замена конкретного в слоте.
+  const [picker, setPicker] = useState<
+    { mode: "add" } | { mode: "replace"; itemId: string } | null
+  >(null);
+  // Меню действий по долгому нажатию на упражнение.
+  const [menuFor, setMenuFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const [copyDate, setCopyDate] = useState("");
   // Диалог завершения: длительность и средний пульс вводятся вручную —
   // «Начать» жать необязательно.
@@ -221,6 +243,26 @@ export default function SessionEditor({
 
   const theme = useTheme();
   const t = useT();
+  // Подборки для замены: сначала закрывающие ту же работу, затем недавние.
+  const pickerSections: PickerSection[] | undefined = useMemo(() => {
+    if (picker?.mode !== "replace") return undefined;
+    const item = session.exercises.find((e) => e.id === picker.itemId);
+    const target = exercises.find((e) => e.id === item?.exerciseId);
+    const used = session.exercises.map((e) => e.exerciseId);
+    const sections: PickerSection[] = [];
+    if (target) {
+      const similar = similarExercises(target, exercises).filter(
+        (e) => !used.includes(e.id),
+      );
+      if (similar.length > 0) sections.push({ label: t("Похожие", "Similar"), exercises: similar });
+    }
+    const recent = recentExercises(sessions, exercises, { exclude: used, limit: 6 });
+    if (recent.length > 0) {
+      sections.push({ label: t("Ты уже делал", "You've done these"), exercises: recent });
+    }
+    return sections;
+  }, [picker, session.exercises, exercises, sessions, t]);
+
   const paused = Boolean(session.pausedAt);
   const color = typeColor(session.kind);
   // Акцент внутри редактора — цвет типа активности (силовая фиолет, кардио
@@ -253,11 +295,14 @@ export default function SessionEditor({
         ? t("Запланирована", "Planned")
         : t("Не начата", "Not started");
 
-  function startPress(id: string) {
+  function startPress(id: string, anchor: HTMLElement) {
+    // Пока выбираем пару для супер-сета, долгое нажатие не мешает: там тап
+    // означает «объединить с этим».
+    if (linkingId != null) return;
     if (pressTimer.current) window.clearTimeout(pressTimer.current);
     pressTimer.current = window.setTimeout(() => {
       suppressClick.current = true;
-      setLinkingId(id);
+      setMenuFor({ id, anchor });
     }, 450);
   }
   function cancelPress() {
@@ -294,6 +339,31 @@ export default function SessionEditor({
     onChange({
       ...session,
       exercises: session.exercises.map((e) => (e.id === id ? patch(e) : e)),
+    });
+  }
+
+  /**
+   * Замена упражнения в слоте: порядок, число подходов, повторы, заметка и
+   * связь с планом остаются — меняется только чем слот занят. Вес берём из
+   * истории НОВОГО упражнения (между разными движениями он не переносится),
+   * отметки выполнения сбрасываем: та работа делалась другим движением.
+   */
+  function replaceExercise(itemId: string, exerciseId: string) {
+    const item = session.exercises.find((e) => e.id === itemId);
+    if (!item) return;
+    const fromName = exerciseName(exercises.find((e) => e.id === item.exerciseId));
+    const toName = exerciseName(exercises.find((e) => e.id === exerciseId));
+    const weight = lastWorkingWeight(sessions, exerciseId);
+    patchExercise(itemId, (ex) => ({
+      ...ex,
+      exerciseId,
+      sets: ex.sets.map((set) => ({ ...set, weight, done: false })),
+    }));
+    onReplaced?.({
+      plannedExerciseId: item.plannedExerciseId ?? null,
+      exerciseId,
+      fromName,
+      toName,
     });
   }
 
@@ -1055,7 +1125,9 @@ export default function SessionEditor({
                           sx={{ mb: 1, alignItems: "center" }}
                         >
                           <Box
-                            onPointerDown={() => startPress(item.id)}
+                            onPointerDown={(event) =>
+                              startPress(item.id, event.currentTarget as HTMLElement)
+                            }
                             onPointerUp={cancelPress}
                             onPointerLeave={cancelPress}
                             onClick={() => headerClick(item.id)}
@@ -1095,18 +1167,6 @@ export default function SessionEditor({
                       {formatVolume(volume)}
                     </Typography>
                   )}
-                  <IconButton
-                    size="small"
-                    aria-label={t("Убрать упражнение", "Remove exercise")}
-                    onClick={() =>
-                      onChange({
-                        ...session,
-                        exercises: session.exercises.filter((e) => e.id !== item.id),
-                      })
-                    }
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
                 </Stack>
 
                 <Stack spacing={1}>
@@ -1292,7 +1352,7 @@ export default function SessionEditor({
             fullWidth
             variant="outlined"
             startIcon={<AddIcon />}
-            onClick={() => setPicking(true)}
+            onClick={() => setPicker({ mode: "add" })}
           >
             {t("Добавить упражнение", "Add exercise")}
           </Button>
@@ -1357,17 +1417,73 @@ export default function SessionEditor({
       </Button>
 
       <ExercisePickerDialog
-        open={picking}
+        open={picker != null}
         exercises={exercises}
-        onClose={() => setPicking(false)}
-        onPick={(exerciseId) =>
-          onChange({
-            ...session,
-            exercises: [...session.exercises, newSessionExercise(exerciseId)],
-          })
+        title={
+          picker?.mode === "replace"
+            ? t("Заменить упражнение", "Replace exercise")
+            : undefined
         }
+        sections={pickerSections}
+        onClose={() => setPicker(null)}
+        onPick={(exerciseId) => {
+          if (picker?.mode === "replace") replaceExercise(picker.itemId, exerciseId);
+          else
+            onChange({
+              ...session,
+              exercises: [...session.exercises, newSessionExercise(exerciseId)],
+            });
+        }}
         onCreate={onCreateExercise}
       />
+
+      {/* Долгое нажатие на упражнение — объединить / заменить / удалить */}
+      <Menu
+        open={menuFor != null}
+        anchorEl={menuFor?.anchor ?? null}
+        onClose={() => setMenuFor(null)}
+      >
+        <MenuItem
+          disabled={session.exercises.length < 2}
+          onClick={() => {
+            if (menuFor) setLinkingId(menuFor.id);
+            setMenuFor(null);
+          }}
+        >
+          <ListItemIcon>
+            <LinkIcon fontSize="small" />
+          </ListItemIcon>
+          {t("Объединить в супер-сет", "Group into a superset")}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (menuFor) setPicker({ mode: "replace", itemId: menuFor.id });
+            setMenuFor(null);
+          }}
+        >
+          <ListItemIcon>
+            <SwapHorizIcon fontSize="small" />
+          </ListItemIcon>
+          {t("Заменить", "Replace")}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (menuFor) {
+              const id = menuFor.id;
+              onChange({
+                ...session,
+                exercises: session.exercises.filter((e) => e.id !== id),
+              });
+            }
+            setMenuFor(null);
+          }}
+        >
+          <ListItemIcon>
+            <DeleteOutlineIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <Typography color="error">{t("Удалить", "Delete")}</Typography>
+        </MenuItem>
+      </Menu>
 
       <Dialog open={finishing} onClose={() => setFinishing(false)} fullWidth>
         <DialogTitle>

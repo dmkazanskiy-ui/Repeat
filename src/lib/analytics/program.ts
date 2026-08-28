@@ -54,6 +54,13 @@ export interface WorkoutComparison {
   plannedSets: number;
   actualSets: number;
   missed: string[];
+  /** Слоты плана, занятые другим упражнением: это замена, а не пропуск. */
+  swaps: ExerciseSwap[];
+}
+
+export interface ExerciseSwap {
+  from: string;
+  to: string;
 }
 
 function completedOfWorkout(sessions: Session[], workoutId: string): Session[] {
@@ -110,14 +117,21 @@ function compareSessions(
   const plan = curr.plan ?? [];
   const plannedSets = plan.reduce((n, pe) => n + Math.max(0, pe.targetSets || 0), 0);
   const actualSets = curr.exercises.reduce((n, e) => n + workingSets(e).length, 0);
-  const missed = plan
-    .filter(
-      (pe) =>
-        !curr.exercises.some(
-          (e) => e.plannedExerciseId === pe.id || e.exerciseId === pe.exerciseId,
-        ),
-    )
-    .map((pe) => nameOf(pe.exerciseId));
+  // Слот плана мог быть занят другим упражнением — это замена. Считать её
+  // пропуском нечестно: работа сделана, просто другим движением.
+  const swaps: ExerciseSwap[] = [];
+  const missed: string[] = [];
+  for (const pe of plan) {
+    const inSlot = curr.exercises.find((e) => e.plannedExerciseId === pe.id);
+    if (inSlot) {
+      if (inSlot.exerciseId !== pe.exerciseId) {
+        swaps.push({ from: nameOf(pe.exerciseId), to: nameOf(inSlot.exerciseId) });
+      }
+      continue;
+    }
+    if (curr.exercises.some((e) => e.exerciseId === pe.exerciseId)) continue;
+    missed.push(nameOf(pe.exerciseId));
+  }
 
   return {
     workoutId: curr.programWorkoutId ?? "",
@@ -130,6 +144,7 @@ function compareSessions(
     plannedSets,
     actualSets,
     missed,
+    swaps,
   };
 }
 

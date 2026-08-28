@@ -22,6 +22,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import PriorityHighRounded from "@mui/icons-material/PriorityHighRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import MetricChart from "../components/analytics/MetricChart";
 import StrengthProgress from "../components/analytics/StrengthProgress";
 import { RulerMeter, ScoreRing, WeekDots } from "../components/analytics/Meters";
@@ -1402,6 +1403,15 @@ function ProgramCompareCard({ c }: { c: WorkoutComparison }) {
       <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", rowGap: 0.75, mb: 1.5 }}>
         <Chip size="small" variant="outlined" icon={<ScheduleOutlinedIcon />} label={`${c.intervalDays} ${t("дн", "d")}`} />
         <Chip size="small" variant="outlined" icon={<ListAltOutlinedIcon />} label={`${t("план", "plan")} ${c.actualSets}/${c.plannedSets}`} />
+        {c.swaps.map((swap) => (
+          <Chip
+            key={`${swap.from}-${swap.to}`}
+            size="small"
+            variant="outlined"
+            icon={<SwapHorizRoundedIcon />}
+            label={`${t("замена", "swap")}: ${swap.from} → ${swap.to}`}
+          />
+        ))}
         {c.missed.length > 0 && (
           <Chip size="small" variant="outlined" color="warning" label={`${t("пропущено", "missed")}: ${c.missed.join(", ")}`} />
         )}

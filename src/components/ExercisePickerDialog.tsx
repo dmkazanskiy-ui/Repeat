@@ -23,12 +23,24 @@ import { exerciseName } from "../lib/types";
 import { useT } from "../lib/i18n";
 import type { Exercise, MuscleGroup } from "../lib/types";
 
+export interface PickerSection {
+  label: string;
+  exercises: Exercise[];
+}
+
 interface Props {
   open: boolean;
   exercises: Exercise[];
   onClose: () => void;
   onPick: (exerciseId: string) => void;
   onCreate: (name: string, group: MuscleGroup) => Exercise;
+  /** Заголовок диалога: у замены он свой. */
+  title?: string;
+  /**
+   * Готовые подборки над общим списком («Похожие», «Ты уже делал»). Показываем
+   * только пока не ищут и не фильтруют — дальше нужен полный список.
+   */
+  sections?: PickerSection[];
 }
 
 export default function ExercisePickerDialog({
@@ -37,6 +49,8 @@ export default function ExercisePickerDialog({
   onClose,
   onPick,
   onCreate,
+  title,
+  sections,
 }: Props) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -61,6 +75,12 @@ export default function ExercisePickerDialog({
         return aStarts - bStarts || shown(a).localeCompare(shown(b));
       });
   }, [exercises, group, query]);
+
+  // Подборки имеют смысл, только пока список не сужен поиском или фильтром.
+  const showSections =
+    (sections?.some((sec) => sec.exercises.length > 0) ?? false) &&
+    query.trim() === "" &&
+    group === null;
 
   function reset() {
     setQuery("");
@@ -87,7 +107,9 @@ export default function ExercisePickerDialog({
       <DialogTitle
         sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}
       >
-        {creating ? t("Своё упражнение", "Custom exercise") : t("Упражнение", "Exercise")}
+        {creating
+          ? t("Своё упражнение", "Custom exercise")
+          : (title ?? t("Упражнение", "Exercise"))}
         <IconButton onClick={close} size="small" aria-label={t("Закрыть", "Close")}>
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -178,6 +200,40 @@ export default function ExercisePickerDialog({
             </Box>
 
             <List dense sx={{ maxHeight: "45vh", overflowY: "auto", mx: -1 }}>
+              {showSections &&
+                sections!.map((section) => [
+                  <Typography
+                    key={`${section.label}-title`}
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: "block", px: 2, pt: 1 }}
+                  >
+                    {section.label}
+                  </Typography>,
+                  ...section.exercises.map((exercise) => (
+                    <ListItemButton
+                      key={`${section.label}-${exercise.id}`}
+                      onClick={() => {
+                        onPick(exercise.id);
+                        close();
+                      }}
+                    >
+                      <ListItemText
+                        primary={exerciseName(exercise)}
+                        secondary={MUSCLE_LABELS[exercise.muscleGroup]}
+                      />
+                    </ListItemButton>
+                  )),
+                ])}
+              {showSections && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", px: 2, pt: 1.5 }}
+                >
+                  {t("Все упражнения", "All exercises")}
+                </Typography>
+              )}
               {results.map((exercise) => (
                 <ListItemButton
                   key={exercise.id}

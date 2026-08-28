@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -14,6 +14,8 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
+import type { PickerSection } from "../components/ExercisePickerDialog";
+import { similarExercises } from "../lib/exerciseSuggest";
 import NumberField from "../components/NumberField";
 import { newPlannedExercise, newProgramWorkout } from "../lib/store";
 import { exerciseName } from "../lib/types";
@@ -57,7 +59,24 @@ export default function ProgramEditor({
   onCreateExercise,
 }: Props) {
   const t = useT();
-  const [pickingFor, setPickingFor] = useState<string | null>(null);
+  // Пикер: добавить упражнение в тренировку или заменить конкретное в слоте.
+  const [picker, setPicker] = useState<
+    | { mode: "add"; workoutId: string }
+    | { mode: "replace"; workoutId: string; plannedId: string; exerciseId: string }
+    | null
+  >(null);
+
+  // Подборка «Похожие» для замены; истории тренировок в редакторе нет,
+  // поэтому «ты уже делал» здесь не показываем.
+  const pickerSections: PickerSection[] | undefined = useMemo(() => {
+    if (picker?.mode !== "replace") return undefined;
+    const target = exercises.find((e) => e.id === picker.exerciseId);
+    if (!target) return undefined;
+    const similar = similarExercises(target, exercises);
+    return similar.length > 0
+      ? [{ label: t("Похожие", "Similar"), exercises: similar }]
+      : undefined;
+  }, [picker, exercises, t]);
 
   function updateWorkout(id: string, patch: (w: ProgramWorkout) => ProgramWorkout) {
     onChange({
@@ -161,7 +180,19 @@ export default function ProgramEditor({
                 return (
                   <Box key={pe.id}>
                     <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
-                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
+                      <Typography
+                        variant="body2"
+                        noWrap
+                        onClick={() =>
+                          setPicker({
+                            mode: "replace",
+                            workoutId: workout.id,
+                            plannedId: pe.id,
+                            exerciseId: pe.exerciseId,
+                          })
+                        }
+                        sx={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                      >
                         {name ?? t("Упражнение", "Exercise")}
                       </Typography>
                       <IconButton
@@ -240,7 +271,7 @@ export default function ProgramEditor({
           <Button
             size="small"
             startIcon={<AddIcon />}
-            onClick={() => setPickingFor(workout.id)}
+            onClick={() => setPicker({ mode: "add", workoutId: workout.id })}
             sx={{ mt: 1 }}
           >
             {t("Упражнение", "Exercise")}
@@ -270,12 +301,28 @@ export default function ProgramEditor({
       </Button>
 
       <ExercisePickerDialog
-        open={pickingFor != null}
+        open={picker != null}
         exercises={exercises}
-        onClose={() => setPickingFor(null)}
+        title={
+          picker?.mode === "replace"
+            ? t("Заменить упражнение", "Replace exercise")
+            : undefined
+        }
+        sections={pickerSections}
+        onClose={() => setPicker(null)}
         onPick={(exerciseId) => {
-          if (!pickingFor) return;
-          updateWorkout(pickingFor, (w) => ({
+          if (!picker) return;
+          if (picker.mode === "replace") {
+            // Слот остаётся: подходы, повторы, отдых и заметка не трогаются.
+            updateWorkout(picker.workoutId, (w) => ({
+              ...w,
+              exercises: w.exercises.map((pe) =>
+                pe.id === picker.plannedId ? { ...pe, exerciseId, targetWeight: null } : pe,
+              ),
+            }));
+            return;
+          }
+          updateWorkout(picker.workoutId, (w) => ({
             ...w,
             exercises: [...w.exercises, newPlannedExercise(exerciseId, w.exercises.length)],
           }));

@@ -118,6 +118,8 @@ export default function App() {
   const [undo, setUndo] = useState<Session | null>(null);
   const [clipboard, setClipboard] = useState<Session | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Необязательная кнопка у тоста («И в программе» после замены упражнения).
+  const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null);
 
   useEffect(() => {
     load().then((data) => {
@@ -303,6 +305,34 @@ export default function App() {
     setOnboarded(true);
     void saveOnboarded(true);
   }, []);
+
+  /** Заменить упражнение в шаблоне программы — по кнопке в тосте после замены. */
+  const replaceInProgram = useCallback(
+    (programId: string, workoutId: string, plannedExerciseId: string, exerciseId: string) => {
+      setPrograms((prev) => {
+        const next = prev.map((program) =>
+          program.id !== programId
+            ? program
+            : {
+                ...program,
+                workouts: program.workouts.map((workout) =>
+                  workout.id !== workoutId
+                    ? workout
+                    : {
+                        ...workout,
+                        exercises: workout.exercises.map((pe) =>
+                          pe.id === plannedExerciseId ? { ...pe, exerciseId } : pe,
+                        ),
+                      },
+                ),
+              },
+        );
+        void savePrograms(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const commitPrograms = useCallback((next: TrainingProgram[]) => {
     setPrograms(next);
@@ -552,6 +582,7 @@ export default function App() {
           ) : (
             <SessionEditor
               session={open}
+              sessions={sessions}
               exercises={exercises}
               cardioKinds={cardioKinds}
               mobilityKinds={mobilityKinds}
@@ -563,6 +594,27 @@ export default function App() {
                 closeSession();
               }}
               onCreateExercise={createExercise}
+              onReplaced={(info) => {
+                setToast(
+                  t(
+                    `Заменил: ${info.fromName} → ${info.toName}`,
+                    `Replaced: ${info.fromName} → ${info.toName}`,
+                  ),
+                );
+                // Тренировка из программы — предлагаем поправить и шаблон.
+                const programId = open.programId;
+                const workoutId = open.programWorkoutId;
+                const plannedId = info.plannedExerciseId;
+                setToastAction(
+                  programId && workoutId && plannedId
+                    ? {
+                        label: t("И в программе", "In program too"),
+                        run: () =>
+                          replaceInProgram(programId, workoutId, plannedId, info.exerciseId),
+                      }
+                    : null,
+                );
+              }}
               onCopyTo={(date) => {
                 const copy = copySessionTo(open, date);
                 commit([...sessions, copy]);
@@ -681,11 +733,28 @@ export default function App() {
 
         <Snackbar
           open={Boolean(toast)}
-          autoHideDuration={4000}
-          onClose={() => setToast(null)}
+          autoHideDuration={6000}
+          onClose={() => {
+            setToast(null);
+            setToastAction(null);
+          }}
           message={toast ?? ""}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           sx={{ bottom: { xs: 96 } }}
+          action={
+            toastAction ? (
+              <Button
+                size="small"
+                onClick={() => {
+                  toastAction.run();
+                  setToast(null);
+                  setToastAction(null);
+                }}
+              >
+                {toastAction.label}
+              </Button>
+            ) : undefined
+          }
         />
       </Container>
 
