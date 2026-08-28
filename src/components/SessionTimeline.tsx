@@ -12,6 +12,7 @@ import RadioButtonUncheckedRoundedIcon from "@mui/icons-material/RadioButtonUnch
 import SwipeToDelete from "./SwipeToDelete";
 import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
+import { formatWodResult, sessionAttempt, wodScheme } from "../lib/analytics";
 import { L } from "../lib/i18n";
 import {
   PERCEIVED_EFFECT_LABELS,
@@ -71,6 +72,14 @@ function description(session: Session, exercises: Exercise[]): string {
       .map((item) => exerciseName(exercises.find((e) => e.id === item.exerciseId)))
       .filter(Boolean);
     return `${names.slice(0, 3).join(" · ")}${names.length > 3 ? "…" : ""}`;
+  }
+  if (session.kind === "wod") {
+    const parts: string[] = [];
+    const result = formatWodResult(sessionAttempt(session));
+    if (result !== "—") parts.push(result);
+    const scheme = wodScheme(session).replace(/\s*\n\s*/g, " · ");
+    if (scheme) parts.push(scheme.length > 60 ? `${scheme.slice(0, 60)}…` : scheme);
+    return parts.join(" · ");
   }
   if (session.kind === "recovery") {
     const parts: string[] = [];

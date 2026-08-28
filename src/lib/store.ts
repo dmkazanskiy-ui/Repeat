@@ -21,6 +21,7 @@ import type {
   RecoveryEntry,
   RecoveryType,
   Session,
+  WodData,
   SessionExercise,
   SessionKind,
   TrainingProgram,
@@ -406,6 +407,8 @@ export function newSession(
     customKind?: string | null;
     icon?: IconKey | null;
     recoveryType?: RecoveryType | null;
+    /** Для kind === "wod": задание из каталога (или своё). */
+    wod?: WodData | null;
   } = {},
 ): Session {
   return {
@@ -420,6 +423,7 @@ export function newSession(
       kind === "recovery"
         ? { type: options.recoveryType ?? "full_rest", durationMin: null, note: null }
         : null,
+    wod: kind === "wod" ? (options.wod ?? null) : null,
     time: nowTime(),
     title: null,
     notes: null,

@@ -60,6 +60,7 @@ import ProgramDetail from "./screens/ProgramDetail";
 import ProgramEditor from "./screens/ProgramEditor";
 import SessionEditor from "./screens/SessionEditor";
 import RecoveryEditor from "./screens/RecoveryEditor";
+import WodEditor from "./screens/WodEditor";
 import SessionView from "./screens/SessionView";
 import NewSessionDialog from "./components/NewSessionDialog";
 import type { CreateOptions } from "./components/NewSessionDialog";
@@ -511,7 +512,18 @@ export default function App() {
             onAddPreset={addPreset}
           />
         ) : open ? (
-          open.kind === "recovery" ? (
+          open.kind === "wod" ? (
+            <WodEditor
+              session={open}
+              sessions={sessions}
+              onChange={updateSession}
+              onBack={closeSession}
+              onDelete={() => {
+                deleteSession(open.id);
+                closeSession();
+              }}
+            />
+          ) : open.kind === "recovery" ? (
             <RecoveryEditor
               session={open}
               onChange={updateSession}

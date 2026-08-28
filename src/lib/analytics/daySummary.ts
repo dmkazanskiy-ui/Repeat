@@ -7,7 +7,7 @@ import { getLang } from "../i18n";
 import { sessionDurationSec, sessionSetCount, sessionVolume } from "../types";
 import type { Session, SessionKind } from "../types";
 
-const KIND_ORDER: SessionKind[] = ["strength", "cardio", "mobility", "recovery"];
+const KIND_ORDER: SessionKind[] = ["strength", "wod", "cardio", "mobility", "recovery"];
 
 export interface DaySummaryItem {
   kind: SessionKind;
@@ -63,6 +63,8 @@ function labelFor(kind: SessionKind, n: number): string {
       return ru
         ? ruPlural(n, "восстановление", "восстановления", "восстановлений")
         : n === 1 ? "recovery" : "recovery sessions";
+    case "wod":
+      return ru ? ruPlural(n, "задание", "задания", "заданий") : n === 1 ? "workout task" : "workout tasks";
   }
 }
 

@@ -6,6 +6,7 @@
 
 import type { IconKey } from "./icons";
 import { RECOVERY_ICONS, RECOVERY_LABELS } from "./recovery/catalog";
+import { findWodPreset } from "./wod/catalog";
 import { L } from "./i18n";
 
 export type MuscleGroup =
@@ -18,7 +19,7 @@ export type MuscleGroup =
   | "core"
   | "other";
 
-export type SessionKind = "strength" | "cardio" | "mobility" | "recovery";
+export type SessionKind = "strength" | "cardio" | "mobility" | "recovery" | "wod";
 
 /** Группа восстановительных процедур — для выбора в списке. */
 export type RecoveryCategory =
@@ -156,6 +157,33 @@ export function moodReading(ctx: MoodContext, mood: { x: number; y: number }): s
   const xw = word(mood.x, c.x);
   const parts = [yw, xw].filter(Boolean);
   return parts.length ? parts.join(" · ") : L("нейтрально", "neutral");
+}
+
+/**
+ * Задание с фиксированным результатом: кроссфит-WOD, HYROX-гонка или станция.
+ * Модель намеренно плоская — движения храним текстом схемы, а не разбираем в
+ * упражнения: ценность здесь в СРАВНИМОМ результате одного и того же задания,
+ * а не в тоннаже. Сравнение попыток идёт по `presetId` (у своих — по имени).
+ */
+export type WodScore = "for_time" | "amrap" | "emom";
+
+export interface WodData {
+  /** Ключ из каталога — по нему сравниваем попытки. Своё задание — null. */
+  presetId: string | null;
+  /** Схема: «21-15-9 трастеры 43 кг / подтягивания». */
+  scheme: string | null;
+  score: WodScore;
+  /** Лимит времени, сек (для for_time) или окно AMRAP/EMOM. */
+  capSec?: number | null;
+  /** Результат «на время», сек. */
+  timeSec?: number | null;
+  /** Результат AMRAP/EMOM: полные раунды и добитые повторы. */
+  rounds?: number | null;
+  reps?: number | null;
+  /** Выполнено как предписано (Rx) или с масштабированием. */
+  rx?: boolean;
+  /** Не уложился в лимит — результат считается по лимиту. */
+  capped?: boolean;
 }
 
 /**
@@ -370,6 +398,8 @@ export interface Session {
   avgHr?: number | null;
   /** Только для kind === "recovery": процедура, длительность, заметка. */
   recovery?: RecoveryData | null;
+  /** Только для kind === "wod": задание и его результат. */
+  wod?: WodData | null;
   title: string | null;
   notes: string | null;
   createdAt: string; // ISO
@@ -384,6 +414,13 @@ export const SESSION_LABELS: Record<SessionKind, string> = {
   get cardio() { return L("Кардио", "Cardio"); },
   get mobility() { return L("Мобилити", "Mobility"); },
   get recovery() { return L("Восстановление", "Recovery"); },
+  get wod() { return L("Задание", "Workout"); },
+};
+
+export const WOD_SCORE_LABELS: Record<WodScore, string> = {
+  get for_time() { return L("На время", "For time"); },
+  get amrap() { return L("AMRAP", "AMRAP"); },
+  get emom() { return L("EMOM", "EMOM"); },
 };
 
 export const CARDIO_LABELS: Record<CardioKind, string> = {
@@ -454,6 +491,9 @@ export function activityLabel(session: Session): string | null {
   if (session.kind === "recovery" && session.recovery) {
     return RECOVERY_LABELS[session.recovery.type];
   }
+  if (session.kind === "wod") {
+    return findWodPreset(session.wod?.presetId)?.name ?? null;
+  }
   if (session.customKind) return session.customKind;
   if (session.kind === "cardio" && session.cardioKind) {
     return CARDIO_LABELS[session.cardioKind];
@@ -468,6 +508,9 @@ export function activityLabel(session: Session): string | null {
 export function activityIcon(session: Session): IconKey {
   if (session.kind === "recovery") {
     return session.recovery ? RECOVERY_ICONS[session.recovery.type] : "spa";
+  }
+  if (session.kind === "wod") {
+    return findWodPreset(session.wod?.presetId)?.icon ?? "timer";
   }
   if (session.customKind) return session.icon ?? "bolt";
   if (session.kind === "cardio" && session.cardioKind) {

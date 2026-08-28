@@ -38,6 +38,7 @@ import BodyMap from "../components/analytics/BodyMap";
 import CapacitiesCard from "../components/analytics/CapacitiesCard";
 import GoalLensCard from "../components/analytics/GoalLensCard";
 import PlateauCard, { PLATEAU_COLOR } from "../components/analytics/PlateauCard";
+import { TYPE_COLOR } from "../lib/activityColors";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import RestBalanceCard from "../components/analytics/RestBalanceCard";
 import SummaryHero from "../components/analytics/SummaryHero";
@@ -45,6 +46,8 @@ import type { HeroData } from "../components/analytics/SummaryHero";
 import {
   activePlateaus,
   plateauDetail,
+  formatWodResult,
+  wodHistory,
   bucketKey,
   bucketStarts,
   buildPeriod,
@@ -72,6 +75,7 @@ import type {
   BalanceRow,
   HeatCell,
   PlateauDetail,
+  WodSummary,
   MuscleLoad,
   WorkoutComparison,
 } from "../lib/analytics";
@@ -214,6 +218,8 @@ export default function AnalyticsScreen({
     () => activePlateaus(sessions, exercises),
     [sessions, exercises, lang],
   );
+  // Задания (HYROX/WOD) — по всей истории, а не по периоду: их делают редко.
+  const wods = useMemo(() => wodHistory(allSessions), [allSessions, lang]);
   // Разбор каждого плато: динамика по неделям + рекомендации.
   const plateauDetails = useMemo(
     () =>
@@ -886,6 +892,20 @@ export default function AnalyticsScreen({
           </Stack>
         </Box>
       )}
+
+      {/* Задания: HYROX и кроссфит-бенчмарки — одно и то же задание во времени */}
+      {wods.length > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h2" sx={{ mb: 1.5 }}>
+            {t("Задания и WOD", "Workouts & WODs")}
+          </Typography>
+          <Stack spacing={1.25}>
+            {wods.map((w) => (
+              <WodRow key={w.key} summary={w} />
+            ))}
+          </Stack>
+        </Box>
+      )}
         </>
       )}
 
@@ -1293,6 +1313,50 @@ function BalanceBar({ row }: { row: BalanceRow }) {
 }
 
 const PROGRAM_COLOR = "#f59e0b";
+
+/** Строка задания: последний результат, лучший и число попыток. */
+function WodRow({ summary }: { summary: WodSummary }) {
+  const t = useT();
+  const color = TYPE_COLOR.wod;
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 1.5,
+        borderRadius: 2,
+        borderColor: alpha(color, 0.3),
+        borderLeft: `3px solid ${color}`,
+        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 72%)`,
+      }}
+    >
+      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
+            {summary.name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {summary.attempts.length}{" "}
+            {t(
+              ruPlural(summary.attempts.length, "попытка", "попытки", "попыток"),
+              summary.attempts.length === 1 ? "attempt" : "attempts",
+            )}
+            {summary.last ? ` · ${t("последняя", "last")} ${formatDate(summary.last.date)}` : ""}
+          </Typography>
+        </Box>
+        <Box sx={{ textAlign: "right" }}>
+          <Typography sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>
+            {formatWodResult(summary.last)}
+          </Typography>
+          <Typography variant="caption" sx={{ color: summary.bestIsLast ? color : "text.secondary" }}>
+            {summary.bestIsLast
+              ? t("это лучший результат", "that's your best")
+              : `${t("лучший", "best")} ${formatWodResult(summary.best)}`}
+          </Typography>
+        </Box>
+      </Stack>
+    </Paper>
+  );
+}
 
 function ProgramCompareCard({ c }: { c: WorkoutComparison }) {
   const t = useT();

@@ -20,3 +20,4 @@ export * from "./recovery";
 export * from "./summary";
 export * from "./nutrition";
 export * from "./goalLens";
+export * from "./wod";

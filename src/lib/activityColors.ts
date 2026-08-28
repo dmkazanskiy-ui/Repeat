@@ -12,6 +12,7 @@ export const TYPE_COLOR: Record<SessionKind, string> = {
   cardio: "#f472b6", // розовый
   mobility: "#4ade80", // зелёный (наш акцент)
   recovery: "#38bdf8", // голубой
+  wod: "#fb923c", // оранжевый — задания/WOD и HYROX
 };
 
 export function typeColor(kind: SessionKind): string {

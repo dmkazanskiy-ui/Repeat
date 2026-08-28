@@ -40,6 +40,11 @@ import {
   proceduresOf,
 } from "../lib/recovery/catalog";
 import {
+  WOD_CATEGORY_LABELS,
+  wodPresetsByCategory,
+} from "../lib/wod/catalog";
+import type { WodCategory, WodPreset } from "../lib/wod/catalog";
+import {
   GOALS,
   PLACES,
   TIME_OPTIONS,
@@ -57,6 +62,7 @@ import type {
   Session,
   SessionKind,
   TrainingProgram,
+  WodData,
 } from "../lib/types";
 
 export interface CreateOptions {
@@ -65,6 +71,7 @@ export interface CreateOptions {
   customKind?: string | null;
   icon?: IconKey | null;
   recoveryType?: RecoveryType | null;
+  wod?: WodData | null;
 }
 
 interface Props {
@@ -103,6 +110,7 @@ const KIND_CARDS: Array<{
   { id: "strength", color: TYPE_COLOR.strength, icon: "gym", get label() { return L("Силовая в зале", "Strength (gym)"); }, get hint() { return L("Упражнения, подходы, веса", "Exercises, sets, weights"); } },
   { id: "cardio", color: TYPE_COLOR.cardio, icon: "run", get label() { return L("Кардио", "Cardio"); }, get hint() { return L("Бег, вел, плавание и другое", "Running, cycling, swimming and more"); } },
   { id: "hiit", color: TYPE_COLOR.cardio, icon: "bolt", get label() { return L("HIIT", "HIIT"); }, get hint() { return L("Интервальный таймер: работа/отдых по раундам", "Interval timer: work/rest by rounds"); } },
+  { id: "wod", color: TYPE_COLOR.wod, icon: "timer", get label() { return L("Задание / WOD", "Workout / WOD"); }, get hint() { return L("HYROX, кроссфит-бенчмарки, своё на время", "HYROX, CrossFit benchmarks, your own for time"); } },
   { id: "mobility", color: TYPE_COLOR.mobility, icon: "yoga", get label() { return L("Мобилити", "Mobility"); }, get hint() { return L("Йога, ЛФК, стретчинг, медитация", "Yoga, rehab, stretching, meditation"); } },
   { id: "recovery", color: TYPE_COLOR.recovery, icon: "spa", get label() { return L("Восстановление", "Recovery"); }, get hint() { return L("Отдых, баня, холод, массаж, сон", "Rest, sauna, cold, massage, sleep"); } },
 ];
@@ -118,6 +126,7 @@ type Step =
   | "mobility"
   | "custom"
   | "recovery"
+  | "wod"
   | "goal"
   | "place"
   | "time"
@@ -268,6 +277,7 @@ export default function NewSessionDialog({
   const [icon, setIcon] = useState<IconKey>("bolt");
   const [branch, setBranch] = useState<"cardio" | "mobility">("cardio");
   const [recCategory, setRecCategory] = useState<RecoveryCategory>("rest");
+  const [wodCategory, setWodCategory] = useState<WodCategory>("hyrox");
   // Мастер «Тренер». Цель по умолчанию — постоянная цель профиля.
   const [goal, setGoal] = useState<Goal | null>(focusGoal ?? null);
   const [place, setPlace] = useState<Place | null>(null);
@@ -289,6 +299,7 @@ export default function NewSessionDialog({
     setName("");
     setIcon("bolt");
     setRecCategory("rest");
+    setWodCategory("hyrox");
     setGoal(focusGoal ?? null);
     setPlace(null);
     setTime(null);
@@ -325,8 +336,10 @@ export default function NewSessionDialog({
           ? t("Какое мобилити?", "Which mobility?")
           : step === "recovery"
             ? t("Восстановление", "Recovery")
-            : step === "program"
-              ? t("Тренировка дня", "Workout of the day")
+            : step === "wod"
+              ? t("Какое задание?", "Which workout?")
+              : step === "program"
+                ? t("Тренировка дня", "Workout of the day")
               : step === "goal" || step === "place" || step === "time"
                 ? t("Подсказка тренера", "Coach suggestion")
                 : step === "result"
@@ -688,6 +701,59 @@ export default function NewSessionDialog({
               })),
               close,
               TYPE_COLOR.recovery,
+            )}
+            <Button onClick={() => setStep("kind")}>{t("Назад", "Back")}</Button>
+          </Stack>
+        )}
+
+        {step === "wod" && (
+          <Stack spacing={1.5}>
+            <Typography variant="body2" color="text.secondary">
+              {t(
+                "Одно и то же задание в разные месяцы — честное сравнение результата.",
+                "The same workout months apart gives you an honest comparison.",
+              )}
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.75, overflowX: "auto", pb: 0.5, mx: -0.5, px: 0.5 }}>
+              {(["hyrox", "benchmark"] as WodCategory[]).map((cat) => (
+                <Chip
+                  key={cat}
+                  label={WOD_CATEGORY_LABELS[cat]}
+                  onClick={() => setWodCategory(cat)}
+                  color={wodCategory === cat ? "primary" : "default"}
+                  variant={wodCategory === cat ? "filled" : "outlined"}
+                  sx={{ flexShrink: 0 }}
+                />
+              ))}
+            </Box>
+            {renderGrid(
+              wodPresetsByCategory(wodCategory).map((preset: WodPreset) => ({
+                label: preset.name,
+                icon: preset.icon,
+                onPick: () =>
+                  onCreate("wod", {
+                    wod: {
+                      presetId: preset.id,
+                      // Схему из каталога не копируем — она берётся по presetId
+                      // и следует за языком интерфейса.
+                      scheme: null,
+                      score: preset.score,
+                      capSec: preset.capSec,
+                      rx: true,
+                    },
+                  }),
+              })),
+              close,
+              TYPE_COLOR.wod,
+              {
+                label: t("Своё задание", "Custom workout"),
+                onClick: () => {
+                  onCreate("wod", {
+                    wod: { presetId: null, scheme: null, score: "for_time", rx: true },
+                  });
+                  close();
+                },
+              },
             )}
             <Button onClick={() => setStep("kind")}>{t("Назад", "Back")}</Button>
           </Stack>
