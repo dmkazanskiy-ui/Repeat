@@ -34,6 +34,7 @@ import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
+import { clampRestSec, loadRestEnabled, loadRestSec, saveRestSec } from "../lib/restTimer";
 import { useT } from "../lib/i18n";
 import {
   linkExercises,
@@ -96,18 +97,6 @@ interface Props {
   onCopyToClipboard: () => void;
   /** Выйти из режима правки завершённой тренировки — обратно в read-only. */
   onExitEditing?: () => void;
-}
-
-// Цель отдыха между подходами — запоминаем последнюю выбранную.
-const REST_KEY = "repeat_rest_sec";
-function loadRestSec(): number {
-  try {
-    const v = Number(localStorage.getItem(REST_KEY));
-    if (v >= 15 && v <= 600) return v;
-  } catch {
-    /* ignore */
-  }
-  return 90;
 }
 
 /** Секунды в «1:23:45» или «12:07» — для тикающего таймера тренировки. */
@@ -205,20 +194,17 @@ export default function SessionEditor({
   const suppressClick = useRef(false);
 
   // Таймер отдыха между подходами. Цель запоминается (localStorage), −15/+15 её
-  // подстраивают; отсчёт стартует, когда отмечаешь подход выполненным.
+  // подстраивают; отсчёт стартует ТОЛЬКО по живому тапу по чекбоксу подхода.
   const [restTarget, setRestTarget] = useState(loadRestSec);
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   function startRest() {
+    if (!loadRestEnabled()) return;
     setRestEndsAt(Date.now() + restTarget * 1000);
   }
   function adjustRest(deltaSec: number) {
     setRestTarget((prev) => {
-      const next = Math.max(15, Math.min(600, prev + deltaSec));
-      try {
-        localStorage.setItem(REST_KEY, String(next));
-      } catch {
-        /* ignore */
-      }
+      const next = clampRestSec(prev + deltaSec);
+      saveRestSec(next);
       return next;
     });
     setRestEndsAt((prev) => (prev == null ? prev : prev + deltaSec * 1000));
@@ -1179,8 +1165,19 @@ export default function SessionEditor({
                             onChange={(event) => {
                               const checked = event.target.checked;
                               patchSet(item.id, set.id, { done: checked });
-                              // Отметил рабочий подход в идущей тренировке → пошёл отдых.
-                              if (checked && !set.warmup && !session.endedAt) startRest();
+                              // Отдых стартует только по живому тапу по самому
+                              // чекбоксу и только на переходе «не отмечен →
+                              // отмечен»: правка веса/повторов или любой
+                              // программный ререндер таймер не запускают.
+                              if (
+                                checked &&
+                                !set.done &&
+                                !set.warmup &&
+                                !session.endedAt &&
+                                event.nativeEvent.isTrusted
+                              ) {
+                                startRest();
+                              }
                             }}
                             sx={{ "&.Mui-checked": { color } }}
                           />

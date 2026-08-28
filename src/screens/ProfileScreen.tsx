@@ -10,6 +10,7 @@ import {
   IconButton,
   Paper,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -21,6 +22,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
+import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
 import NumberField from "../components/NumberField";
 import MiniChart from "../components/MiniChart";
 import MoodPad from "../components/MoodPad";
@@ -32,6 +34,13 @@ import { BODY_METRICS, moodReading, recoveryAverage } from "../lib/types";
 import { ActivityIcon } from "../lib/icons";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
+import {
+  clampRestSec,
+  loadRestEnabled,
+  loadRestSec,
+  saveRestEnabled,
+  saveRestSec,
+} from "../lib/restTimer";
 import { useLang, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
 import type {
@@ -101,6 +110,20 @@ export default function ProfileScreen({
   const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
   const [viewPhoto, setViewPhoto] = useState<ProgressPhoto | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Настройки таймера отдыха: устройство, не аккаунт — держим в localStorage.
+  const [restOn, setRestOn] = useState(loadRestEnabled);
+  const [restSec, setRestSec] = useState(loadRestSec);
+
+  function toggleRest(on: boolean) {
+    setRestOn(on);
+    saveRestEnabled(on);
+  }
+
+  function changeRestSec(delta: number) {
+    const next = clampRestSec(restSec + delta);
+    setRestSec(next);
+    saveRestSec(next);
+  }
 
   const todayCheckin = recovery.find((e) => e.date === today()) ?? null;
 
@@ -488,6 +511,76 @@ export default function ProfileScreen({
           </Box>
         </>
       )}
+
+      {/* Настройки — пока только таймер отдыха между подходами */}
+      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
+        {t("Настройки", "Settings")}
+      </Typography>
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+        <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+          <Box
+            sx={{
+              width: 34,
+              height: 34,
+              borderRadius: 2,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              color: "#a78bfa",
+              backgroundImage: `linear-gradient(135deg, ${alpha("#a78bfa", 0.28)}, ${alpha("#a78bfa", 0.08)})`,
+            }}
+          >
+            <TimerOutlinedIcon fontSize="small" />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {t("Таймер отдыха", "Rest timer")}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {t(
+                "Появляется, когда отмечаешь подход выполненным",
+                "Shows up when you tick a set as done",
+              )}
+            </Typography>
+          </Box>
+          <Switch
+            checked={restOn}
+            onChange={(event) => toggleRest(event.target.checked)}
+            slotProps={{ input: { "aria-label": t("Таймер отдыха", "Rest timer") } }}
+          />
+        </Stack>
+        {restOn && (
+          <>
+            <Divider sx={{ my: 1.5 }} />
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                {t("Отдых по умолчанию", "Default rest")}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => changeRestSec(-15)}
+                sx={{ minWidth: 0, px: 1, fontWeight: 700 }}
+              >
+                −15
+              </Button>
+              <Typography
+                sx={{ fontWeight: 800, minWidth: 56, textAlign: "center", fontVariantNumeric: "tabular-nums" }}
+              >
+                {`${Math.floor(restSec / 60)}:${String(restSec % 60).padStart(2, "0")}`}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => changeRestSec(15)}
+                sx={{ minWidth: 0, px: 1, fontWeight: 700 }}
+              >
+                +15
+              </Button>
+            </Stack>
+          </>
+        )}
+      </Paper>
 
       <MeasurementDialog
         entry={editing}
