@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -21,6 +21,7 @@ import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import PriorityHighRounded from "@mui/icons-material/PriorityHighRounded";
 import MetricChart from "../components/analytics/MetricChart";
 import StrengthProgress from "../components/analytics/StrengthProgress";
 import { RulerMeter, ScoreRing, WeekDots } from "../components/analytics/Meters";
@@ -36,12 +37,14 @@ import RadarChart from "../components/analytics/RadarChart";
 import BodyMap from "../components/analytics/BodyMap";
 import CapacitiesCard from "../components/analytics/CapacitiesCard";
 import GoalLensCard from "../components/analytics/GoalLensCard";
+import PlateauCard, { PLATEAU_COLOR } from "../components/analytics/PlateauCard";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import RestBalanceCard from "../components/analytics/RestBalanceCard";
 import SummaryHero from "../components/analytics/SummaryHero";
 import type { HeroData } from "../components/analytics/SummaryHero";
 import {
   activePlateaus,
+  plateauDetail,
   bucketKey,
   bucketStarts,
   buildPeriod,
@@ -68,6 +71,7 @@ import {
 import type {
   BalanceRow,
   HeatCell,
+  PlateauDetail,
   MuscleLoad,
   WorkoutComparison,
 } from "../lib/analytics";
@@ -138,6 +142,19 @@ export default function AnalyticsScreen({
   const [lensGoal, setLensGoal] = useState<FocusGoal>(focusGoal ?? "strength");
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
+  // Плато: алерт вверху ведёт в раздел «Прогресс» и раскрывает первое плато.
+  const [openPlateau, setOpenPlateau] = useState<string | null>(null);
+  const plateauRef = useRef<HTMLDivElement>(null);
+
+  function openPlateaus() {
+    setView("strength");
+    setOpenPlateau(plateaus[0]?.id ?? null);
+    // Ререндер раздела успевает пройти до скролла.
+    window.setTimeout(
+      () => plateauRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      60,
+    );
+  }
 
   const period = useMemo(
     () => buildPeriod(mode, anchor, from, to),
@@ -196,6 +213,14 @@ export default function AnalyticsScreen({
   const plateaus = useMemo(
     () => activePlateaus(sessions, exercises),
     [sessions, exercises, lang],
+  );
+  // Разбор каждого плато: динамика по неделям + рекомендации.
+  const plateauDetails = useMemo(
+    () =>
+      plateaus
+        .map((p) => plateauDetail(sessions, exercises, p.id))
+        .filter((d): d is PlateauDetail => d != null),
+    [plateaus, sessions, exercises, lang],
   );
   // Сводка прогресса силы: сколько упражнений растёт/стабильно/снижается +
   // лидеры роста по изменению e1RM. Чтобы не листать десятки карточек.
@@ -558,35 +583,49 @@ export default function AnalyticsScreen({
       {/* Итоги периода — карточка-фокус с крупными числами и инсайтами 2×2 */}
       <SummaryHero hero={hero} />
 
-      {/* Активные плато — плашки с ответом на исходную боль */}
+      {/* Плато — маленький алерт под первым дашбордом, разбор живёт в «Прогрессе» */}
       {plateaus.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h2" sx={{ mb: 1 }}>
-            {t("Активные плато", "Active plateaus")}
-          </Typography>
-          <Stack spacing={1}>
-            {plateaus.map((p) => (
-              <Paper
-                key={p.id}
-                variant="outlined"
-                sx={{
-                  p: 1.5,
-                  borderRadius: 2,
-                  borderColor: "warning.main",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                <Typography variant="subtitle2" sx={{ flex: 1 }}>
-                  {p.name}
-                </Typography>
-                <Typography variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>
-                  {t("плато", "plateau")} {p.weeks} {t("нед", "wk")}
-                </Typography>
-              </Paper>
-            ))}
-          </Stack>
-        </Box>
+        <Paper
+          variant="outlined"
+          onClick={openPlateaus}
+          sx={{
+            mb: 2,
+            p: 1.25,
+            borderRadius: 2,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 1.25,
+            borderColor: alpha(PLATEAU_COLOR, 0.4),
+            backgroundImage: `linear-gradient(100deg, ${alpha(PLATEAU_COLOR, 0.12)}, transparent 72%)`,
+          }}
+        >
+          <Box
+            sx={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              color: PLATEAU_COLOR,
+              bgcolor: alpha(PLATEAU_COLOR, 0.18),
+            }}
+          >
+            <PriorityHighRounded sx={{ fontSize: 18 }} />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {plateaus.length === 1
+                ? `${t("Плато", "Plateau")}: ${plateaus[0].name}`
+                : `${t("Плато", "Plateaus")}: ${plateaus.length} ${t("упражнения", "exercises")}`}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {t("Разобрать в «Прогрессе»", "See the breakdown in Progress")}
+            </Typography>
+          </Box>
+          <ChevronRightIcon fontSize="small" sx={{ color: "text.secondary" }} />
+        </Paper>
       )}
 
       {/* Разделы — отвечают на 4 вопроса, чтобы не вываливать всё простынёй */}
@@ -705,6 +744,15 @@ export default function AnalyticsScreen({
 
       {view === "strength" && (
         <>
+      {/* Плато — разбор: динамика по неделям и что делать */}
+      <Box ref={plateauRef}>
+        <PlateauCard
+          details={plateauDetails}
+          openId={openPlateau}
+          onToggle={(id) => setOpenPlateau((prev) => (prev === id ? null : id))}
+        />
+      </Box>
+
       {/* Линза цели «как идёшь к цели» — с селектором цели */}
       {sessions.length > 0 && (
         <GoalLensCard goal={lensGoal} verdict={lensVerdict} onChangeGoal={setLensGoal} />
