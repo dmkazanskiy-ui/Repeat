@@ -2,6 +2,7 @@ import * as db from "./db";
 import { newId } from "./id";
 import { nowTime } from "./format";
 import { CATALOG } from "./catalog";
+import { dataUrlToThumb } from "./image";
 import { L } from "./i18n";
 import type { IconKey } from "./icons";
 import type { ProgramPreset } from "./programLibrary";
@@ -34,6 +35,9 @@ const KEY_CARDIO = "custom_cardio";
 const KEY_MOBILITY = "custom_mobility";
 const KEY_BODY = "body_entries";
 const KEY_PHOTOS = "progress_photos";
+// Полный кадр каждого фото — отдельным ключом: список с превью остаётся лёгким,
+// а добавление одного снимка не переписывает всю библиотеку.
+const PHOTO_PREFIX = "photo:";
 const KEY_PROGRAMS = "programs";
 const KEY_RECOVERY = "recovery";
 const KEY_FOCUS = "focus_goal";
@@ -90,7 +94,7 @@ export async function load(): Promise<AppData> {
     ),
     mobilityKinds: mobility ?? [],
     bodyEntries: body ?? [],
-    photos: photos ?? [],
+    photos: await migratePhotos(photos ?? []),
     programs: programs ?? [],
     recovery: recovery ?? [],
     focusGoal: focusGoal ?? null,
@@ -131,6 +135,45 @@ export function saveBodyEntries(entries: BodyEntry[]): Promise<void> {
 
 export function savePhotos(photos: ProgressPhoto[]): Promise<void> {
   return db.set(KEY_PHOTOS, photos);
+}
+
+/** Полный кадр по требованию — когда фото открывают. */
+export function loadPhotoFull(id: string): Promise<string | undefined> {
+  return db.get<string>(`${PHOTO_PREFIX}${id}`);
+}
+
+export function savePhotoFull(id: string, dataUrl: string): Promise<void> {
+  return db.set(`${PHOTO_PREFIX}${id}`, dataUrl);
+}
+
+export function deletePhotoFull(id: string): Promise<void> {
+  return db.del(`${PHOTO_PREFIX}${id}`);
+}
+
+/**
+ * Разовая миграция старых фото: раньше полный кадр лежал прямо в списке, из-за
+ * чего весь массив (десятки мегабайт) читался и переписывался на любое
+ * действие. Раскладываем кадры по ключам и делаем превью.
+ */
+async function migratePhotos(photos: ProgressPhoto[]): Promise<ProgressPhoto[]> {
+  const legacy = photos.filter((p) => p.dataUrl && !p.thumb);
+  if (legacy.length === 0) return photos;
+
+  const migrated = await Promise.all(
+    photos.map(async (photo) => {
+      if (!photo.dataUrl || photo.thumb) return photo;
+      try {
+        const thumb = await dataUrlToThumb(photo.dataUrl);
+        await savePhotoFull(photo.id, photo.dataUrl);
+        return { id: photo.id, date: photo.date, pose: photo.pose ?? null, thumb };
+      } catch {
+        // Не смогли ужать — оставляем как есть, фото не теряем.
+        return photo;
+      }
+    }),
+  );
+  await savePhotos(migrated);
+  return migrated;
 }
 
 export function saveRecovery(entries: RecoveryEntry[]): Promise<void> {

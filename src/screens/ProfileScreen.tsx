@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -26,11 +27,23 @@ import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
 import NumberField from "../components/NumberField";
 import MiniChart from "../components/MiniChart";
 import MoodPad from "../components/MoodPad";
-import { newBodyEntry, newRecoveryEntry } from "../lib/store";
-import { fileToScaledDataUrl } from "../lib/image";
+import {
+  deletePhotoFull,
+  loadPhotoFull,
+  newBodyEntry,
+  newRecoveryEntry,
+  savePhotoFull,
+} from "../lib/store";
+import { fileToPhoto } from "../lib/image";
 import { newId } from "../lib/id";
-import { formatDate, today } from "../lib/format";
-import { BODY_METRICS, moodReading, recoveryAverage } from "../lib/types";
+import { formatDate, monthTitle, parseDateKey, today } from "../lib/format";
+import {
+  BODY_METRICS,
+  PHOTO_POSES,
+  PHOTO_POSE_LABELS,
+  moodReading,
+  recoveryAverage,
+} from "../lib/types";
 import { ActivityIcon } from "../lib/icons";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
@@ -45,6 +58,7 @@ import { useLang, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
 import type {
   BodyEntry,
+  PhotoPose,
   ProgressPhoto,
   RecoveryEntry,
   TrainingProgram,
@@ -74,6 +88,26 @@ const GOAL_EN: Record<FocusGoal, string> = {
   endurance: "Get fitter",
   weight_loss: "Lose weight",
 };
+const POSE_KEY = "repeat_last_pose";
+
+function loadLastPose(): PhotoPose {
+  try {
+    const value = localStorage.getItem(POSE_KEY);
+    if (value === "front" || value === "side" || value === "back") return value;
+  } catch {
+    /* ignore */
+  }
+  return "front";
+}
+
+function saveLastPose(pose: PhotoPose): void {
+  try {
+    localStorage.setItem(POSE_KEY, pose);
+  } catch {
+    /* ignore */
+  }
+}
+
 const METRIC_EN: Record<string, string> = {
   weightKg: "Weight",
   chest: "Chest",
@@ -109,6 +143,12 @@ export default function ProfileScreen({
   const [editing, setEditing] = useState<BodyEntry | null>(null);
   const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
   const [viewPhoto, setViewPhoto] = useState<ProgressPhoto | null>(null);
+  // Полный кадр грузится, только когда фото открыли.
+  const [viewFull, setViewFull] = useState<string | null>(null);
+  const [poseFilter, setPoseFilter] = useState<PhotoPose | null>(null);
+  // Ракурс спрашиваем сразу после загрузки, по умолчанию — прошлый выбранный.
+  const [posingIds, setPosingIds] = useState<string[] | null>(null);
+  const [lastPose, setLastPose] = useState<PhotoPose>(loadLastPose);
   const fileRef = useRef<HTMLInputElement>(null);
   // Настройки таймера отдыха: устройство, не аккаунт — держим в localStorage.
   const [restOn, setRestOn] = useState(loadRestEnabled);
@@ -134,6 +174,20 @@ export default function ProfileScreen({
     );
     setCheckin(null);
   }
+
+  useEffect(() => {
+    if (!viewPhoto) {
+      setViewFull(null);
+      return;
+    }
+    let alive = true;
+    void loadPhotoFull(viewPhoto.id).then((full) => {
+      if (alive) setViewFull(full ?? viewPhoto.dataUrl ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [viewPhoto]);
 
   const asc = useMemo(() => sortByDate(bodyEntries), [bodyEntries]);
 
@@ -165,13 +219,41 @@ export default function ProfileScreen({
   async function addPhotos(files: FileList) {
     const added: ProgressPhoto[] = [];
     for (const file of Array.from(files)) {
-      const dataUrl = await fileToScaledDataUrl(file);
-      added.push({ id: newId(), date: today(), dataUrl });
+      const { full, thumb } = await fileToPhoto(file);
+      const id = newId();
+      // Полный кадр — отдельным ключом, в списке только превью.
+      await savePhotoFull(id, full);
+      added.push({ id, date: today(), pose: lastPose, thumb });
     }
     onChangePhotos([...photos, ...added]);
+    // Ракурс можно поправить сразу после загрузки — спрашиваем один раз на пачку.
+    if (added.length > 0) setPosingIds(added.map((p) => p.id));
+  }
+
+  function setPose(ids: string[], pose: PhotoPose) {
+    setLastPose(pose);
+    saveLastPose(pose);
+    onChangePhotos(photos.map((p) => (ids.includes(p.id) ? { ...p, pose } : p)));
+  }
+
+  function removePhoto(id: string) {
+    void deletePhotoFull(id);
+    onChangePhotos(photos.filter((p) => p.id !== id));
   }
 
   const photosDesc = sortByDate(photos, true);
+  const shown = poseFilter ? photosDesc.filter((p) => p.pose === poseFilter) : photosDesc;
+  // Группируем по месяцам: лента перестаёт быть бесконечной сеткой.
+  const byMonth = shown.reduce<Array<{ key: string; title: string; items: ProgressPhoto[] }>>(
+    (acc, photo) => {
+      const key = photo.date.slice(0, 7);
+      const last = acc[acc.length - 1];
+      if (last && last.key === key) last.items.push(photo);
+      else acc.push({ key, title: monthTitle(parseDateKey(photo.date)), items: [photo] });
+      return acc;
+    },
+    [],
+  );
   const metricLabel = (key: string, ru: string) => (lang === "en" ? (METRIC_EN[key] ?? ru) : ru);
 
   return (
@@ -469,46 +551,102 @@ export default function ProfileScreen({
               "It shows what the scale won't. Shoot every couple of weeks.",
             )}
           </Typography>
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0.5 }}>
-            {photosDesc.map((photo) => (
-              <Box
-                key={photo.id}
-                component="button"
-                onClick={() => setViewPhoto(photo)}
-                sx={{
-                  position: "relative",
-                  aspectRatio: "3 / 4",
-                  p: 0,
-                  border: "none",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  cursor: "pointer",
-                  bgcolor: "background.paper",
-                }}
-              >
-                <Box
-                  component="img"
-                  src={photo.dataUrl}
-                  alt={formatDate(photo.date)}
-                  sx={{ width: "100%", height: "100%", objectFit: "cover" }}
+          {/* Фильтр по ракурсу: сравнивать имеет смысл одинаковые кадры */}
+          <Box sx={{ display: "flex", gap: 0.75, overflowX: "auto", pb: 1.5, mx: -0.5, px: 0.5 }}>
+            <Chip
+              size="small"
+              label={`${t("Все", "All")} · ${photos.length}`}
+              color={poseFilter === null ? "primary" : "default"}
+              variant={poseFilter === null ? "filled" : "outlined"}
+              onClick={() => setPoseFilter(null)}
+            />
+            {PHOTO_POSES.map((pose) => {
+              const count = photos.filter((p) => p.pose === pose).length;
+              if (count === 0) return null;
+              return (
+                <Chip
+                  key={pose}
+                  size="small"
+                  label={`${PHOTO_POSE_LABELS[pose]} · ${count}`}
+                  color={poseFilter === pose ? "primary" : "default"}
+                  variant={poseFilter === pose ? "filled" : "outlined"}
+                  onClick={() => setPoseFilter(poseFilter === pose ? null : pose)}
+                  sx={{ flexShrink: 0 }}
                 />
-                <Typography
-                  variant="caption"
-                  sx={{
-                    position: "absolute",
-                    left: 4,
-                    bottom: 4,
-                    px: 0.5,
-                    borderRadius: 1,
-                    bgcolor: "rgba(0,0,0,0.55)",
-                    color: "#fff",
-                  }}
-                >
-                  {formatDate(photo.date)}
-                </Typography>
-              </Box>
-            ))}
+              );
+            })}
           </Box>
+
+          {/* Лента по месяцам, а не бесконечная сетка */}
+          {byMonth.map((month) => (
+            <Box key={month.key} sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block", mb: 0.75, textTransform: "capitalize" }}
+              >
+                {month.title} · {month.items.length}
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0.5 }}>
+                {month.items.map((photo) => (
+                  <Box
+                    key={photo.id}
+                    component="button"
+                    onClick={() => setViewPhoto(photo)}
+                    sx={{
+                      position: "relative",
+                      aspectRatio: "3 / 4",
+                      p: 0,
+                      border: "none",
+                      borderRadius: 2,
+                      overflow: "hidden",
+                      cursor: "pointer",
+                      bgcolor: "background.paper",
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={photo.thumb ?? photo.dataUrl}
+                      alt={formatDate(photo.date)}
+                      loading="lazy"
+                      sx={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        position: "absolute",
+                        left: 4,
+                        bottom: 4,
+                        px: 0.5,
+                        borderRadius: 1,
+                        bgcolor: "rgba(0,0,0,0.55)",
+                        color: "#fff",
+                      }}
+                    >
+                      {formatDate(photo.date)}
+                    </Typography>
+                    {photo.pose && (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          position: "absolute",
+                          right: 4,
+                          top: 4,
+                          px: 0.5,
+                          borderRadius: 1,
+                          bgcolor: "rgba(0,0,0,0.55)",
+                          color: "#fff",
+                          fontSize: 10,
+                        }}
+                      >
+                        {PHOTO_POSE_LABELS[photo.pose]}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ))}
         </>
       )}
 
@@ -614,12 +752,37 @@ export default function ProfileScreen({
       <Dialog open={Boolean(viewPhoto)} onClose={() => setViewPhoto(null)} fullWidth>
         {viewPhoto && (
           <>
+            {/* Пока грузится полный кадр — показываем превью, чтобы не мигало */}
             <Box
               component="img"
-              src={viewPhoto.dataUrl}
+              src={viewFull ?? viewPhoto.thumb ?? viewPhoto.dataUrl}
               alt={formatDate(viewPhoto.date)}
-              sx={{ width: "100%", display: "block" }}
+              // Портретный кадр не должен выдавливать чипы и кнопки за экран.
+              sx={{
+                width: "100%",
+                maxHeight: "62vh",
+                objectFit: "contain",
+                display: "block",
+                bgcolor: "#000",
+                filter: viewFull ? "none" : "blur(6px)",
+                transition: "filter .2s ease",
+              }}
             />
+            <Stack direction="row" spacing={0.75} sx={{ px: 2, pt: 1.5, flexWrap: "wrap", rowGap: 0.75 }}>
+              {PHOTO_POSES.map((pose) => (
+                <Chip
+                  key={pose}
+                  size="small"
+                  label={PHOTO_POSE_LABELS[pose]}
+                  color={viewPhoto.pose === pose ? "primary" : "default"}
+                  variant={viewPhoto.pose === pose ? "filled" : "outlined"}
+                  onClick={() => {
+                    setPose([viewPhoto.id], pose);
+                    setViewPhoto({ ...viewPhoto, pose });
+                  }}
+                />
+              ))}
+            </Stack>
             <DialogActions sx={{ justifyContent: "space-between" }}>
               <Typography variant="body2" color="text.secondary" sx={{ pl: 1 }}>
                 {formatDate(viewPhoto.date)}
@@ -628,7 +791,7 @@ export default function ProfileScreen({
                 color="error"
                 startIcon={<DeleteOutlineIcon />}
                 onClick={() => {
-                  onChangePhotos(photos.filter((p) => p.id !== viewPhoto.id));
+                  removePhoto(viewPhoto.id);
                   setViewPhoto(null);
                 }}
               >
@@ -637,6 +800,34 @@ export default function ProfileScreen({
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Ракурс спрашиваем сразу после загрузки — иначе сравнение потом не собрать */}
+      <Dialog open={Boolean(posingIds)} onClose={() => setPosingIds(null)} fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>{t("Какой это ракурс?", "Which angle is this?")}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t(
+              "Нужно, чтобы потом сравнивать одинаковые кадры между собой.",
+              "Needed so you can compare like with like later on.",
+            )}
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            {PHOTO_POSES.map((pose) => (
+              <Button
+                key={pose}
+                fullWidth
+                variant={lastPose === pose ? "contained" : "outlined"}
+                onClick={() => {
+                  if (posingIds) setPose(posingIds, pose);
+                  setPosingIds(null);
+                }}
+              >
+                {PHOTO_POSE_LABELS[pose]}
+              </Button>
+            ))}
+          </Stack>
+        </DialogContent>
       </Dialog>
     </Box>
   );

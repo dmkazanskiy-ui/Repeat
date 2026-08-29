@@ -751,10 +751,30 @@ export const BODY_METRICS = [
 }>;
 
 /** Фото прогресса. Картинка лежит как dataURL прямо в IndexedDB. */
+/** Ракурс кадра. Сравнивать фас с профилем бессмысленно — поэтому он есть. */
+export type PhotoPose = "front" | "side" | "back";
+
+export const PHOTO_POSES: PhotoPose[] = ["front", "side", "back"];
+
+export const PHOTO_POSE_LABELS: Record<PhotoPose, string> = {
+  get front() { return L("Спереди", "Front"); },
+  get side() { return L("Сбоку", "Side"); },
+  get back() { return L("Сзади", "Back"); },
+};
+
+/**
+ * Фото прогресса. В списке живут только метаданные и маленькое превью —
+ * полный кадр лежит отдельным ключом и грузится, когда фото открывают.
+ * Иначе добавление одного снимка переписывает всю библиотеку целиком.
+ */
 export interface ProgressPhoto {
   id: string;
   date: string; // YYYY-MM-DD
-  dataUrl: string;
+  pose?: PhotoPose | null;
+  /** Превью для сетки (~320 px). */
+  thumb?: string;
+  /** Легаси: полный кадр лежал прямо в записи. Мигрируется в отдельный ключ. */
+  dataUrl?: string;
 }
 
 /**
