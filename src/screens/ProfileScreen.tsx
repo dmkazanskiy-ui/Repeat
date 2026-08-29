@@ -24,6 +24,11 @@ import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
 import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
+import Lightbox from "yet-another-react-lightbox";
+import Zoom from "yet-another-react-lightbox/plugins/zoom";
+import Counter from "yet-another-react-lightbox/plugins/counter";
+import "yet-another-react-lightbox/styles.css";
+import "yet-another-react-lightbox/plugins/counter.css";
 import NumberField from "../components/NumberField";
 import MiniChart from "../components/MiniChart";
 import MoodPad from "../components/MoodPad";
@@ -36,7 +41,14 @@ import {
 } from "../lib/store";
 import { fileToPhoto } from "../lib/image";
 import { newId } from "../lib/id";
-import { formatDate, monthTitle, parseDateKey, today } from "../lib/format";
+import {
+  daysBetween,
+  formatDate,
+  formatWeight,
+  monthTitle,
+  parseDateKey,
+  today,
+} from "../lib/format";
 import {
   BODY_METRICS,
   PHOTO_POSES,
@@ -142,9 +154,10 @@ export default function ProfileScreen({
   const activeProgram = programs.find((p) => !p.archivedAt) ?? null;
   const [editing, setEditing] = useState<BodyEntry | null>(null);
   const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
-  const [viewPhoto, setViewPhoto] = useState<ProgressPhoto | null>(null);
-  // Полный кадр грузится, только когда фото открыли.
-  const [viewFull, setViewFull] = useState<string | null>(null);
+  // Открытый кадр — индексом в текущей выборке: лайтбокс листает соседей.
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+  // Полные кадры грузим по требованию: текущий и соседние.
+  const [fulls, setFulls] = useState<Record<string, string>>({});
   const [poseFilter, setPoseFilter] = useState<PhotoPose | null>(null);
   // Ракурс спрашиваем сразу после загрузки, по умолчанию — прошлый выбранный.
   const [posingIds, setPosingIds] = useState<string[] | null>(null);
@@ -174,20 +187,6 @@ export default function ProfileScreen({
     );
     setCheckin(null);
   }
-
-  useEffect(() => {
-    if (!viewPhoto) {
-      setViewFull(null);
-      return;
-    }
-    let alive = true;
-    void loadPhotoFull(viewPhoto.id).then((full) => {
-      if (alive) setViewFull(full ?? viewPhoto.dataUrl ?? null);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [viewPhoto]);
 
   const asc = useMemo(() => sortByDate(bodyEntries), [bodyEntries]);
 
@@ -241,6 +240,18 @@ export default function ProfileScreen({
     onChangePhotos(photos.filter((p) => p.id !== id));
   }
 
+  /** Вес ближайшего замера к дате кадра (±7 дней) — контекст для сравнения. */
+  function weightNear(date: string): { value: number; exact: boolean } | null {
+    let best: { value: number; diff: number } | null = null;
+    for (const entry of bodyEntries) {
+      if (entry.weightKg == null) continue;
+      const diff = Math.abs(daysBetween(entry.date, date));
+      if (diff > 7) continue;
+      if (!best || diff < best.diff) best = { value: entry.weightKg, diff };
+    }
+    return best ? { value: best.value, exact: best.diff === 0 } : null;
+  }
+
   const photosDesc = sortByDate(photos, true);
   const shown = poseFilter ? photosDesc.filter((p) => p.pose === poseFilter) : photosDesc;
   // Группируем по месяцам: лента перестаёт быть бесконечной сеткой.
@@ -254,6 +265,35 @@ export default function ProfileScreen({
     },
     [],
   );
+  // Пока полный кадр не подгружен, лайтбокс показывает превью — без пустых мест.
+  const slides = shown.map((photo) => ({
+    src: fulls[photo.id] ?? photo.thumb ?? photo.dataUrl ?? "",
+    alt: formatDate(photo.date),
+  }));
+
+  useEffect(() => {
+    if (viewIndex == null) return;
+    // Текущий кадр и соседи — чтобы свайп не упирался в загрузку.
+    const wanted = [viewIndex - 1, viewIndex, viewIndex + 1]
+      .map((i) => shown[i])
+      .filter((p): p is ProgressPhoto => Boolean(p) && !fulls[p.id]);
+    if (wanted.length === 0) return;
+    let alive = true;
+    void Promise.all(
+      wanted.map(async (photo) => [photo.id, await loadPhotoFull(photo.id)] as const),
+    ).then((loaded) => {
+      if (!alive) return;
+      setFulls((prev) => {
+        const next = { ...prev };
+        for (const [id, full] of loaded) if (full) next[id] = full;
+        return next;
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [viewIndex, shown, fulls]);
+
   const metricLabel = (key: string, ru: string) => (lang === "en" ? (METRIC_EN[key] ?? ru) : ru);
 
   return (
@@ -592,7 +632,7 @@ export default function ProfileScreen({
                   <Box
                     key={photo.id}
                     component="button"
-                    onClick={() => setViewPhoto(photo)}
+                    onClick={() => setViewIndex(shown.indexOf(photo))}
                     sx={{
                       position: "relative",
                       aspectRatio: "3 / 4",
@@ -748,59 +788,88 @@ export default function ProfileScreen({
         }
       />
 
-      {/* Просмотр фото */}
-      <Dialog open={Boolean(viewPhoto)} onClose={() => setViewPhoto(null)} fullWidth>
-        {viewPhoto && (
-          <>
-            {/* Пока грузится полный кадр — показываем превью, чтобы не мигало */}
-            <Box
-              component="img"
-              src={viewFull ?? viewPhoto.thumb ?? viewPhoto.dataUrl}
-              alt={formatDate(viewPhoto.date)}
-              // Портретный кадр не должен выдавливать чипы и кнопки за экран.
-              sx={{
-                width: "100%",
-                maxHeight: "62vh",
-                objectFit: "contain",
-                display: "block",
-                bgcolor: "#000",
-                filter: viewFull ? "none" : "blur(6px)",
-                transition: "filter .2s ease",
-              }}
-            />
-            <Stack direction="row" spacing={0.75} sx={{ px: 2, pt: 1.5, flexWrap: "wrap", rowGap: 0.75 }}>
-              {PHOTO_POSES.map((pose) => (
-                <Chip
-                  key={pose}
-                  size="small"
-                  label={PHOTO_POSE_LABELS[pose]}
-                  color={viewPhoto.pose === pose ? "primary" : "default"}
-                  variant={viewPhoto.pose === pose ? "filled" : "outlined"}
-                  onClick={() => {
-                    setPose([viewPhoto.id], pose);
-                    setViewPhoto({ ...viewPhoto, pose });
-                  }}
-                />
-              ))}
-            </Stack>
-            <DialogActions sx={{ justifyContent: "space-between" }}>
-              <Typography variant="body2" color="text.secondary" sx={{ pl: 1 }}>
-                {formatDate(viewPhoto.date)}
-              </Typography>
-              <Button
-                color="error"
-                startIcon={<DeleteOutlineIcon />}
-                onClick={() => {
-                  removePhoto(viewPhoto.id);
-                  setViewPhoto(null);
+      {/* Просмотр: свайп между кадрами, зум, действия внизу */}
+      <Lightbox
+        open={viewIndex != null}
+        index={viewIndex ?? 0}
+        close={() => setViewIndex(null)}
+        slides={slides}
+        plugins={[Zoom, Counter]}
+        carousel={{ finite: true }}
+        controller={{ closeOnBackdropClick: true }}
+        on={{ view: ({ index }) => setViewIndex(index) }}
+        styles={{ container: { backgroundColor: "rgba(0,0,0,.92)" } }}
+        render={{
+          // Действия рисуем один раз поверх лайтбокса — по активному кадру.
+          controls: () => {
+            const photo = viewIndex != null ? shown[viewIndex] : null;
+            if (!photo) return null;
+            const weight = weightNear(photo.date);
+            return (
+              <Box
+                sx={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 3,
+                  p: 1.5,
+                  pb: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+                  background: "linear-gradient(transparent, rgba(0,0,0,.75) 40%)",
+                  pointerEvents: "none",
                 }}
               >
-                {t("Удалить", "Delete")}
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ alignItems: "center", mb: 1, pointerEvents: "auto" }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ color: "#fff", fontWeight: 700 }}>
+                      {formatDate(photo.date)}
+                    </Typography>
+                    {weight && (
+                      <Typography variant="caption" sx={{ color: "rgba(255,255,255,.7)" }}>
+                        {weight.exact ? "" : "≈ "}
+                        {formatWeight(weight.value)} {t("кг", "kg")}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<DeleteOutlineIcon />}
+                    onClick={() => {
+                      removePhoto(photo.id);
+                      // Список сдвинулся: закрываем, если кадров больше нет.
+                      setViewIndex(shown.length > 1 ? Math.max(0, (viewIndex ?? 1) - 1) : null);
+                    }}
+                  >
+                    {t("Удалить", "Delete")}
+                  </Button>
+                </Stack>
+                <Stack direction="row" spacing={0.75} sx={{ pointerEvents: "auto" }}>
+                  {PHOTO_POSES.map((pose) => (
+                    <Chip
+                      key={pose}
+                      size="small"
+                      label={PHOTO_POSE_LABELS[pose]}
+                      color={photo.pose === pose ? "primary" : "default"}
+                      variant={photo.pose === pose ? "filled" : "outlined"}
+                      onClick={() => setPose([photo.id], pose)}
+                      sx={
+                        photo.pose === pose
+                          ? undefined
+                          : { color: "#fff", borderColor: "rgba(255,255,255,.5)" }
+                      }
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            );
+          },
+        }}
+      />
 
       {/* Ракурс спрашиваем сразу после загрузки — иначе сравнение потом не собрать */}
       <Dialog open={Boolean(posingIds)} onClose={() => setPosingIds(null)} fullWidth>
