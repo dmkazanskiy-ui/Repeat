@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import {
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -17,45 +16,14 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import CloseIcon from "@mui/icons-material/Close";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
 import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
-import Lightbox from "yet-another-react-lightbox";
-import Zoom from "yet-another-react-lightbox/plugins/zoom";
-import Counter from "yet-another-react-lightbox/plugins/counter";
-import "yet-another-react-lightbox/styles.css";
-import "yet-another-react-lightbox/plugins/counter.css";
-import NumberField from "../components/NumberField";
-import MiniChart from "../components/MiniChart";
 import MoodPad from "../components/MoodPad";
-import {
-  deletePhotoFull,
-  loadPhotoFull,
-  newBodyEntry,
-  newRecoveryEntry,
-  savePhotoFull,
-} from "../lib/store";
-import { fileToPhoto } from "../lib/image";
-import { newId } from "../lib/id";
-import {
-  daysBetween,
-  formatDate,
-  formatWeight,
-  monthTitle,
-  parseDateKey,
-  today,
-} from "../lib/format";
-import {
-  BODY_METRICS,
-  PHOTO_POSES,
-  PHOTO_POSE_LABELS,
-  moodReading,
-  recoveryAverage,
-} from "../lib/types";
+import { newRecoveryEntry } from "../lib/store";
+import { today } from "../lib/format";
+import { moodReading, recoveryAverage } from "../lib/types";
 import { ActivityIcon } from "../lib/icons";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
@@ -68,23 +36,13 @@ import {
 } from "../lib/restTimer";
 import { useLang, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
-import type {
-  BodyEntry,
-  PhotoPose,
-  ProgressPhoto,
-  RecoveryEntry,
-  TrainingProgram,
-} from "../lib/types";
+import type { RecoveryEntry, TrainingProgram } from "../lib/types";
 
 interface Props {
-  bodyEntries: BodyEntry[];
-  photos: ProgressPhoto[];
   recovery: RecoveryEntry[];
   programs: TrainingProgram[];
   focusGoal: FocusGoal | null;
   onOpenPrograms: () => void;
-  onChangeBody: (entries: BodyEntry[]) => void;
-  onChangePhotos: (photos: ProgressPhoto[]) => void;
   onChangeRecovery: (entries: RecoveryEntry[]) => void;
   onChangeFocusGoal: (goal: FocusGoal | null) => void;
   onChangeLang: (lang: Lang) => void;
@@ -100,51 +58,11 @@ const GOAL_EN: Record<FocusGoal, string> = {
   endurance: "Get fitter",
   weight_loss: "Lose weight",
 };
-const POSE_KEY = "repeat_last_pose";
-
-function loadLastPose(): PhotoPose {
-  try {
-    const value = localStorage.getItem(POSE_KEY);
-    if (value === "front" || value === "side" || value === "back") return value;
-  } catch {
-    /* ignore */
-  }
-  return "front";
-}
-
-function saveLastPose(pose: PhotoPose): void {
-  try {
-    localStorage.setItem(POSE_KEY, pose);
-  } catch {
-    /* ignore */
-  }
-}
-
-const METRIC_EN: Record<string, string> = {
-  weightKg: "Weight",
-  chest: "Chest",
-  waist: "Waist",
-  hips: "Hips",
-  biceps: "Biceps",
-  thigh: "Thigh",
-  neck: "Neck",
-};
-
-function sortByDate<T extends { date: string }>(items: T[], desc = false): T[] {
-  return [...items].sort((a, b) =>
-    a.date === b.date ? 0 : (a.date < b.date) === desc ? 1 : -1,
-  );
-}
-
 export default function ProfileScreen({
-  bodyEntries,
-  photos,
   recovery,
   programs,
   focusGoal,
   onOpenPrograms,
-  onChangeBody,
-  onChangePhotos,
   onChangeRecovery,
   onChangeFocusGoal,
   onChangeLang,
@@ -152,17 +70,7 @@ export default function ProfileScreen({
   const lang = useLang();
   const t = useT();
   const activeProgram = programs.find((p) => !p.archivedAt) ?? null;
-  const [editing, setEditing] = useState<BodyEntry | null>(null);
   const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
-  // Открытый кадр — индексом в текущей выборке: лайтбокс листает соседей.
-  const [viewIndex, setViewIndex] = useState<number | null>(null);
-  // Полные кадры грузим по требованию: текущий и соседние.
-  const [fulls, setFulls] = useState<Record<string, string>>({});
-  const [poseFilter, setPoseFilter] = useState<PhotoPose | null>(null);
-  // Ракурс спрашиваем сразу после загрузки, по умолчанию — прошлый выбранный.
-  const [posingIds, setPosingIds] = useState<string[] | null>(null);
-  const [lastPose, setLastPose] = useState<PhotoPose>(loadLastPose);
-  const fileRef = useRef<HTMLInputElement>(null);
   // Настройки таймера отдыха: устройство, не аккаунт — держим в localStorage.
   const [restOn, setRestOn] = useState(loadRestEnabled);
   const [restSec, setRestSec] = useState(loadRestSec);
@@ -187,114 +95,6 @@ export default function ProfileScreen({
     );
     setCheckin(null);
   }
-
-  const asc = useMemo(() => sortByDate(bodyEntries), [bodyEntries]);
-
-  const weightPoints = asc
-    .filter((e) => e.weightKg != null)
-    .map((e) => ({ label: formatDate(e.date), value: e.weightKg as number }));
-
-  const currentWeight = weightPoints.at(-1)?.value ?? null;
-  const prevWeight = weightPoints.at(-2)?.value ?? null;
-  const weightDelta =
-    currentWeight != null && prevWeight != null ? currentWeight - prevWeight : null;
-
-  function latest(key: keyof BodyEntry): number | null {
-    for (const e of sortByDate(bodyEntries, true)) {
-      const v = e[key];
-      if (typeof v === "number") return v;
-    }
-    return null;
-  }
-
-  function saveEntry(entry: BodyEntry) {
-    const exists = bodyEntries.some((e) => e.id === entry.id);
-    onChangeBody(
-      exists ? bodyEntries.map((e) => (e.id === entry.id ? entry : e)) : [...bodyEntries, entry],
-    );
-    setEditing(null);
-  }
-
-  async function addPhotos(files: FileList) {
-    const added: ProgressPhoto[] = [];
-    for (const file of Array.from(files)) {
-      const { full, thumb } = await fileToPhoto(file);
-      const id = newId();
-      // Полный кадр — отдельным ключом, в списке только превью.
-      await savePhotoFull(id, full);
-      added.push({ id, date: today(), pose: lastPose, thumb });
-    }
-    onChangePhotos([...photos, ...added]);
-    // Ракурс можно поправить сразу после загрузки — спрашиваем один раз на пачку.
-    if (added.length > 0) setPosingIds(added.map((p) => p.id));
-  }
-
-  function setPose(ids: string[], pose: PhotoPose) {
-    setLastPose(pose);
-    saveLastPose(pose);
-    onChangePhotos(photos.map((p) => (ids.includes(p.id) ? { ...p, pose } : p)));
-  }
-
-  function removePhoto(id: string) {
-    void deletePhotoFull(id);
-    onChangePhotos(photos.filter((p) => p.id !== id));
-  }
-
-  /** Вес ближайшего замера к дате кадра (±7 дней) — контекст для сравнения. */
-  function weightNear(date: string): { value: number; exact: boolean } | null {
-    let best: { value: number; diff: number } | null = null;
-    for (const entry of bodyEntries) {
-      if (entry.weightKg == null) continue;
-      const diff = Math.abs(daysBetween(entry.date, date));
-      if (diff > 7) continue;
-      if (!best || diff < best.diff) best = { value: entry.weightKg, diff };
-    }
-    return best ? { value: best.value, exact: best.diff === 0 } : null;
-  }
-
-  const photosDesc = sortByDate(photos, true);
-  const shown = poseFilter ? photosDesc.filter((p) => p.pose === poseFilter) : photosDesc;
-  // Группируем по месяцам: лента перестаёт быть бесконечной сеткой.
-  const byMonth = shown.reduce<Array<{ key: string; title: string; items: ProgressPhoto[] }>>(
-    (acc, photo) => {
-      const key = photo.date.slice(0, 7);
-      const last = acc[acc.length - 1];
-      if (last && last.key === key) last.items.push(photo);
-      else acc.push({ key, title: monthTitle(parseDateKey(photo.date)), items: [photo] });
-      return acc;
-    },
-    [],
-  );
-  // Пока полный кадр не подгружен, лайтбокс показывает превью — без пустых мест.
-  const slides = shown.map((photo) => ({
-    src: fulls[photo.id] ?? photo.thumb ?? photo.dataUrl ?? "",
-    alt: formatDate(photo.date),
-  }));
-
-  useEffect(() => {
-    if (viewIndex == null) return;
-    // Текущий кадр и соседи — чтобы свайп не упирался в загрузку.
-    const wanted = [viewIndex - 1, viewIndex, viewIndex + 1]
-      .map((i) => shown[i])
-      .filter((p): p is ProgressPhoto => Boolean(p) && !fulls[p.id]);
-    if (wanted.length === 0) return;
-    let alive = true;
-    void Promise.all(
-      wanted.map(async (photo) => [photo.id, await loadPhotoFull(photo.id)] as const),
-    ).then((loaded) => {
-      if (!alive) return;
-      setFulls((prev) => {
-        const next = { ...prev };
-        for (const [id, full] of loaded) if (full) next[id] = full;
-        return next;
-      });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [viewIndex, shown, fulls]);
-
-  const metricLabel = (key: string, ru: string) => (lang === "en" ? (METRIC_EN[key] ?? ru) : ru);
 
   return (
     <Box sx={{ pb: 10 }}>
@@ -394,100 +194,6 @@ export default function ProfileScreen({
         <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
       </Paper>
 
-      {/* Тело: вес + замеры + кнопка — единый блок */}
-      <Typography variant="h2" sx={{ mb: 1.5 }}>
-        {t("Тело", "Body")}
-      </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ flex: 1 }}>
-            {t("Вес", "Weight")}
-          </Typography>
-          {currentWeight != null && (
-            <>
-              <Typography sx={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>
-                {String(currentWeight).replace(".", ",")} {t("кг", "kg")}
-              </Typography>
-              {weightDelta != null && weightDelta !== 0 && (
-                <Typography
-                  variant="caption"
-                  sx={{ color: weightDelta < 0 ? "primary.main" : "text.secondary", fontWeight: 700 }}
-                >
-                  {weightDelta > 0 ? "+" : ""}
-                  {String(Number(weightDelta.toFixed(1))).replace(".", ",")}
-                </Typography>
-              )}
-            </>
-          )}
-        </Stack>
-        {weightPoints.length > 0 ? (
-          <Box sx={{ mt: 1 }}>
-            <MiniChart
-              points={weightPoints}
-              format={(v) => String(Number(v.toFixed(1))).replace(".", ",")}
-            />
-          </Box>
-        ) : (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-            {t("Добавь замер — появится график веса.", "Add a measurement to see your weight chart.")}
-          </Typography>
-        )}
-
-        <Divider sx={{ my: 2 }} />
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-          {t("Замеры", "Measurements")}
-        </Typography>
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
-          {BODY_METRICS.filter((m) => m.key !== "weightKg").map((m) => {
-            const value = latest(m.key);
-            return (
-              <Box key={m.key} sx={{ p: 1.25, borderRadius: 2, bgcolor: "action.hover", textAlign: "center" }}>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>
-                  {value != null ? String(value).replace(".", t(",", ".")) : "—"}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                  {metricLabel(m.key, m.label)}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => setEditing(newBodyEntry(today()))}
-          sx={{ mt: 2 }}
-        >
-          {t("Добавить замер", "Add measurement")}
-        </Button>
-      </Paper>
-
-      {/* История замеров */}
-      {bodyEntries.length > 0 && (
-        <Stack spacing={1} sx={{ mt: 1.5 }}>
-          {sortByDate(bodyEntries, true).map((entry) => (
-            <Paper
-              key={entry.id}
-              variant="outlined"
-              onClick={() => setEditing(entry)}
-              sx={{ p: 1.5, borderRadius: 2, cursor: "pointer", display: "flex", alignItems: "center" }}
-            >
-              <Typography variant="body2" sx={{ flex: 1 }}>
-                {formatDate(entry.date)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {entry.weightKg != null
-                  ? `${String(entry.weightKg).replace(".", ",")} ${t("кг", "kg")}`
-                  : t("замер", "measurement")}
-              </Typography>
-            </Paper>
-          ))}
-        </Stack>
-      )}
-
       {/* Самочувствие */}
       <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
         {t("Самочувствие", "How you feel")}
@@ -529,166 +235,6 @@ export default function ProfileScreen({
           </Stack>
         )}
       </Paper>
-
-      {/* Фото прогресса — с акцентом «зачем» */}
-      <Stack direction="row" sx={{ mt: 4, mb: 1.5, alignItems: "center", justifyContent: "space-between" }}>
-        <Typography variant="h2">{t("Фото прогресса", "Progress photos")}</Typography>
-        {photos.length > 0 && (
-          <IconButton color="primary" onClick={() => fileRef.current?.click()} aria-label={t("Добавить фото", "Add photo")}>
-            <PhotoCameraIcon />
-          </IconButton>
-        )}
-      </Stack>
-
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        onChange={(e) => {
-          if (e.target.files?.length) void addPhotos(e.target.files);
-          e.target.value = "";
-        }}
-      />
-
-      {photos.length === 0 ? (
-        <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, textAlign: "center" }}>
-          <Box
-            sx={{
-              width: 52,
-              height: 52,
-              mx: "auto",
-              mb: 1.5,
-              borderRadius: 2,
-              display: "grid",
-              placeItems: "center",
-              color: "primary.main",
-              backgroundImage: `linear-gradient(135deg, ${alpha("#4ade80", 0.28)}, ${alpha("#4ade80", 0.08)})`,
-            }}
-          >
-            <PhotoCameraIcon />
-          </Box>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-            {t("Снимай, чтобы видеть путь", "Shoot to see the change")}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {t(
-              "Фото показывает то, чего не видят весы: осанку, рельеф, объёмы. Снимай раз в пару недель — и прогресс станет очевидным, даже когда цифры стоят.",
-              "Photos show what the scale can't: posture, definition, volume. Shoot every couple of weeks — progress becomes obvious even when the numbers stall.",
-            )}
-          </Typography>
-          <Button variant="contained" startIcon={<PhotoCameraIcon />} onClick={() => fileRef.current?.click()}>
-            {t("Добавить первое фото", "Add your first photo")}
-          </Button>
-        </Paper>
-      ) : (
-        <>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-            <FavoriteBorderRoundedIcon sx={{ fontSize: 13, verticalAlign: "-2px", mr: 0.5 }} />
-            {t(
-              "Видно то, что не покажут весы. Снимай раз в пару недель.",
-              "It shows what the scale won't. Shoot every couple of weeks.",
-            )}
-          </Typography>
-          {/* Фильтр по ракурсу: сравнивать имеет смысл одинаковые кадры */}
-          <Box sx={{ display: "flex", gap: 0.75, overflowX: "auto", pb: 1.5, mx: -0.5, px: 0.5 }}>
-            <Chip
-              size="small"
-              label={`${t("Все", "All")} · ${photos.length}`}
-              color={poseFilter === null ? "primary" : "default"}
-              variant={poseFilter === null ? "filled" : "outlined"}
-              onClick={() => setPoseFilter(null)}
-            />
-            {PHOTO_POSES.map((pose) => {
-              const count = photos.filter((p) => p.pose === pose).length;
-              if (count === 0) return null;
-              return (
-                <Chip
-                  key={pose}
-                  size="small"
-                  label={`${PHOTO_POSE_LABELS[pose]} · ${count}`}
-                  color={poseFilter === pose ? "primary" : "default"}
-                  variant={poseFilter === pose ? "filled" : "outlined"}
-                  onClick={() => setPoseFilter(poseFilter === pose ? null : pose)}
-                  sx={{ flexShrink: 0 }}
-                />
-              );
-            })}
-          </Box>
-
-          {/* Лента по месяцам, а не бесконечная сетка */}
-          {byMonth.map((month) => (
-            <Box key={month.key} sx={{ mb: 2 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block", mb: 0.75, textTransform: "capitalize" }}
-              >
-                {month.title} · {month.items.length}
-              </Typography>
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0.5 }}>
-                {month.items.map((photo) => (
-                  <Box
-                    key={photo.id}
-                    component="button"
-                    onClick={() => setViewIndex(shown.indexOf(photo))}
-                    sx={{
-                      position: "relative",
-                      aspectRatio: "3 / 4",
-                      p: 0,
-                      border: "none",
-                      borderRadius: 2,
-                      overflow: "hidden",
-                      cursor: "pointer",
-                      bgcolor: "background.paper",
-                    }}
-                  >
-                    <Box
-                      component="img"
-                      src={photo.thumb ?? photo.dataUrl}
-                      alt={formatDate(photo.date)}
-                      loading="lazy"
-                      sx={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    />
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        position: "absolute",
-                        left: 4,
-                        bottom: 4,
-                        px: 0.5,
-                        borderRadius: 1,
-                        bgcolor: "rgba(0,0,0,0.55)",
-                        color: "#fff",
-                      }}
-                    >
-                      {formatDate(photo.date)}
-                    </Typography>
-                    {photo.pose && (
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          position: "absolute",
-                          right: 4,
-                          top: 4,
-                          px: 0.5,
-                          borderRadius: 1,
-                          bgcolor: "rgba(0,0,0,0.55)",
-                          color: "#fff",
-                          fontSize: 10,
-                        }}
-                      >
-                        {PHOTO_POSE_LABELS[photo.pose]}
-                      </Typography>
-                    )}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          ))}
-        </>
-      )}
 
       {/* Настройки — пока только таймер отдыха между подходами */}
       <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
@@ -760,20 +306,6 @@ export default function ProfileScreen({
         )}
       </Paper>
 
-      <MeasurementDialog
-        entry={editing}
-        onClose={() => setEditing(null)}
-        onSave={saveEntry}
-        onDelete={
-          editing && bodyEntries.some((e) => e.id === editing.id)
-            ? () => {
-                onChangeBody(bodyEntries.filter((e) => e.id !== editing.id));
-                setEditing(null);
-              }
-            : undefined
-        }
-      />
-
       <RecoveryDialog
         entry={checkin}
         onClose={() => setCheckin(null)}
@@ -788,116 +320,6 @@ export default function ProfileScreen({
         }
       />
 
-      {/* Просмотр: свайп между кадрами, зум, действия внизу */}
-      <Lightbox
-        open={viewIndex != null}
-        index={viewIndex ?? 0}
-        close={() => setViewIndex(null)}
-        slides={slides}
-        plugins={[Zoom, Counter]}
-        carousel={{ finite: true }}
-        controller={{ closeOnBackdropClick: true }}
-        on={{ view: ({ index }) => setViewIndex(index) }}
-        styles={{ container: { backgroundColor: "rgba(0,0,0,.92)" } }}
-        render={{
-          // Действия рисуем один раз поверх лайтбокса — по активному кадру.
-          controls: () => {
-            const photo = viewIndex != null ? shown[viewIndex] : null;
-            if (!photo) return null;
-            const weight = weightNear(photo.date);
-            return (
-              <Box
-                sx={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  zIndex: 3,
-                  p: 1.5,
-                  pb: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
-                  background: "linear-gradient(transparent, rgba(0,0,0,.75) 40%)",
-                  pointerEvents: "none",
-                }}
-              >
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  sx={{ alignItems: "center", mb: 1, pointerEvents: "auto" }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" sx={{ color: "#fff", fontWeight: 700 }}>
-                      {formatDate(photo.date)}
-                    </Typography>
-                    {weight && (
-                      <Typography variant="caption" sx={{ color: "rgba(255,255,255,.7)" }}>
-                        {weight.exact ? "" : "≈ "}
-                        {formatWeight(weight.value)} {t("кг", "kg")}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Button
-                    size="small"
-                    color="error"
-                    startIcon={<DeleteOutlineIcon />}
-                    onClick={() => {
-                      removePhoto(photo.id);
-                      // Список сдвинулся: закрываем, если кадров больше нет.
-                      setViewIndex(shown.length > 1 ? Math.max(0, (viewIndex ?? 1) - 1) : null);
-                    }}
-                  >
-                    {t("Удалить", "Delete")}
-                  </Button>
-                </Stack>
-                <Stack direction="row" spacing={0.75} sx={{ pointerEvents: "auto" }}>
-                  {PHOTO_POSES.map((pose) => (
-                    <Chip
-                      key={pose}
-                      size="small"
-                      label={PHOTO_POSE_LABELS[pose]}
-                      color={photo.pose === pose ? "primary" : "default"}
-                      variant={photo.pose === pose ? "filled" : "outlined"}
-                      onClick={() => setPose([photo.id], pose)}
-                      sx={
-                        photo.pose === pose
-                          ? undefined
-                          : { color: "#fff", borderColor: "rgba(255,255,255,.5)" }
-                      }
-                    />
-                  ))}
-                </Stack>
-              </Box>
-            );
-          },
-        }}
-      />
-
-      {/* Ракурс спрашиваем сразу после загрузки — иначе сравнение потом не собрать */}
-      <Dialog open={Boolean(posingIds)} onClose={() => setPosingIds(null)} fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>{t("Какой это ракурс?", "Which angle is this?")}</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {t(
-              "Нужно, чтобы потом сравнивать одинаковые кадры между собой.",
-              "Needed so you can compare like with like later on.",
-            )}
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            {PHOTO_POSES.map((pose) => (
-              <Button
-                key={pose}
-                fullWidth
-                variant={lastPose === pose ? "contained" : "outlined"}
-                onClick={() => {
-                  if (posingIds) setPose(posingIds, pose);
-                  setPosingIds(null);
-                }}
-              >
-                {PHOTO_POSE_LABELS[pose]}
-              </Button>
-            ))}
-          </Stack>
-        </DialogContent>
-      </Dialog>
     </Box>
   );
 }
@@ -926,77 +348,6 @@ function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => voi
         </Box>
       ))}
     </Box>
-  );
-}
-
-function MeasurementDialog({
-  entry,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  entry: BodyEntry | null;
-  onClose: () => void;
-  onSave: (entry: BodyEntry) => void;
-  onDelete?: () => void;
-}) {
-  const lang = useLang();
-  const t = useT();
-  const [draft, setDraft] = useState<BodyEntry | null>(entry);
-
-  if (entry && draft?.id !== entry.id) setDraft(entry);
-  if (!draft) return <Dialog open={false} onClose={onClose} />;
-
-  return (
-    <Dialog open={Boolean(entry)} onClose={onClose} fullWidth>
-      <DialogTitle sx={{ pr: 6 }}>
-        {t("Замер", "Measurement")}
-        <IconButton onClick={onClose} sx={{ position: "absolute", right: 8, top: 8 }} aria-label={t("Закрыть", "Close")}>
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent>
-        <TextField
-          type="date"
-          label={t("Дата", "Date")}
-          fullWidth
-          value={draft.date}
-          onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-          sx={{ mb: 2, mt: 1 }}
-        />
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
-          {BODY_METRICS.map((m) => (
-            <NumberField
-              key={m.key}
-              label={`${lang === "en" ? (METRIC_EN[m.key] ?? m.label) : m.label}, ${m.unit === "кг" ? t("кг", "kg") : t("см", "cm")}`}
-              value={draft[m.key] as number | null}
-              onChange={(value) => setDraft({ ...draft, [m.key]: value })}
-            />
-          ))}
-        </Box>
-        <TextField
-          label={t("Заметка", "Note")}
-          fullWidth
-          multiline
-          minRows={2}
-          value={draft.notes ?? ""}
-          onChange={(e) => setDraft({ ...draft, notes: e.target.value || null })}
-          sx={{ mt: 2 }}
-        />
-      </DialogContent>
-      <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>
-        {onDelete ? (
-          <Button color="error" onClick={onDelete}>
-            {t("Удалить", "Delete")}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button variant="contained" onClick={() => onSave(draft)}>
-          {t("Сохранить", "Save")}
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }
 

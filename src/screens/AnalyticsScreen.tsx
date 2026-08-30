@@ -39,6 +39,7 @@ import BodyMap from "../components/analytics/BodyMap";
 import CapacitiesCard from "../components/analytics/CapacitiesCard";
 import GoalLensCard from "../components/analytics/GoalLensCard";
 import PlateauCard, { PLATEAU_COLOR } from "../components/analytics/PlateauCard";
+import BodyPanel from "../components/BodyPanel";
 import { TYPE_COLOR } from "../lib/activityColors";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import RestBalanceCard from "../components/analytics/RestBalanceCard";
@@ -105,7 +106,9 @@ import {
 } from "../lib/format";
 import { bestE1rm, exerciseName, isTrainingSession } from "../lib/types";
 import type {
+  BodyEntry,
   Exercise,
+  ProgressPhoto,
   RecoveryEntry,
   Session,
   TrainingProgram,
@@ -117,10 +120,15 @@ interface Props {
   programs: TrainingProgram[];
   recovery: RecoveryEntry[];
   focusGoal: FocusGoal | null;
+  /** Вкладка «Тело»: замеры и вход в галерею фото. */
+  bodyEntries: BodyEntry[];
+  photos: ProgressPhoto[];
+  onChangeBody: (entries: BodyEntry[]) => void;
+  onOpenPhotos: () => void;
 }
 
 // Разделы аналитики — по четырём вопросам пользователя.
-type View = "volume" | "strength" | "muscles" | "recovery";
+type View = "volume" | "strength" | "muscles" | "recovery" | "body";
 
 export default function AnalyticsScreen({
   sessions: allSessions,
@@ -128,6 +136,10 @@ export default function AnalyticsScreen({
   programs,
   recovery,
   focusGoal,
+  bodyEntries,
+  photos,
+  onChangeBody,
+  onOpenPhotos,
 }: Props) {
   const t = useT();
   const lang = useLang();
@@ -651,6 +663,7 @@ export default function AnalyticsScreen({
         <Tab label={t("Прогресс", "Progress")} value="strength" />
         <Tab label={t("Мышцы", "Muscles")} value="muscles" />
         <Tab label={t("Восстановление", "Recovery")} value="recovery" />
+        <Tab label={t("Тело", "Body")} value="body" />
       </Tabs>
 
       {view === "volume" && (
@@ -908,6 +921,15 @@ export default function AnalyticsScreen({
         </Box>
       )}
         </>
+      )}
+
+      {view === "body" && (
+        <BodyPanel
+          bodyEntries={bodyEntries}
+          photos={photos}
+          onChangeBody={onChangeBody}
+          onOpenPhotos={onOpenPhotos}
+        />
       )}
 
       {view === "muscles" && (

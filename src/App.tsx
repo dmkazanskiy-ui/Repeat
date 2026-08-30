@@ -60,6 +60,7 @@ import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import OnboardingScreen from "./screens/OnboardingScreen";
 import ProgramsScreen from "./screens/ProgramsScreen";
+import PhotosScreen from "./screens/PhotosScreen";
 import HiitScreen from "./screens/HiitScreen";
 import { loadHiit, saveHiit, hiitWorkSec } from "./lib/hiit";
 import type { HiitConfig } from "./lib/hiit";
@@ -103,6 +104,8 @@ export default function App() {
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
+  // Галерея фото — отдельный экран: в профиле она разрасталась.
+  const [showPhotos, setShowPhotos] = useState(false);
   const [showHiit, setShowHiit] = useState(false);
   const [hiitCfg, setHiitCfg] = useState<HiitConfig>(() => loadHiit());
   const [tab, setTab] = useState<Tab>("calendar");
@@ -563,6 +566,13 @@ export default function App() {
               setOpenProgramId(null);
             }}
           />
+        ) : showPhotos ? (
+          <PhotosScreen
+            photos={photos}
+            bodyEntries={bodyEntries}
+            onChangePhotos={changePhotos}
+            onBack={() => setShowPhotos(false)}
+          />
         ) : showPrograms ? (
           <ProgramsScreen
             programs={programs}
@@ -721,18 +731,18 @@ export default function App() {
                 programs={programs}
                 recovery={recovery}
                 focusGoal={focusGoal}
+                bodyEntries={bodyEntries}
+                photos={photos}
+                onChangeBody={changeBody}
+                onOpenPhotos={() => setShowPhotos(true)}
               />
             )}
             {tab === "profile" && (
               <ProfileScreen
-                bodyEntries={bodyEntries}
-                photos={photos}
                 recovery={recovery}
                 programs={programs}
                 focusGoal={focusGoal}
                 onOpenPrograms={() => setShowPrograms(true)}
-                onChangeBody={changeBody}
-                onChangePhotos={changePhotos}
                 onChangeRecovery={changeRecovery}
                 onChangeFocusGoal={changeFocusGoal}
                 onChangeLang={changeLang}
@@ -790,7 +800,7 @@ export default function App() {
 
       {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
           По ширине совпадает с контентом (maxWidth sm), с подписями. */}
-      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && (
+      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !showPhotos && (
         <Box
           sx={{
             position: "fixed",
