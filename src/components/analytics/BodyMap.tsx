@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { BODY_FRONT, BODY_BACK } from "../../lib/bodyMap";
@@ -117,11 +117,33 @@ function Figure({
  * период (самая нагруженная мышца = полный акцент). Тап по мышце — подпись с
  * числом. Один зелёный акцент, ненагруженное — рецессивная подложка (по dataviz).
  */
-export default function BodyMap({ loads }: { loads: MuscleLoad[] }) {
+export default function BodyMap({
+  loads,
+  /** Мышца, подсвеченная снаружи — например тапом по строке сводки. */
+  highlight = null,
+}: {
+  loads: MuscleLoad[];
+  highlight?: Muscle | null;
+}) {
   const t = useT();
   const theme = useTheme();
   const accent = theme.palette.primary.main;
   const [selected, setSelected] = useState<SlugInfo | null>(null);
+
+  // Подсветка снаружи ведёт себя как обычный тап по мышце.
+  useEffect(() => {
+    if (!highlight) return;
+    const load = loads.find((l) => l.muscle === highlight);
+    if (load) {
+      const peak = loads.reduce((m, l) => Math.max(m, l.adjustedSets), 0);
+      setSelected({
+        muscle: load.muscle,
+        label: load.label,
+        value: load.adjustedSets,
+        intensity: peak > 0 ? load.adjustedSets / peak : 0,
+      });
+    }
+  }, [highlight, loads]);
 
   const { front, back, hasData } = useMemo(() => {
     const byMuscle = new Map<Muscle, MuscleLoad>(loads.map((l) => [l.muscle, l]));

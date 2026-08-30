@@ -36,6 +36,7 @@ import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
 import LoopRoundedIcon from "@mui/icons-material/LoopRounded";
 import RadarChart from "../components/analytics/RadarChart";
 import BodyMap from "../components/analytics/BodyMap";
+import MuscleFocusCard from "../components/analytics/MuscleFocusCard";
 import CapacitiesCard from "../components/analytics/CapacitiesCard";
 import GoalLensCard from "../components/analytics/GoalLensCard";
 import PlateauCard, { PLATEAU_COLOR } from "../components/analytics/PlateauCard";
@@ -47,6 +48,8 @@ import SummaryHero from "../components/analytics/SummaryHero";
 import type { HeroData } from "../components/analytics/SummaryHero";
 import {
   activePlateaus,
+  muscleFocus,
+  FOCUS_WINDOW_DAYS,
   plateauDetail,
   formatWodResult,
   wodHistory,
@@ -76,6 +79,7 @@ import {
 import type {
   BalanceRow,
   HeatCell,
+  Muscle,
   PlateauDetail,
   WodSummary,
   MuscleLoad,
@@ -159,6 +163,8 @@ export default function AnalyticsScreen({
   const [lensGoal, setLensGoal] = useState<FocusGoal>(focusGoal ?? "strength");
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
+  // Подсветка мышцы на карте по тапу в сводке.
+  const [focusMuscle, setFocusMuscle] = useState<Muscle | null>(null);
   // Плато: алерт вверху ведёт в раздел «Прогресс» и раскрывает первое плато.
   const [openPlateau, setOpenPlateau] = useState<string | null>(null);
   const plateauRef = useRef<HTMLDivElement>(null);
@@ -275,6 +281,22 @@ export default function AnalyticsScreen({
     () => movementBalance(sessions, exercises, period.startDate, period.endDate),
     [sessions, exercises, period, lang],
   );
+  // Баланс инерционен: на недельном окне один пропущенный день ног читается как
+  // «дыра». Поэтому сводка всегда считается за четыре недели, независимо от
+  // выбранного периода — об этом прямо написано в карточке.
+  const focus = useMemo(() => {
+    const end = today();
+    const start = addDays(end, -(FOCUS_WINDOW_DAYS - 1));
+    const window = buildPeriod("custom", end, start, end);
+    return muscleFocus({
+      loads: muscleLoads(sessions, exercises, window),
+      balance: movementBalance(sessions, exercises, start, end),
+      strengthSessions: sessions.filter(
+        (s) => s.kind === "strength" && s.date >= start && s.date <= end,
+      ).length,
+      goal: focusGoal,
+    });
+  }, [sessions, exercises, focusGoal, lang]);
   // Прогресс по программе — по всей истории активной программы, вне периода.
   const programCompare = useMemo(() => {
     const active = programs.find((p) => !p.archivedAt);
@@ -637,7 +659,10 @@ export default function AnalyticsScreen({
             <Typography variant="body2" sx={{ fontWeight: 700 }}>
               {plateaus.length === 1
                 ? `${t("Плато", "Plateau")}: ${plateaus[0].name}`
-                : `${t("Плато", "Plateaus")}: ${plateaus.length} ${t("упражнения", "exercises")}`}
+                : `${t("Плато", "Plateaus")}: ${plateaus.length} ${t(
+                    ruPlural(plateaus.length, "упражнение", "упражнения", "упражнений"),
+                    plateaus.length === 1 ? "exercise" : "exercises",
+                  )}`}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {t("Разобрать в «Прогрессе»", "See the breakdown in Progress")}
@@ -934,6 +959,7 @@ export default function AnalyticsScreen({
 
       {view === "muscles" && (
         <>
+      <MuscleFocusCard focus={focus} onPick={setFocusMuscle} />
       {muscles.length > 0 ? (
         <Box>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
@@ -943,7 +969,7 @@ export default function AnalyticsScreen({
             {t("Эквивалентные подходы с учётом вторичной нагрузки. Классификация упражнений предварительная.", "Equivalent sets counting secondary load. Exercise classification is preliminary.")}
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 1.5 }}>
-            <BodyMap loads={muscles} />
+            <BodyMap loads={muscles} highlight={focusMuscle} />
           </Paper>
           <Stack spacing={1.25}>
             {muscles.map((load) => (
