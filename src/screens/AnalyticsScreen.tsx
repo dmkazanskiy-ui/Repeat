@@ -959,7 +959,6 @@ export default function AnalyticsScreen({
 
       {view === "muscles" && (
         <>
-      <MuscleFocusCard focus={focus} onPick={setFocusMuscle} />
       {muscles.length > 0 ? (
         <Box>
           <Typography variant="h2" sx={{ mb: 0.5 }}>
@@ -971,6 +970,8 @@ export default function AnalyticsScreen({
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 1.5 }}>
             <BodyMap loads={muscles} highlight={focusMuscle} />
           </Paper>
+          {/* Сводка сразу под картой: сначала картина, потом вывод из неё. */}
+          <MuscleFocusCard focus={focus} onPick={setFocusMuscle} />
           <Stack spacing={1.25}>
             {muscles.map((load) => (
               <MuscleBar key={load.muscle} load={load} max={muscles[0].adjustedSets} />
