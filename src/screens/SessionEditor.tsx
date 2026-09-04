@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent } from "react";
 import {
   Box,
   Button,
@@ -34,6 +34,9 @@ import StopIcon from "@mui/icons-material/Stop";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
 import LinkIcon from "@mui/icons-material/Link";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
@@ -137,15 +140,6 @@ function markFilledSetsDone(exercises: SessionExercise[]): SessionExercise[] {
   }));
 }
 
-/** Короткий тактильный отклик. На iOS/в Telegram может молчать — это нормально. */
-function buzz(ms: number) {
-  try {
-    navigator.vibrate?.(ms);
-  } catch {
-    /* не поддерживается — не страшно */
-  }
-}
-
 /** Круговой таймер: кольцо — прогресс подходов, центр — прошедшее время. */
 function CircularTimer({
   elapsedSec,
@@ -211,8 +205,12 @@ export default function SessionEditor({
   const [picker, setPicker] = useState<
     { mode: "add" } | { mode: "replace"; itemId: string } | null
   >(null);
-  // Меню действий по долгому нажатию на упражнение.
-  const [menuFor, setMenuFor] = useState<{ id: string; anchor: HTMLElement } | null>(null);
+  // Меню действий упражнения — открывается кнопкой «⋮» на карточке.
+  const [menuFor, setMenuFor] = useState<{
+    id: string;
+    anchor: HTMLElement;
+    group: number;
+  } | null>(null);
   const [copyDate, setCopyDate] = useState("");
   // Диалог завершения: длительность и средний пульс вводятся вручную —
   // «Начать» жать необязательно.
@@ -221,33 +219,6 @@ export default function SessionEditor({
   const [finishHr, setFinishHr] = useState<number | null>(null);
   // Источник объединения в супер-сет: включается из меню упражнения.
   const [linkingId, setLinkingId] = useState<string | null>(null);
-  const pressTimer = useRef<number | null>(null);
-  const suppressClick = useRef(false);
-
-  // Жест на карточке упражнения (как в iOS): удержание даёт отклик — вибро и
-  // подъём карточки, — после чего либо ведёшь пальцем и меняешь порядок, либо
-  // отпускаешь и получаешь меню действий.
-  const groupRefs = useRef(new Map<string, HTMLDivElement>());
-  const [pressId, setPressId] = useState<string | null>(null);
-  const [drag, setDrag] = useState<{
-    key: string;
-    from: number;
-    to: number;
-    dy: number;
-    height: number;
-  } | null>(null);
-  const gesture = useRef<{
-    itemId: string;
-    key: string;
-    from: number;
-    startY: number;
-    anchor: HTMLElement;
-    pointerId: number;
-    moved: boolean;
-    armed: boolean;
-    lastTo: number;
-    rows: Array<{ key: string; top: number; mid: number; height: number }>;
-  } | null>(null);
 
   // Таймер отдыха между подходами. Цель запоминается (localStorage), −15/+15 её
   // подстраивают; отсчёт стартует ТОЛЬКО по живому тапу по чекбоксу подхода.
@@ -265,16 +236,6 @@ export default function SessionEditor({
     });
     setRestEndsAt((prev) => (prev == null ? prev : prev + deltaSec * 1000));
   }
-
-  // Пока карточку тащат, страница скроллиться не должна: touch-action на лету
-  // браузер уже не перечитывает, поэтому глушим прокрутку слушателем.
-  const isDragging = drag != null;
-  useEffect(() => {
-    if (!isDragging) return;
-    const stop = (event: TouchEvent) => event.preventDefault();
-    document.addEventListener("touchmove", stop, { passive: false });
-    return () => document.removeEventListener("touchmove", stop);
-  }, [isDragging]);
 
   // Тикаем раз в секунду, только пока тренировка идёт (запущена, не завершена).
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -349,130 +310,17 @@ export default function SessionEditor({
     onChange({ ...session, exercises: next.flat() });
   }
 
-  function startPress(
-    event: ReactPointerEvent<HTMLElement>,
-    itemId: string,
-    key: string,
-    from: number,
-  ) {
-    // Пока выбираем пару для супер-сета, жест не мешает: там тап означает
-    // «объединить с этим».
-    if (linkingId != null) return;
-    const anchor = event.currentTarget as HTMLElement;
-    gesture.current = {
-      itemId,
-      key,
-      from,
-      startY: event.clientY,
-      anchor,
-      pointerId: event.pointerId,
-      moved: false,
-      armed: false,
-      lastTo: from,
-      rows: [],
-    };
-    setPressId(itemId);
-    if (pressTimer.current) window.clearTimeout(pressTimer.current);
-    pressTimer.current = window.setTimeout(() => {
-      const g = gesture.current;
-      if (!g) return;
-      g.armed = true;
-      suppressClick.current = true;
-      buzz(20);
-      try {
-        anchor.setPointerCapture?.(g.pointerId);
-      } catch {
-        /* не критично */
-      }
-      // Замеряем группы один раз на старте — дальше двигаем по этим координатам.
-      const rows = [...groupRefs.current.entries()]
-        .map(([rowKey, el]) => {
-          const rect = el.getBoundingClientRect();
-          return {
-            key: rowKey,
-            top: rect.top,
-            mid: rect.top + rect.height / 2,
-            height: rect.height,
-          };
-        })
-        .sort((a, b) => a.top - b.top);
-      g.rows = rows;
-      const self = rows.find((row) => row.key === key);
-      setDrag({ key, from, to: from, dy: 0, height: (self?.height ?? 0) + 12 });
-    }, 400);
+  /** Сдвиг группы на шаг вверх/вниз — из меню, без перетаскивания. */
+  function nudgeGroup(from: number, delta: number) {
+    moveGroup(from, from + delta);
   }
 
-  function movePress(event: ReactPointerEvent<HTMLElement>) {
-    const g = gesture.current;
-    if (!g) return;
-    const dy = event.clientY - g.startY;
-    if (!g.armed) {
-      // До срабатывания удержания движение — это скролл, а не жест.
-      if (Math.abs(dy) > 6) cancelPress();
-      return;
-    }
-    if (Math.abs(dy) > 4) g.moved = true;
-    const selfIndex = g.rows.findIndex((row) => row.key === g.key);
-    if (selfIndex < 0) return;
-    const center = g.rows[selfIndex].mid + dy;
-    let to = 0;
-    g.rows.forEach((row, i) => {
-      if (i !== selfIndex && row.mid < center) to += 1;
-    });
-    // Тик даём здесь, а не внутри апдейтера состояния: апдейтер должен быть
-    // чистым, иначе в dev-режиме React вызовет его дважды и завибрирует дважды.
-    if (g.lastTo !== to) {
-      g.lastTo = to;
-      buzz(8);
-    }
-    setDrag((prev) => (prev ? { ...prev, dy, to } : prev));
-  }
+  // Меню открыто ровно на одно действие, поэтому позицию группы берём ту,
+  // что запомнили при открытии.
+  const menuGroup = menuFor?.group ?? -1;
+  const groupCount = groupExercises(session.exercises).length;
 
-  function endPress() {
-    const g = gesture.current;
-    if (pressTimer.current) {
-      window.clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-    if (g?.armed) {
-      if (g.moved) {
-        if (drag && drag.to !== drag.from) {
-          moveGroup(drag.from, drag.to);
-          buzz(15);
-        }
-      } else {
-        // Отпустил, не сдвинув, — это запрос действия.
-        setMenuFor({ id: g.itemId, anchor: g.anchor });
-      }
-    }
-    gesture.current = null;
-    setPressId(null);
-    setDrag(null);
-  }
-
-  function cancelPress() {
-    if (pressTimer.current) {
-      window.clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-    gesture.current = null;
-    setPressId(null);
-    setDrag(null);
-  }
-
-  /** Сдвиг группы при перетаскивании: сама едет за пальцем, соседи расступаются. */
-  function dragOffset(key: string, index: number): number {
-    if (!drag) return 0;
-    if (key === drag.key) return drag.dy;
-    if (drag.to > drag.from && index > drag.from && index <= drag.to) return -drag.height;
-    if (drag.to < drag.from && index >= drag.to && index < drag.from) return drag.height;
-    return 0;
-  }
   function headerClick(id: string) {
-    if (suppressClick.current) {
-      suppressClick.current = false;
-      return;
-    }
     if (linkingId == null) return;
     if (linkingId === id) {
       setLinkingId(null);
@@ -1224,25 +1072,14 @@ export default function SessionEditor({
               if (isSuper) superIndex += 1;
               const letter = String.fromCharCode(65 + Math.max(0, superIndex));
               const groupKey = group[0].id;
-              const dragging = drag?.key === groupKey;
-              const offset = dragOffset(groupKey, groupIndex);
               return (
                 <Box
                   key={groupKey}
-                  ref={(el: HTMLDivElement | null) => {
-                    if (el) groupRefs.current.set(groupKey, el);
-                    else groupRefs.current.delete(groupKey);
-                  }}
-                  sx={{
-                    ...(isSuper
+                  sx={
+                    isSuper
                       ? { mb: 1.5, pl: 1, borderLeft: "3px solid", borderColor: color }
-                      : { mb: 1.5 }),
-                    position: "relative",
-                    zIndex: dragging ? 5 : undefined,
-                    transform: offset ? `translateY(${offset}px)` : undefined,
-                    transition: dragging ? "none" : "transform .18s ease",
-                    ...(drag ? { touchAction: "none" } : null),
-                  }}
+                      : { mb: 1.5 }
+                  }
                 >
                   {isSuper && (
                     <Stack
@@ -1286,20 +1123,7 @@ export default function SessionEditor({
                         sx={{
                           p: 1.5,
                           mb: isSuper ? 1 : 1.5,
-                          transition: "transform .15s ease, box-shadow .15s ease, background-color .15s ease",
-                          // Удержание сразу отвечает: карточка чуть уходит вниз,
-                          // а когда жест сработал — приподнимается «в руку».
-                          ...(pressId === item.id && !dragging
-                            ? { transform: "scale(0.985)", bgcolor: alpha(color, 0.06) }
-                            : null),
-                          ...(dragging
-                            ? {
-                                transform: "scale(1.02)",
-                                boxShadow: 8,
-                                borderColor: alpha(color, 0.6),
-                                bgcolor: alpha(color, 0.08),
-                              }
-                            : null),
+                          transition: "box-shadow .15s ease, background-color .15s ease",
                           ...(isSource && {
                             borderColor: color,
                             borderWidth: 2,
@@ -1312,12 +1136,6 @@ export default function SessionEditor({
                           sx={{ mb: 1, alignItems: "center" }}
                         >
                           <Box
-                            onPointerDown={(event) =>
-                              startPress(event, item.id, groupKey, groupIndex)
-                            }
-                            onPointerMove={movePress}
-                            onPointerUp={endPress}
-                            onPointerCancel={cancelPress}
                             onClick={() => headerClick(item.id)}
                             sx={{
                               flex: 1,
@@ -1346,16 +1164,31 @@ export default function SessionEditor({
                               {exerciseName(exercise)}
                             </Typography>
                           </Box>
-                  {volume > 0 && (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ whiteSpace: "nowrap" }}
-                    >
-                      {formatVolume(volume)}
-                    </Typography>
-                  )}
-                </Stack>
+                          {volume > 0 && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ whiteSpace: "nowrap" }}
+                            >
+                              {formatVolume(volume)}
+                            </Typography>
+                          )}
+                          <IconButton
+                            size="small"
+                            edge="end"
+                            aria-label={t("Действия с упражнением", "Exercise actions")}
+                            onClick={(event) =>
+                              setMenuFor({
+                                id: item.id,
+                                anchor: event.currentTarget,
+                                group: groupIndex,
+                              })
+                            }
+                            sx={{ ml: "auto", flexShrink: 0, color: "text.secondary" }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
 
                 <Stack spacing={1}>
                   {item.sets.map((set, index) => {
@@ -1544,20 +1377,6 @@ export default function SessionEditor({
           >
             {t("Добавить упражнение", "Add exercise")}
           </Button>
-
-          {/* Жест не очевиден — подсказываем один раз, мелко и не мешая. */}
-          {session.exercises.length > 1 && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", textAlign: "center", mt: 1 }}
-            >
-              {t(
-                "Зажми упражнение: отпусти — меню, потяни — поменять местами",
-                "Hold an exercise: release for the menu, drag to reorder",
-              )}
-            </Typography>
-          )}
         </>
       )}
 
@@ -1639,7 +1458,7 @@ export default function SessionEditor({
         onCreate={onCreateExercise}
       />
 
-      {/* Долгое нажатие на упражнение — объединить / заменить / удалить */}
+      {/* Действия над упражнением — по кнопке «⋮» на карточке. */}
       <Menu
         open={menuFor != null}
         anchorEl={menuFor?.anchor ?? null}
@@ -1667,6 +1486,32 @@ export default function SessionEditor({
             <SwapHorizIcon fontSize="small" />
           </ListItemIcon>
           {t("Заменить", "Replace")}
+        </MenuItem>
+        {/* Порядок меняем шагами: перетаскивание на телефоне спорит со
+            скроллом, а «выше/ниже» попадает с первого раза. */}
+        <MenuItem
+          disabled={groupCount < 2 || menuGroup <= 0}
+          onClick={() => {
+            nudgeGroup(menuGroup, -1);
+            setMenuFor(null);
+          }}
+        >
+          <ListItemIcon>
+            <ArrowUpwardIcon fontSize="small" />
+          </ListItemIcon>
+          {t("Выше", "Move up")}
+        </MenuItem>
+        <MenuItem
+          disabled={groupCount < 2 || menuGroup < 0 || menuGroup >= groupCount - 1}
+          onClick={() => {
+            nudgeGroup(menuGroup, 1);
+            setMenuFor(null);
+          }}
+        >
+          <ListItemIcon>
+            <ArrowDownwardIcon fontSize="small" />
+          </ListItemIcon>
+          {t("Ниже", "Move down")}
         </MenuItem>
         <MenuItem
           onClick={() => {
