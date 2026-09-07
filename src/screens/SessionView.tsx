@@ -13,7 +13,7 @@ import {
   formatDateFull,
   formatDistance,
   formatDuration,
-  formatPace,
+  formatCalories,
   formatVolume,
   formatWeight,
 } from "../lib/format";
@@ -33,6 +33,8 @@ import {
 } from "../lib/types";
 import { typeColor } from "../lib/activityColors";
 import { useT } from "../lib/i18n";
+import { cardioProfile, formatRate, rateLabel } from "../lib/cardioProfiles";
+import { isCaloriesEstimate, sessionCalories } from "../lib/calories";
 import type { Exercise, Session, WorkoutSet } from "../lib/types";
 
 function sessionTitle(session: Session): string {
@@ -69,6 +71,17 @@ export default function SessionView({
 }: Props) {
   const t = useT();
   const duration = sessionDurationSec(session);
+  const profile = cardioProfile(session.cardioKind);
+  const kcal = sessionCalories(session);
+  // Мелкие показатели вида — строкой под крупными.
+  const cardio = session.cardio;
+  const cardioExtras = [
+    cardio?.avgHr != null ? `${t("Средний пульс", "Avg HR")} ${cardio.avgHr}` : null,
+    cardio?.inclineDeg != null ? `${t("Наклон", "Incline")} ${cardio.inclineDeg}°` : null,
+    cardio?.resistance != null ? `${t("Уровень", "Resistance")} ${cardio.resistance}` : null,
+    cardio?.powerW != null ? `${cardio.powerW} ${t("Вт", "W")}` : null,
+    cardio?.floors != null ? `${t("Этажи", "Floors")} ${cardio.floors}` : null,
+  ].filter((x): x is string => x != null);
   const moodCtx = moodContextFor(session.kind);
   const moodCfg = MOOD_CONTEXTS[moodCtx];
   const [moodOpen, setMoodOpen] = useState(false);
@@ -247,29 +260,36 @@ export default function SessionView({
 
       {session.kind === "cardio" && session.cardio && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-          <Stack direction="row" spacing={3}>
-            <ViewStat
-              label={t("Дистанция", "Distance")}
-              value={formatDistance(session.cardio.distanceM, session.cardioKind)}
-            />
+          {/* Крупно — то, что важно этому виду: у степпера дистанции нет,
+              у ходьбы вместо темпа скорость. */}
+          <Stack direction="row" spacing={3} sx={{ flexWrap: "wrap", rowGap: 1.5 }}>
+            {profile.distance && (
+              <ViewStat
+                label={t("Дистанция", "Distance")}
+                value={formatDistance(session.cardio.distanceM, session.cardioKind)}
+              />
+            )}
             <ViewStat label={t("Время", "Time")} value={formatDuration(session.cardio.durationSec)} />
-            <ViewStat
-              label={t("Темп", "Pace")}
-              value={formatPace(
-                session.cardio.distanceM,
-                session.cardio.durationSec,
-                session.cardioKind,
-              )}
-            />
+            {profile.rate && (
+              <ViewStat
+                label={rateLabel(profile.rate) ?? ""}
+                value={formatRate(
+                  profile.rate,
+                  session.cardio.distanceM,
+                  session.cardio.durationSec,
+                )}
+              />
+            )}
+            {kcal != null && (
+              <ViewStat
+                label={t("Калории", "Calories")}
+                value={`${isCaloriesEstimate(session) ? "≈ " : ""}${formatCalories(kcal)}`}
+              />
+            )}
           </Stack>
-          {(session.cardio.avgHr != null || session.cardio.inclineDeg != null) && (
+          {cardioExtras.length > 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-              {[
-                session.cardio.avgHr != null ? `${t("Средний пульс", "Avg HR")} ${session.cardio.avgHr}` : null,
-                session.cardio.inclineDeg != null ? `${t("Наклон", "Incline")} ${session.cardio.inclineDeg}°` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              {cardioExtras.join(" · ")}
             </Typography>
           )}
         </Paper>

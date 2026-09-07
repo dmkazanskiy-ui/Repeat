@@ -378,6 +378,12 @@ export interface CardioData {
   avgHr: number | null;
   /** Наклон дорожки в градусах (только для беговой дорожки). */
   inclineDeg?: number | null;
+  /** Уровень сопротивления тренажёра (эллипс, степпер). */
+  resistance?: number | null;
+  /** Средняя мощность, Вт (велотренажёр, ваттметр). */
+  powerW?: number | null;
+  /** Этажи/подъёмы на степпере — вместо дистанции. */
+  floors?: number | null;
   segments?: CardioSegment[];
 }
 
@@ -409,6 +415,10 @@ export interface Session {
   weekType?: { id: string; name: string } | null;
   /** Субъективная тяжесть тренировки (легко/средне/тяжело). */
   intensity?: SessionIntensity | null;
+  /** Калории с табло тренажёра или часов — введённые руками. */
+  calories?: number | null;
+  /** Расчёт по MET и весу. Показываем, только пока нет введённых руками. */
+  caloriesEst?: number | null;
   /**
    * Устаревшее одномерное самочувствие (1–5). Оставлено для чтения старых
    * записей; новые пишут `mood`. Читать единообразно через `perceivedFeel`.

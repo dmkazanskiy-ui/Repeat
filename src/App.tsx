@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Box,
   Button,
@@ -75,6 +75,7 @@ import type { CreateOptions } from "./components/NewSessionDialog";
 import type { ProgramPreset } from "./lib/programLibrary";
 import type { FocusGoal, WorkoutSuggestion } from "./lib/workoutBuilder";
 import { isDiscardableSession, isDone } from "./lib/types";
+import { withCalorieEstimates } from "./lib/calories";
 import type {
   BodyEntry,
   CustomActivity,
@@ -133,7 +134,7 @@ export default function App() {
 
   useEffect(() => {
     load().then((data) => {
-      setSessions(data.sessions);
+      setSessions(withCalorieEstimates(data.sessions, data.bodyEntries));
       setExercises(data.exercises);
       setCardioKinds(data.cardioKinds);
       setMobilityKinds(data.mobilityKinds);
@@ -148,9 +149,17 @@ export default function App() {
     });
   }, []);
 
+  // Расчёт калорий проставляем в одной точке — на записи. Так аналитике не
+  // нужно знать про вес: она читает готовое поле, а оценка не протухает,
+  // пока вес меняется. Вес берём ближайший к дате тренировки.
+  const bodyRef = useRef<BodyEntry[]>([]);
+  bodyRef.current = bodyEntries;
+  const sessionsRef = useRef<Session[]>([]);
+  sessionsRef.current = sessions;
   const commit = useCallback((next: Session[]) => {
-    setSessions(next);
-    void saveSessions(next);
+    const stamped = withCalorieEstimates(next, bodyRef.current);
+    setSessions(stamped);
+    void saveSessions(stamped);
   }, []);
 
   const updateSession = useCallback(
@@ -291,10 +300,17 @@ export default function App() {
     [cardioKinds, mobilityKinds],
   );
 
-  const changeBody = useCallback((next: BodyEntry[]) => {
-    setBodyEntries(next);
-    void saveBodyEntries(next);
-  }, []);
+  const changeBody = useCallback(
+    (next: BodyEntry[]) => {
+      setBodyEntries(next);
+      void saveBodyEntries(next);
+      // Первый же занесённый вес должен оживить расчёт калорий во всей
+      // истории — иначе он появится только при следующей правке тренировки.
+      bodyRef.current = next;
+      commit(sessionsRef.current);
+    },
+    [commit],
+  );
 
   const changePhotos = useCallback((next: ProgressPhoto[]) => {
     setPhotos(next);

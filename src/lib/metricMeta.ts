@@ -1,4 +1,4 @@
-import { formatDuration, formatVolume } from "./format";
+import { formatCalories, formatDuration, formatVolume } from "./format";
 import type { MetricKey } from "./analytics";
 import { L } from "./i18n";
 
@@ -23,6 +23,10 @@ export const METRIC_META: Record<
   exercises: { get label() { return L("Упражнения", "Exercises"); }, format: int },
   sets: { get label() { return L("Подходы", "Sets"); }, format: int },
   reps: { get label() { return L("Повторы", "Reps"); }, format: int },
+  calories: {
+    get label() { return L("Калории", "Calories"); },
+    format: (v) => (v ? formatCalories(v) : "—"),
+  },
 };
 
 /** Метрики главного графика в порядке показа (activeDays только в KPI). */
@@ -33,6 +37,7 @@ export const CHART_METRICS: MetricKey[] = [
   "reps",
   "duration",
   "distance",
+  "calories",
 ];
 
 /** Все метрики KPI-ленты. */
@@ -45,6 +50,7 @@ export const KPI_METRICS: MetricKey[] = [
   "exercises",
   "sets",
   "reps",
+  "calories",
 ];
 
 /** «+11 %», «−6 %», «—» когда прошлый период пуст. */

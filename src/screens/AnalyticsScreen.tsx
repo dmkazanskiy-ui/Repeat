@@ -32,6 +32,7 @@ import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
 import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
+import LocalFireDepartmentOutlinedIcon from "@mui/icons-material/LocalFireDepartmentOutlined";
 import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
 import LoopRoundedIcon from "@mui/icons-material/LoopRounded";
 import RadarChart from "../components/analytics/RadarChart";
@@ -1156,6 +1157,7 @@ const KPI_ICON: Record<MetricKey, typeof FitnessCenterOutlinedIcon> = {
   exercises: ListAltOutlinedIcon,
   sets: RepeatRoundedIcon,
   reps: LoopRoundedIcon,
+  calories: LocalFireDepartmentOutlinedIcon,
 };
 
 function KpiCard({

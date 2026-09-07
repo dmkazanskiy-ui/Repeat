@@ -1,3 +1,4 @@
+import { sessionCalories } from "../calories";
 import { countsDoneOnly, sessionDurationSec, setVolume } from "../types";
 import type { Session, WorkoutSet } from "../types";
 import { bucketKey, bucketStarts } from "./period";
@@ -53,6 +54,8 @@ export function metricOfSession(session: Session, metric: MetricKey): number {
       return workingSets(session).length;
     case "reps":
       return workingReps(session);
+    case "calories":
+      return sessionCalories(session) ?? 0;
     case "activeDays":
       return 0; // считается по уникальным датам, не суммой
   }
@@ -90,6 +93,7 @@ export function summarize(
     exercises: totalMetric(sessions, start, end, "exercises"),
     sets: totalMetric(sessions, start, end, "sets"),
     reps: totalMetric(sessions, start, end, "reps"),
+    calories: totalMetric(sessions, start, end, "calories"),
   };
 }
 

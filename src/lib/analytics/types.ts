@@ -16,7 +16,8 @@ export type MetricKey =
   | "distance"
   | "exercises"
   | "sets"
-  | "reps";
+  | "reps"
+  | "calories";
 
 export interface AnalyticsPeriod {
   startDate: string; // YYYY-MM-DD, включительно
@@ -35,6 +36,7 @@ export interface AnalyticsSummary {
   exercises: number;
   sets: number; // рабочие подходы
   reps: number; // рабочие повторы
+  calories: number; // ккал: введённые руками, иначе расчёт по MET
 }
 
 export interface MetricDataPoint {

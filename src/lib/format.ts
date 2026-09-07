@@ -165,6 +165,23 @@ export function formatDistance(
   return `${dec(Number((meters / 1000).toFixed(2)))} ${L("км", "km")}`;
 }
 
+/** Скорость в км/ч — для ходьбы, велосипеда и тренажёров с табло. */
+export function formatSpeed(
+  meters: number | null,
+  seconds: number | null,
+): string {
+  if (!meters || !seconds) return "—";
+  const kph = meters / 1000 / (seconds / 3600);
+  return `${dec(Number(kph.toFixed(1)))} ${L("км/ч", "km/h")}`;
+}
+
+/** Калории: «420 ккал», с пометкой оценки — там, где она нужна. */
+export function formatCalories(kcal: number | null): string {
+  if (!kcal) return "—";
+  const locale = getLang() === "ru" ? "ru-RU" : "en-US";
+  return `${Math.round(kcal).toLocaleString(locale)} ${L("ккал", "kcal")}`;
+}
+
 /**
  * Темп — производная величина, вводить её руками не нужно.
  * Плавание считается на 100 м, остальное на километр.

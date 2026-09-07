@@ -46,6 +46,14 @@ import { clampRestSec, loadRestEnabled, loadRestSec, saveRestSec } from "../lib/
 import { lastWorkingWeight, recentExercises, similarExercises } from "../lib/exerciseSuggest";
 import { useT } from "../lib/i18n";
 import {
+  CARDIO_FIELD_LABELS,
+  cardioProfile,
+  formatRate,
+  rateLabel,
+} from "../lib/cardioProfiles";
+import type { CardioFieldKey } from "../lib/cardioProfiles";
+import { isCaloriesEstimate, sessionCalories } from "../lib/calories";
+import {
   linkExercises,
   newDrop,
   newSegment,
@@ -71,7 +79,6 @@ import {
   activityLabel,
   exerciseName,
   distanceUnit,
-  hasIncline,
   exerciseVolume,
   groupExercises,
   liveElapsedSec,
@@ -217,6 +224,7 @@ export default function SessionEditor({
   const [finishing, setFinishing] = useState(false);
   const [finishMin, setFinishMin] = useState<number | null>(null);
   const [finishHr, setFinishHr] = useState<number | null>(null);
+  const [finishKcal, setFinishKcal] = useState<number | null>(null);
   // Источник объединения в супер-сет: включается из меню упражнения.
   const [linkingId, setLinkingId] = useState<string | null>(null);
 
@@ -336,6 +344,11 @@ export default function SessionEditor({
   const unit = distanceUnit(session.cardioKind);
   const segments = session.cardio?.segments ?? [];
   const totals = segmentTotals(segments);
+  // Набор полей задаёт вид активности, а не общий шаблон «дистанция+время».
+  const profile = cardioProfile(session.cardioKind);
+  // Оценку по MET и весу проставляет App при сохранении — здесь только читаем.
+  const caloriesEst = session.caloriesEst ?? null;
+  const kcal = sessionCalories(session);
 
   function patchExercise(
     id: string,
@@ -404,6 +417,122 @@ export default function SessionEditor({
     onChange({ ...session, cardio: { ...session.cardio!, ...patch } });
   }
 
+  /** Поле кардио по ключу из профиля вида. */
+  function cardioField(key: CardioFieldKey) {
+    const label = CARDIO_FIELD_LABELS[key];
+    switch (key) {
+      case "distance": {
+        const inKm = profile.distance !== "m";
+        const meters = session.cardio?.distanceM ?? null;
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            label={`${label}, ${inKm ? t("км", "km") : t("м", "m")}`}
+            value={meters == null ? null : inKm ? meters / 1000 : meters}
+            onChange={(value) =>
+              patchCardio({
+                // Округляем до метра: 6,08 км это 6080 м, а не 6080.0000001.
+                distanceM: value == null ? null : Math.round(inKm ? value * 1000 : value),
+              })
+            }
+          />
+        );
+      }
+      case "duration":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            label={label}
+            value={
+              session.cardio?.durationSec == null
+                ? null
+                : Math.round((session.cardio.durationSec / 60) * 100) / 100
+            }
+            onChange={(value) =>
+              patchCardio({ durationSec: value == null ? null : Math.round(value * 60) })
+            }
+          />
+        );
+      case "incline":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            label={label}
+            value={session.cardio?.inclineDeg ?? null}
+            onChange={(value) => patchCardio({ inclineDeg: value })}
+          />
+        );
+      case "avgHr":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            integer
+            label={label}
+            value={session.cardio?.avgHr ?? null}
+            onChange={(value) => patchCardio({ avgHr: value })}
+          />
+        );
+      case "resistance":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            integer
+            label={label}
+            value={session.cardio?.resistance ?? null}
+            onChange={(value) => patchCardio({ resistance: value })}
+          />
+        );
+      case "powerW":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            integer
+            label={label}
+            value={session.cardio?.powerW ?? null}
+            onChange={(value) => patchCardio({ powerW: value })}
+          />
+        );
+      case "floors":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            integer
+            label={label}
+            value={session.cardio?.floors ?? null}
+            onChange={(value) => patchCardio({ floors: value })}
+          />
+        );
+      case "calories":
+        return (
+          <NumberField
+            key={key}
+            size="small"
+            integer
+            label={label}
+            // Пустое поле — это не «ноль», а «считаем сами»: расчёт стоит
+            // в placeholder, число с табло его перебивает.
+            // Расчёт должен быть виден без фокуса, поэтому он в подписи:
+            // placeholder MUI показывает только у поднятого лейбла.
+            placeholder={caloriesEst ? `≈ ${caloriesEst}` : undefined}
+            helperText={
+              session.calories == null && caloriesEst
+                ? `≈ ${caloriesEst} · ${t("оценка", "estimate")}`
+                : undefined
+            }
+            value={session.calories ?? null}
+            onChange={(value) => onChange({ ...session, calories: value })}
+          />
+        );
+    }
+  }
+
   function patchSegment(id: string, patch: Partial<(typeof segments)[number]>) {
     patchCardio({
       segments: segments.map((s) => (s.id === id ? { ...s, ...patch } : s)),
@@ -454,7 +583,7 @@ export default function SessionEditor({
       : next;
   }
 
-  function commitFinish(min: number | null, hr: number | null) {
+  function commitFinish(min: number | null, hr: number | null, kcal: number | null) {
     const now = new Date();
     // При правке уже завершённой сохраняем исходное время финиша (не сдвигаем
     // тренировку на «сейчас»); при первом завершении финиш = сейчас.
@@ -473,6 +602,7 @@ export default function SessionEditor({
       pausedMs: override ? 0 : (session.pausedMs ?? null),
       pausedAt: null,
       avgHr: hr,
+      calories: kcal,
       time: session.time ?? nowTime(),
       exercises: markFilledSetsDone(session.exercises),
     };
@@ -492,6 +622,7 @@ export default function SessionEditor({
     const sec = sessionDurationSec(session);
     setFinishMin(sec != null ? Math.round(sec / 60) : null);
     setFinishHr(session.avgHr ?? session.cardio?.avgHr ?? null);
+    setFinishKcal(session.calories ?? null);
     setFinishing(true);
   }
 
@@ -530,11 +661,16 @@ export default function SessionEditor({
     const cardioDur =
       session.kind === "cardio" ? (session.cardio?.durationSec ?? null) : null;
     if (cardioDur) {
-      commitFinish(Math.round(cardioDur / 60), session.cardio?.avgHr ?? session.avgHr ?? null);
+      commitFinish(
+        Math.round(cardioDur / 60),
+        session.cardio?.avgHr ?? session.avgHr ?? null,
+        session.calories ?? null,
+      );
       return;
     }
     setFinishMin(null);
     setFinishHr(session.cardio?.avgHr ?? session.avgHr ?? null);
+    setFinishKcal(session.calories ?? null);
     setFinishing(true);
   }
 
@@ -753,6 +889,18 @@ export default function SessionEditor({
                   <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{session.avgHr}</Typography>
                 </Box>
               )}
+              {kcal != null && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {t("Калории", "Calories")}
+                  </Typography>
+                  <Typography sx={{ fontSize: 18, fontWeight: 800 }}>
+                    {/* «≈» честно отделяет расчёт от числа с табло. */}
+                    {isCaloriesEstimate(session) ? "≈ " : ""}
+                    {kcal}
+                  </Typography>
+                </Box>
+              )}
             </Stack>
           )
         ) : !running ? (
@@ -828,81 +976,33 @@ export default function SessionEditor({
 
       {session.kind === "cardio" && (
         <>
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Stack direction="row" spacing={1}>
-              <NumberField
-                label={`${t("Дистанция", "Distance")}, ${unit}`}
-                fullWidth
-                value={
-                  session.cardio?.distanceM == null
-                    ? null
-                    : session.cardioKind !== "swim"
-                      ? session.cardio.distanceM / 1000
-                      : session.cardio.distanceM
-                }
-                onChange={(value) =>
-                  patchCardio({
-                    // Округляем до метра: 6,08 км это 6080 м, а не 6080.0000001.
-                    distanceM:
-                      value == null
-                        ? null
-                        : Math.round(session.cardioKind !== "swim" ? value * 1000 : value),
-                  })
-                }
-              />
-              <NumberField
-                label={t("Время, мин", "Time, min")}
-                fullWidth
-                value={
-                  session.cardio?.durationSec == null
-                    ? null
-                    : Math.round((session.cardio.durationSec / 60) * 100) / 100
-                }
-                onChange={(value) =>
-                  patchCardio({
-                    durationSec: value == null ? null : Math.round(value * 60),
-                  })
-                }
-              />
-            </Stack>
-
-            {hasIncline(session.cardioKind) && (
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <NumberField
-                  label={t("Наклон, °", "Incline, °")}
-                  fullWidth
-                  value={session.cardio?.inclineDeg ?? null}
-                  onChange={(value) => patchCardio({ inclineDeg: value })}
-                />
-                <Box sx={{ flex: 1 }} />
-              </Stack>
-            )}
-
-            <Stack direction="row" spacing={1} sx={{ mt: 2, alignItems: "center" }}>
-              <NumberField
-                label={t("Средний пульс", "Avg heart rate")}
-                fullWidth
-                integer
-                value={session.cardio?.avgHr ?? null}
-                onChange={(value) => patchCardio({ avgHr: value })}
-              />
-              <Box sx={{ flex: 1 }}>
+          {/* Поля под вид: у степпера нет дистанции, у велотренажёра есть
+              мощность, у ходьбы скорость вместо темпа. Список даёт профиль. */}
+          <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+              {profile.fields.map(cardioField)}
+            </Box>
+            {profile.rate && (
+              <Stack direction="row" spacing={0.75} sx={{ mt: 1.25, alignItems: "baseline" }}>
                 <Typography variant="caption" color="text.secondary">
-                  {t("Темп", "Pace")}
+                  {rateLabel(profile.rate)}
                 </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                  {formatPace(
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {formatRate(
+                    profile.rate,
                     session.cardio?.distanceM ?? null,
                     session.cardio?.durationSec ?? null,
-                    session.cardioKind,
                   )}
                 </Typography>
-              </Box>
-            </Stack>
+              </Stack>
+            )}
           </Paper>
 
           {/* Интервалы. Одна строка — это блок, повторённый N раз, поэтому
-              «10 × 400 м через 90 с» вводится один раз, а не десять. */}
+              «10 × 400 м через 90 с» вводится один раз, а не десять.
+              У эллипса и степпера дробить нечего — там их не показываем. */}
+          {profile.intervals && (
+            <>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
             {t("Интервалы", "Intervals")}
           </Typography>
@@ -1030,6 +1130,8 @@ export default function SessionEditor({
               </>
             )}
           </Stack>
+            </>
+          )}
         </>
       )}
 
@@ -1554,14 +1656,32 @@ export default function SessionEditor({
               onChange={setFinishHr}
               fullWidth
             />
+            <NumberField
+              label={t("Калории", "Calories")}
+              integer
+              placeholder={caloriesEst ? `≈ ${caloriesEst}` : undefined}
+              helperText={
+                finishKcal == null && caloriesEst
+                  ? `≈ ${caloriesEst} · ${t("оценка", "estimate")}`
+                  : undefined
+              }
+              value={finishKcal}
+              onChange={setFinishKcal}
+              fullWidth
+            />
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
-            {t("Можно оставить пустым — заполни, если знаешь.", "Leave blank — fill in if you know it.")}
+            {caloriesEst
+              ? t(
+                  "Пустые поля не страшны: калории посчитаем сами по весу и длительности.",
+                  "Blank is fine: calories are estimated from your weight and duration.",
+                )
+              : t("Можно оставить пустым — заполни, если знаешь.", "Leave blank — fill in if you know it.")}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setFinishing(false)}>{t("Отмена", "Cancel")}</Button>
-          <Button variant="contained" onClick={() => commitFinish(finishMin, finishHr)}>
+          <Button variant="contained" onClick={() => commitFinish(finishMin, finishHr, finishKcal)}>
             {session.endedAt ? t("Сохранить", "Save") : t("Завершить", "Finish")}
           </Button>
         </DialogActions>
