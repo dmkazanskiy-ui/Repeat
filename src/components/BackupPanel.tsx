@@ -17,6 +17,7 @@ import { alpha } from "@mui/material/styles";
 import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
 import ContentPasteRoundedIcon from "@mui/icons-material/ContentPasteRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
 import {
   PERIOD_LABELS,
   buildExport,
@@ -28,7 +29,7 @@ import type { BackupData, BackupPeriod, MergePlan } from "../lib/backup";
 import { today } from "../lib/format";
 import { L, useT } from "../lib/i18n";
 import { haptic } from "../lib/telegram";
-import { syncAvailable, useSyncState } from "../lib/sync";
+import { deleteAccount, syncAvailable, useSyncState } from "../lib/sync";
 import type { Exercise } from "../lib/types";
 
 const PERIODS: BackupPeriod[] = ["day", "week", "month", "all"];
@@ -117,6 +118,7 @@ export default function BackupPanel({
   const t = useT();
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   return (
     <>
@@ -143,6 +145,17 @@ export default function BackupPanel({
         </Stack>
       </Paper>
 
+      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mt: 1.5 }}>
+        <Row
+          color="#f87171"
+          icon={<DeleteForeverRoundedIcon fontSize="small" />}
+          title={t("Удалить аккаунт", "Delete account")}
+          sub={t("Все данные с сервера и с этого устройства", "All data on the server and this device")}
+          onClick={() => setDeleteOpen(true)}
+        />
+      </Paper>
+
+      {deleteOpen && <DeleteDialog onClose={() => setDeleteOpen(false)} />}
       {exportOpen && (
         <ExportDialog data={data} allExercises={allExercises} onClose={() => setExportOpen(false)} />
       )}
@@ -169,8 +182,12 @@ function SyncLine() {
     color = "warning.main";
     text =
       s.message === "auth"
-        ? t("Сервер не принял вход — синхронизация выключена", "Server rejected sign-in — sync is off")
-        : t("Нет связи с сервером — данные сохранены на устройстве", "Can’t reach the server — data is saved on this device");
+        ? t("Сервер не принял вход — переоткрой приложение", "Server rejected sign-in — reopen the app")
+        : s.message === "quota"
+          ? t("Превышен лимит 10 МБ на сервере — новые данные остаются на устройстве", "Over the 10 MB server limit — new data stays on this device")
+          : s.message === "rate"
+            ? t("Слишком часто — синхронизируем чуть позже", "Too many requests — will sync a bit later")
+            : t("Нет связи с сервером — данные сохранены на устройстве", "Can’t reach the server — data is saved on this device");
   } else {
     text = t("Синхронизация…", "Syncing…");
   }
@@ -178,6 +195,55 @@ function SyncLine() {
     <Typography variant="caption" sx={{ display: "block", mb: 1, color }}>
       {text}
     </Typography>
+  );
+}
+
+function DeleteDialog({ onClose }: { onClose: () => void }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function confirm() {
+    setBusy(true);
+    setError(false);
+    try {
+      await deleteAccount();
+      haptic("success");
+      window.location.reload();
+    } catch {
+      setError(true);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onClose={busy ? undefined : onClose}>
+      <DialogTitle>{t("Удалить аккаунт?", "Delete account?")}</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary">
+          {t(
+            "Удалим все тренировки, замеры, программы и настройки — на сервере (вместе с резервными копиями) и на этом устройстве. Другие устройства очистятся при следующем открытии. Восстановить нельзя. Если хочешь сохранить историю, сначала сделай «Выгрузить историю».",
+            "We’ll delete all workouts, measurements, programs and settings — on the server (including backups) and on this device. Other devices are cleared the next time they open. This can’t be undone. To keep your history, use “Export history” first.",
+          )}
+        </Typography>
+        {error && (
+          <Alert severity="error" sx={{ mt: 1.5 }}>
+            {t(
+              "Не получилось связаться с сервером — ничего не удалено. Попробуй ещё раз.",
+              "Couldn’t reach the server — nothing was deleted. Try again.",
+            )}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>
+          {t("Отмена", "Cancel")}
+        </Button>
+        <Button color="error" variant="contained" onClick={confirm} disabled={busy}>
+          {busy ? t("Удаляем…", "Deleting…") : t("Удалить навсегда", "Delete forever")}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -242,8 +308,8 @@ function ExportDialog({
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
           {t(
-            "Программы, свои упражнения и цель входят всегда. Фото прогресса не выгружаются. Для переезда выбирай «Всё время» и сохрани текст, например в «Избранное» Telegram — длинный текст он предложит отправить файлом.",
-            "Programs, custom exercises and goal are always included. Progress photos are not exported. To move, choose “All time” and save the text, e.g. to Telegram Saved Messages — it will offer to send long text as a file.",
+            "Программы, свои упражнения и цель входят всегда. Для переезда выбирай «Всё время» и сохрани текст, например в «Избранное» Telegram — длинный текст он предложит отправить файлом.",
+            "Programs, custom exercises and goal are always included. To move, choose “All time” and save the text, e.g. to Telegram Saved Messages — it will offer to send long text as a file.",
           )}
         </Typography>
         {status === "copied" && (

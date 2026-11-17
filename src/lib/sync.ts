@@ -10,7 +10,7 @@
 // Фото прогресса не синхронизируются (тяжёлые; остаются на устройстве).
 
 import { useSyncExternalStore } from "react";
-import { get, set } from "./db";
+import { del, get, keys, set } from "./db";
 import type { BackupData } from "./backup";
 
 type Collection =
@@ -38,6 +38,8 @@ interface Change {
 
 const SHADOW_KEY = "sync_shadow";
 const REV_KEY = "sync_rev";
+const EPOCH_KEY = "sync_epoch";
+const RESET_NOTICE = "repeat_account_reset";
 const ENDPOINT = "/api/sync";
 
 const k = (c: string, id: string) => `${c}\u0000${id}`;
@@ -177,28 +179,33 @@ export function syncAvailable(): boolean {
 
 // ───────────── Обмен ─────────────
 
-let running: Promise<BackupData | null> | null = null;
+export type SyncResult = { kind: "data"; data: BackupData } | { kind: "reset" } | null;
+
+let running: Promise<SyncResult> | null = null;
 let again = false;
+/** Выключено на время удаления аккаунта — чтобы обмен не залил данные обратно. */
+let disabled = false;
 
 /**
  * Один обмен с сервером. `getLocal` — актуальные данные приложения (читается
  * и до, и после запроса). Возвращает новые данные, если с сервера пришли
  * изменения, иначе null. Параллельные вызовы склеиваются.
  */
-export function runSync(getLocal: () => BackupData): Promise<BackupData | null> {
-  if (!syncAvailable()) return Promise.resolve(null);
+export function runSync(getLocal: () => BackupData): Promise<SyncResult> {
+  if (!syncAvailable() || disabled) return Promise.resolve(null);
   if (running) {
     again = true;
     return running;
   }
   running = (async () => {
-    let result: BackupData | null = null;
+    let result: SyncResult = null;
     try {
       do {
         again = false;
         const r = await exchange(getLocal);
         if (r) result = r;
-      } while (again);
+        if (r?.kind === "reset") break;
+      } while (again && !disabled);
     } finally {
       running = null;
     }
@@ -207,31 +214,90 @@ export function runSync(getLocal: () => BackupData): Promise<BackupData | null> 
   return running;
 }
 
-async function exchange(getLocal: () => BackupData): Promise<BackupData | null> {
+async function exchange(getLocal: () => BackupData): Promise<SyncResult> {
   const last = state.kind === "ok" ? state.last : state.kind === "off" ? null : state.last;
   setState({ kind: "syncing", last });
   try {
     const shadow = (await get<Record<string, string>>(SHADOW_KEY)) ?? {};
     const since = (await get<number>(REV_KEY)) ?? 0;
+    const epoch = (await get<string>(EPOCH_KEY)) ?? null;
     const sent = toRecords(getLocal());
     const changes = diffAgainst(sent, shadow, Date.now());
 
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `tma ${initData()}` },
-      body: JSON.stringify({ since, changes }),
+      body: JSON.stringify({ since, epoch, changes }),
     });
-    if (!res.ok) throw new Error(res.status === 401 ? "auth" : `http ${res.status}`);
-    const body = (await res.json()) as { rev: number; changes: Change[] };
+    if (!res.ok) {
+      const code = res.status;
+      throw new Error(code === 401 ? "auth" : code === 413 ? "quota" : code === 429 ? "rate" : `http ${code}`);
+    }
+    const body = (await res.json()) as
+      | { reset: true; epoch: string | null }
+      | { reset?: undefined; epoch: string; rev: number; changes: Change[] };
+    if (body.reset) {
+      // Аккаунт удалили на другом устройстве — стираем и здесь.
+      await wipeLocal();
+      return { kind: "reset" };
+    }
+    if (disabled) return null;
 
     const local = getLocal();
     const applied = applyRemote(sent, toRecords(local), shadow, body.changes);
     await set(SHADOW_KEY, applied.shadow);
     await set(REV_KEY, body.rev);
+    await set(EPOCH_KEY, body.epoch);
     setState({ kind: "ok", last: Date.now() });
-    return applied.changed ? fromRecords(applied.recs, local) : null;
+    return applied.changed ? { kind: "data", data: fromRecords(applied.recs, local) } : null;
   } catch (e) {
     setState({ kind: "error", last, message: e instanceof Error ? e.message : String(e) });
     return null;
+  }
+}
+
+// ───────────── Удаление аккаунта ─────────────
+
+/** Стереть все данные приложения на этом устройстве (IndexedDB целиком). */
+async function wipeLocal(): Promise<void> {
+  for (const key of await keys()) await del(key);
+  try {
+    localStorage.setItem(RESET_NOTICE, "1");
+  } catch {
+    /* приватный режим — не страшно */
+  }
+}
+
+/** Показать ли после перезагрузки «аккаунт удалён» (читается один раз). */
+export function takeResetNotice(): boolean {
+  try {
+    const v = localStorage.getItem(RESET_NOTICE);
+    localStorage.removeItem(RESET_NOTICE);
+    return v === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Удалить аккаунт: данные и копии на сервере, затем всё на этом устройстве.
+ * Другие устройства сотрут у себя данные при следующем обмене (новый epoch).
+ * Вне Telegram сервера нет — стираем только локальное.
+ */
+export async function deleteAccount(): Promise<void> {
+  disabled = true;
+  try {
+    await running?.catch(() => null);
+    if (syncAvailable()) {
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { Authorization: `tma ${initData()}` },
+      });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+    }
+    await wipeLocal();
+  } catch (e) {
+    disabled = false;
+    throw e;
   }
 }

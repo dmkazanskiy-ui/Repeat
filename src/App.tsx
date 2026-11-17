@@ -17,7 +17,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
 import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
-import { runSync } from "./lib/sync";
+import { runSync, takeResetNotice } from "./lib/sync";
 import {
   currentWeekType,
   lastSameTypeSession,
@@ -41,7 +41,6 @@ import {
   saveOnboarded,
   saveCustomExercises,
   saveMobilityKinds,
-  savePhotos,
   savePrograms,
   saveRecovery,
   saveSessions,
@@ -65,7 +64,6 @@ import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import OnboardingScreen from "./screens/OnboardingScreen";
 import ProgramsScreen from "./screens/ProgramsScreen";
-import PhotosScreen from "./screens/PhotosScreen";
 import HiitScreen from "./screens/HiitScreen";
 import { loadHiit, saveHiit, hiitWorkSec } from "./lib/hiit";
 import type { HiitConfig } from "./lib/hiit";
@@ -86,7 +84,6 @@ import type {
   CustomActivity,
   Exercise,
   MuscleGroup,
-  ProgressPhoto,
   RecoveryEntry,
   Session,
   SessionKind,
@@ -108,7 +105,6 @@ export default function App() {
   const [cardioKinds, setCardioKinds] = useState<CustomActivity[]>([]);
   const [mobilityKinds, setMobilityKinds] = useState<CustomActivity[]>([]);
   const [bodyEntries, setBodyEntries] = useState<BodyEntry[]>([]);
-  const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
   const [recovery, setRecovery] = useState<RecoveryEntry[]>([]);
   const [focusGoal, setFocusGoal] = useState<FocusGoal | null>(null);
@@ -116,8 +112,6 @@ export default function App() {
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
-  // Галерея фото — отдельный экран: в профиле она разрасталась.
-  const [showPhotos, setShowPhotos] = useState(false);
   const [showHiit, setShowHiit] = useState(false);
   const [hiitCfg, setHiitCfg] = useState<HiitConfig>(() => loadHiit());
   const [tab, setTab] = useState<Tab>("calendar");
@@ -150,6 +144,9 @@ export default function App() {
       const stale = autoFinishStale(fixedOld.sessions, Date.now());
       const loaded = withCalorieEstimates(stale.sessions, data.bodyEntries);
       setSessions(loaded);
+      if (takeResetNotice()) {
+        setToast(L("Аккаунт и все данные удалены", "Account and all data deleted"));
+      }
       if (fixedOld.fixed || stale.closed) {
         void saveSessions(loaded);
         setToast(staleToast(fixedOld.fixed + stale.closed));
@@ -158,7 +155,6 @@ export default function App() {
       setCardioKinds(data.cardioKinds);
       setMobilityKinds(data.mobilityKinds);
       setBodyEntries(data.bodyEntries);
-      setPhotos(data.photos);
       // Перепутанные «от/до» повторов в старых программах чиним на загрузке.
       const programsFixed = data.programs.map(normalizeProgramReps);
       setPrograms(programsFixed);
@@ -359,11 +355,6 @@ export default function App() {
     [commit],
   );
 
-  const changePhotos = useCallback((next: ProgressPhoto[]) => {
-    setPhotos(next);
-    void savePhotos(next);
-  }, []);
-
   const changeRecovery = useCallback((next: RecoveryEntry[]) => {
     setRecovery(next);
     void saveRecovery(next);
@@ -456,8 +447,10 @@ export default function App() {
     }
   }, []);
   const doSync = useCallback(async () => {
-    const next = await runSync(() => backupRef.current);
-    if (next) applySynced(next);
+    const res = await runSync(() => backupRef.current);
+    if (res?.kind === "data") applySynced(res.data);
+    // Аккаунт удалён на другом устройстве: данные здесь уже стёрты.
+    if (res?.kind === "reset") window.location.reload();
   }, [applySynced]);
   // Любая правка → обмен через 1,5 с (правки подряд склеиваются).
   useEffect(() => {
@@ -705,9 +698,7 @@ export default function App() {
         }
       : programBeingViewed
         ? () => setOpenProgramId(null)
-        : showPhotos
-          ? () => setShowPhotos(false)
-          : showPrograms
+        : showPrograms
             ? () => setShowPrograms(false)
             : open
               ? closeSession
@@ -769,13 +760,6 @@ export default function App() {
               archiveProgram(p.id);
               setOpenProgramId(null);
             }}
-          />
-        ) : showPhotos ? (
-          <PhotosScreen
-            photos={photos}
-            bodyEntries={bodyEntries}
-            onChangePhotos={changePhotos}
-            onBack={() => setShowPhotos(false)}
           />
         ) : showPrograms ? (
           <ProgramsScreen
@@ -938,9 +922,7 @@ export default function App() {
                 recovery={recovery}
                 focusGoal={focusGoal}
                 bodyEntries={bodyEntries}
-                photos={photos}
                 onChangeBody={changeBody}
-                onOpenPhotos={() => setShowPhotos(true)}
               />
             )}
             {tab === "profile" && (
@@ -1009,7 +991,7 @@ export default function App() {
 
       {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
           По ширине совпадает с контентом (maxWidth sm), с подписями. */}
-      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !showPhotos && (
+      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && (
         <Box
           sx={{
             position: "fixed",

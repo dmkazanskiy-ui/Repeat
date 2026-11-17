@@ -13,24 +13,19 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import NumberField from "./NumberField";
 import MiniChart from "./MiniChart";
 import { newBodyEntry } from "../lib/store";
 import { formatDate, today } from "../lib/format";
 import { BODY_METRICS } from "../lib/types";
-import type { BodyEntry, ProgressPhoto } from "../lib/types";
+import type { BodyEntry } from "../lib/types";
 import { useLang, useT } from "../lib/i18n";
 
 interface Props {
   bodyEntries: BodyEntry[];
-  photos: ProgressPhoto[];
   onChangeBody: (entries: BodyEntry[]) => void;
-  onOpenPhotos: () => void;
 }
 
 /** EN-подписи (локально, чтобы не тянуть lang через весь lib). */
@@ -54,7 +49,7 @@ function sortByDate<T extends { date: string }>(items: T[], desc = false): T[] {
  * Вкладка «Тело» в аналитике: вес, замеры и вход в галерею фото. Раньше всё
  * это жило в профиле и разрасталось там, выдавливая настройки и цель.
  */
-export default function BodyPanel({ bodyEntries, photos, onChangeBody, onOpenPhotos }: Props) {
+export default function BodyPanel({ bodyEntries, onChangeBody }: Props) {
   const lang = useLang();
   const t = useT();
   const [editing, setEditing] = useState<BodyEntry | null>(null);
@@ -87,7 +82,6 @@ export default function BodyPanel({ bodyEntries, photos, onChangeBody, onOpenPho
   }
 
   const metricLabel = (key: string, ru: string) => (lang === "en" ? (METRIC_EN[key] ?? ru) : ru);
-  const recentPhotos = sortByDate(photos, true).slice(0, 4);
 
   return (
     <Box>
@@ -184,69 +178,6 @@ export default function BodyPanel({ bodyEntries, photos, onChangeBody, onOpenPho
         </Stack>
       )}
 
-
-      {/* Фото — карточкой: весь склад живёт на своём экране */}
-      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
-        {t("Фото прогресса", "Progress photos")}
-      </Typography>
-      <Paper
-        variant="outlined"
-        role="button"
-        tabIndex={0}
-        onClick={onOpenPhotos}
-        sx={{
-          p: 1.5,
-          borderRadius: 2,
-          cursor: "pointer",
-          borderColor: alpha("#4ade80", 0.3),
-          backgroundImage: `linear-gradient(100deg, ${alpha("#4ade80", 0.08)}, transparent 72%)`,
-        }}
-      >
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-          <Box
-            sx={{
-              width: 34,
-              height: 34,
-              borderRadius: 2,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              color: "primary.main",
-              backgroundImage: `linear-gradient(135deg, ${alpha("#4ade80", 0.28)}, ${alpha("#4ade80", 0.08)})`,
-            }}
-          >
-            <PhotoCameraIcon fontSize="small" />
-          </Box>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-              {photos.length > 0
-                ? `${photos.length} ${t("фото", "photos")}`
-                : t("Снимай, чтобы видеть путь", "Shoot to see the change")}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {photos.length > 0
-                ? t("Вся галерея и сравнение", "Full gallery and comparison")
-                : t("Фото показывает то, чего не видят весы", "Photos show what the scale can't")}
-            </Typography>
-          </Box>
-          <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
-        </Stack>
-
-        {recentPhotos.length > 0 && (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0.5, mt: 1.5 }}>
-            {recentPhotos.map((photo) => (
-              <Box
-                key={photo.id}
-                component="img"
-                src={photo.thumb ?? photo.dataUrl}
-                alt={formatDate(photo.date)}
-                loading="lazy"
-                sx={{ width: "100%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 1.5 }}
-              />
-            ))}
-          </Box>
-        )}
-      </Paper>
 
       <MeasurementDialog
         entry={editing}

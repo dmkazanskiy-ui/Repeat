@@ -112,7 +112,6 @@ import { bestE1rm, countedSession, exerciseName, isTrainingSession } from "../li
 import type {
   BodyEntry,
   Exercise,
-  ProgressPhoto,
   RecoveryEntry,
   Session,
   TrainingProgram,
@@ -126,9 +125,7 @@ interface Props {
   focusGoal: FocusGoal | null;
   /** Вкладка «Тело»: замеры и вход в галерею фото. */
   bodyEntries: BodyEntry[];
-  photos: ProgressPhoto[];
   onChangeBody: (entries: BodyEntry[]) => void;
-  onOpenPhotos: () => void;
 }
 
 // Разделы аналитики — по четырём вопросам пользователя.
@@ -141,9 +138,7 @@ export default function AnalyticsScreen({
   recovery,
   focusGoal,
   bodyEntries,
-  photos,
   onChangeBody,
-  onOpenPhotos,
 }: Props) {
   const t = useT();
   const lang = useLang();
@@ -961,9 +956,7 @@ export default function AnalyticsScreen({
       {view === "body" && (
         <BodyPanel
           bodyEntries={bodyEntries}
-          photos={photos}
           onChangeBody={onChangeBody}
-          onOpenPhotos={onOpenPhotos}
         />
       )}
 
