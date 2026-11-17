@@ -143,6 +143,8 @@ export default function ProgramsScreen({
           {/* Карточка создания */}
           <Paper
             variant="outlined"
+            role="button"
+            tabIndex={0}
             onClick={onCreate}
             sx={{
               p: 1.5,
@@ -183,6 +185,8 @@ export default function ProgramsScreen({
                 <Paper
                   key={program.id}
                   variant="outlined"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onOpen(program)}
                   sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}
                 >
@@ -214,6 +218,8 @@ export default function ProgramsScreen({
             <Paper
               key={preset.key}
               variant="outlined"
+              role="button"
+              tabIndex={0}
               onClick={() => setPreview(preset)}
               sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}
             >

@@ -94,6 +94,8 @@ export default function MuscleFocusCard({
             key={`${item.reason}-${item.muscle ?? item.text}`}
             direction="row"
             spacing={1}
+            role="button"
+            tabIndex={0}
             onClick={() => onPick(item.muscle)}
             sx={{
               alignItems: "flex-start",

@@ -153,7 +153,7 @@ export function WeekDots({
               opacity: on || i === todayIndex ? 1 : 0.6,
             }}
           />
-          <Typography variant="caption" sx={{ fontSize: 10, color: "text.secondary" }}>
+          <Typography variant="caption" sx={{ fontSize: 11, color: "text.secondary" }}>
             {labels[i]}
           </Typography>
         </Stack>

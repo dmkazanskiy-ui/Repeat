@@ -1,6 +1,5 @@
 import { Box, Paper, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import { ActivityIcon } from "../../lib/icons";
 import type { IconKey } from "../../lib/icons";
 import { smoothPath } from "../../lib/chart";
@@ -85,7 +84,6 @@ export default function CapacitiesCard({ items }: { items: CapacityProgress[] })
   return (
     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", mb: 2 }}>
-        <AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 20, mt: "1px" }} />
         <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.4 }}>
           {summary}
         </Typography>
@@ -132,7 +130,7 @@ export default function CapacitiesCard({ items }: { items: CapacityProgress[] })
               </Stack>
               <Spark series={c.series} invert={c.key === "speed"} color={sparkColor} />
               {c.hasData && c.confidence === "preliminary" && (
-                <Typography variant="caption" sx={{ color: "text.disabled", fontSize: 10 }}>
+                <Typography variant="caption" sx={{ color: "text.disabled", fontSize: 11 }}>
                   {t("предварительно", "preliminary")}
                 </Typography>
               )}

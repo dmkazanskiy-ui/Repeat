@@ -13,6 +13,8 @@ import {
   Switch,
   TextField,
   Typography,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
@@ -21,6 +23,9 @@ import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
 import MoodPad from "../components/MoodPad";
+import BackupPanel from "../components/BackupPanel";
+import type { BackupData } from "../lib/backup";
+import type { Exercise } from "../lib/types";
 import { newRecoveryEntry } from "../lib/store";
 import { today } from "../lib/format";
 import { moodReading, recoveryAverage } from "../lib/types";
@@ -36,6 +41,8 @@ import {
 } from "../lib/restTimer";
 import { useLang, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
+import { applyTextScale, loadTextScale } from "../lib/a11y";
+import type { TextScale } from "../lib/a11y";
 import type { RecoveryEntry, TrainingProgram } from "../lib/types";
 
 interface Props {
@@ -46,6 +53,10 @@ interface Props {
   onChangeRecovery: (entries: RecoveryEntry[]) => void;
   onChangeFocusGoal: (goal: FocusGoal | null) => void;
   onChangeLang: (lang: Lang) => void;
+  /** Снимок данных для выгрузки истории и восстановление из вставки. */
+  backupData: BackupData;
+  allExercises: Exercise[];
+  onRestore: (next: BackupData) => void;
 }
 
 const RECOVERY_BLUE = "#38bdf8";
@@ -66,6 +77,9 @@ export default function ProfileScreen({
   onChangeRecovery,
   onChangeFocusGoal,
   onChangeLang,
+  backupData,
+  allExercises,
+  onRestore,
 }: Props) {
   const lang = useLang();
   const t = useT();
@@ -73,6 +87,7 @@ export default function ProfileScreen({
   const [checkin, setCheckin] = useState<RecoveryEntry | null>(null);
   // Настройки таймера отдыха: устройство, не аккаунт — держим в localStorage.
   const [restOn, setRestOn] = useState(loadRestEnabled);
+  const [textScale, setTextScale] = useState<TextScale>(loadTextScale);
   const [restSec, setRestSec] = useState(loadRestSec);
 
   function toggleRest(on: boolean) {
@@ -113,6 +128,8 @@ export default function ProfileScreen({
           return (
             <Box
               key={g.goal}
+              role="button"
+              tabIndex={0}
               onClick={() => onChangeFocusGoal(active ? null : g.goal)}
               sx={{
                 display: "flex",
@@ -153,6 +170,8 @@ export default function ProfileScreen({
       {/* Программа */}
       <Paper
         variant="outlined"
+        role="button"
+        tabIndex={0}
         onClick={onOpenPrograms}
         sx={{
           p: 1.5,
@@ -200,6 +219,8 @@ export default function ProfileScreen({
       </Typography>
       <Paper
         variant="outlined"
+        role="button"
+        tabIndex={0}
         onClick={() => setCheckin(todayCheckin ?? newRecoveryEntry(today()))}
         sx={{
           p: 2,
@@ -284,7 +305,7 @@ export default function ProfileScreen({
                 size="small"
                 variant="outlined"
                 onClick={() => changeRestSec(-15)}
-                sx={{ minWidth: 0, px: 1, fontWeight: 700 }}
+                sx={{ minWidth: 44, minHeight: 36, px: 1, fontWeight: 700 }}
               >
                 −15
               </Button>
@@ -297,14 +318,45 @@ export default function ProfileScreen({
                 size="small"
                 variant="outlined"
                 onClick={() => changeRestSec(15)}
-                sx={{ minWidth: 0, px: 1, fontWeight: 700 }}
+                sx={{ minWidth: 44, minHeight: 36, px: 1, fontWeight: 700 }}
               >
                 +15
               </Button>
             </Stack>
           </>
         )}
+        <Divider sx={{ my: 1.5 }} />
+        {/* Размер интерфейса: Telegram не берёт системный размер шрифта iPhone. */}
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+            {t("Размер текста", "Text size")}
+          </Typography>
+          <ToggleButtonGroup
+            value={textScale}
+            exclusive
+            size="small"
+            onChange={(_, v: TextScale | null) => {
+              if (v == null) return;
+              setTextScale(v);
+              applyTextScale(v);
+            }}
+            aria-label={t("Размер текста", "Text size")}
+          >
+            {([100, 115, 130] as const).map((v, i) => (
+              <ToggleButton
+                key={v}
+                value={v}
+                aria-label={[t("Обычный", "Default"), t("Крупный", "Large"), t("Очень крупный", "Extra large")][i]}
+                sx={{ minWidth: 44, minHeight: 36, textTransform: "none", fontSize: [13, 15, 17][i], fontWeight: 700 }}
+              >
+                {t("А", "A")}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Stack>
       </Paper>
+
+      <BackupPanel data={backupData} allExercises={allExercises} onRestore={onRestore} />
 
       <RecoveryDialog
         entry={checkin}
@@ -333,8 +385,8 @@ function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => voi
           component="button"
           onClick={() => onChange(l)}
           sx={{
-            px: 1.25,
-            py: 0.5,
+            px: 1.5,
+            minHeight: 32,
             border: "none",
             cursor: "pointer",
             fontFamily: "inherit",

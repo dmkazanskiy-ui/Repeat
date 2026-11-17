@@ -104,7 +104,7 @@ export default function RestTimer({ endsAt, target, color, onAdjust, onSkip }: P
             size="small"
             variant="outlined"
             onClick={() => onAdjust(-15)}
-            sx={{ minWidth: 0, px: 1, fontWeight: 700 }}
+            sx={{ minWidth: 44, minHeight: 36, px: 1, fontWeight: 700 }}
           >
             −15
           </Button>
@@ -112,11 +112,11 @@ export default function RestTimer({ endsAt, target, color, onAdjust, onSkip }: P
             size="small"
             variant="outlined"
             onClick={() => onAdjust(15)}
-            sx={{ minWidth: 0, px: 1, fontWeight: 700 }}
+            sx={{ minWidth: 44, minHeight: 36, px: 1, fontWeight: 700 }}
           >
             +15
           </Button>
-          <IconButton size="small" onClick={onSkip} aria-label={t("Пропустить", "Skip")}>
+          <IconButton onClick={onSkip} aria-label={t("Пропустить", "Skip")}>
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         </Stack>

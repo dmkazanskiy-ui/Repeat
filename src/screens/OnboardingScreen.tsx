@@ -156,7 +156,7 @@ const SLIDES = [
     get sub() { return L("Под неё «Тренер» будет подбирать тренировки. Позже можно поменять в профиле.", "The coach tailors workouts to it. You can change it later in your profile."); },
   },
   {
-    get title() { return L("Всё готово!", "You're all set!"); },
+    get title() { return L("Всё готово", "You're all set"); },
     get sub() { return L("Погнали — добавь первую тренировку через «+».", "Let's go — add your first workout with the “+”."); },
   },
 ];
@@ -210,6 +210,8 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Prop
                 return (
                   <Box
                     key={g.goal}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onPickGoal(g.goal)}
                     sx={{
                       display: "flex",
@@ -280,7 +282,7 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Prop
               height: 8,
               borderRadius: 999,
               bgcolor: i === slide ? "primary.main" : "divider",
-              transition: "width .2s",
+              transition: "background-color 200ms",
             }}
           />
         ))}

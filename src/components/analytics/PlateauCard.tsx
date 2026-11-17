@@ -69,6 +69,8 @@ export default function PlateauCard({
             <Paper
               key={d.id}
               variant="outlined"
+              role="button"
+              tabIndex={0}
               onClick={() => onToggle(d.id)}
               sx={{
                 p: 1.5,
@@ -113,7 +115,7 @@ export default function PlateauCard({
               </Stack>
 
               <Collapse in={open} unmountOnExit>
-                <Box sx={{ mt: 1.5 }} onClick={(event) => event.stopPropagation()}>
+                <Box sx={{ mt: 1.5 }} role="button" tabIndex={0} onClick={(event) => event.stopPropagation()}>
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
                     {t("Динамика по неделям", "Week by week")}
                   </Typography>

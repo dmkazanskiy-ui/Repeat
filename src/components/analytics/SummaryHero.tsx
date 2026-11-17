@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Box, Collapse, Divider, Paper, Stack, Typography, useTheme } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
@@ -229,7 +228,6 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
     <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
       <Stack direction="row" sx={{ alignItems: "flex-start", mb: 1.5 }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flex: 1, color: "primary.main" }}>
-          <AutoAwesomeIcon sx={{ fontSize: 18 }} />
           <Typography variant="subtitle2">{hero.title}</Typography>
         </Stack>
         {hero.changePercent != null && (

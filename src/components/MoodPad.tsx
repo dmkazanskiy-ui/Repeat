@@ -40,7 +40,7 @@ export default function MoodPad({
   const labelSx = {
     position: "absolute" as const,
     color: "text.secondary",
-    fontSize: 10.5,
+    fontSize: 11.5,
     pointerEvents: "none" as const,
     maxWidth: "44%",
   };

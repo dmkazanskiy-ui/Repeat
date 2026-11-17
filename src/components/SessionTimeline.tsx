@@ -218,6 +218,8 @@ function SessionCard({
 
   return (
     <Box
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(session.id)}
       sx={{
         display: "flex",
@@ -336,7 +338,7 @@ function NowRow({ now }: { now: string }) {
             borderRadius: 1,
             bgcolor: "primary.main",
             color: "primary.contrastText",
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: 700,
           }}
         >
@@ -411,6 +413,8 @@ export default function SessionTimeline({
             type="time"
             value={session.time ?? ""}
             aria-label={L("Время тренировки", "Workout time")}
+            role="button"
+            tabIndex={0}
             onClick={(e: MouseEvent) => e.stopPropagation()}
             onChange={(e: ChangeEvent<HTMLInputElement>) =>
               onChangeTime(session.id, e.target.value || null)

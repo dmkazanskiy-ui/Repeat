@@ -329,7 +329,7 @@ export default function PhotosScreen({
                           borderRadius: 1,
                           bgcolor: "rgba(0,0,0,0.55)",
                           color: "#fff",
-                          fontSize: 10,
+                          fontSize: 11,
                         }}
                       >
                         {PHOTO_POSE_LABELS[photo.pose]}

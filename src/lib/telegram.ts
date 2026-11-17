@@ -6,6 +6,17 @@ interface TelegramWebApp {
   setBackgroundColor?: (color: string) => void;
   initData?: string;
   colorScheme?: "light" | "dark";
+  BackButton?: {
+    show: () => void;
+    hide: () => void;
+    onClick: (cb: () => void) => void;
+    offClick: (cb: () => void) => void;
+  };
+  HapticFeedback?: {
+    impactOccurred: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
+    notificationOccurred: (type: "error" | "success" | "warning") => void;
+    selectionChanged: () => void;
+  };
 }
 
 declare global {
@@ -34,4 +45,28 @@ export function initTelegram(): void {
 
 export function isTelegram(): boolean {
   return Boolean(window.Telegram?.WebApp?.initData);
+}
+
+/** Короткая вибрация (в Telegram на iPhone). Вне Telegram — ничего. */
+export function haptic(style: "light" | "medium" | "success" = "light"): void {
+  const h = window.Telegram?.WebApp?.HapticFeedback;
+  if (!h) return;
+  if (style === "success") h.notificationOccurred("success");
+  else h.impactOccurred(style);
+}
+
+/**
+ * Системная кнопка «Назад» Telegram в шапке. Показываем, когда есть куда
+ * возвращаться; обработчик — тот же, что у стрелки внутри экрана.
+ */
+export function setTelegramBack(handler: (() => void) | null): () => void {
+  const back = window.Telegram?.WebApp?.BackButton;
+  if (!back) return () => {};
+  if (!handler) {
+    back.hide();
+    return () => {};
+  }
+  back.onClick(handler);
+  back.show();
+  return () => back.offClick(handler);
 }

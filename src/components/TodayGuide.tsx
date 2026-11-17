@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { Box, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ShuffleRoundedIcon from "@mui/icons-material/ShuffleRounded";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import LibraryBooksRoundedIcon from "@mui/icons-material/LibraryBooksRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
@@ -186,7 +186,6 @@ export default function TodayGuide({
               ? t(`Тренер соберёт план под цель «${goalLabel}»`, `A plan for your goal: “${goalLabel}”`)
               : t("Тренер соберёт план под твою цель и время", "A plan for your goal and time")
           }
-          sparkle
           onClick={onSuggest}
         />
       )}
@@ -196,7 +195,7 @@ export default function TodayGuide({
         {activeProgram && (
           <ActionRow
             color={GREEN}
-            icon={<AutoAwesomeIcon sx={{ fontSize: 20 }} />}
+            icon={<ShuffleRoundedIcon sx={{ fontSize: 20 }} />}
             label={t("Подобрать другую тренировку", "Suggest another workout")}
             sub={t("Если сегодня не по программе", "If today is off-program")}
             onClick={onSuggest}
@@ -256,7 +255,6 @@ function HeroAction({
   eyebrow,
   title,
   sub,
-  sparkle,
   onClick,
 }: {
   color: string;
@@ -264,11 +262,12 @@ function HeroAction({
   eyebrow: string;
   title: string;
   sub: string;
-  sparkle?: boolean;
   onClick: () => void;
 }) {
   return (
     <Box
+      role="button"
+      tabIndex={0}
       onClick={onClick}
       sx={{
         display: "flex",
@@ -300,7 +299,6 @@ function HeroAction({
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", color }}>
-          {sparkle && <AutoAwesomeIcon sx={{ fontSize: 14 }} />}
           <Typography variant="caption" sx={{ fontWeight: 600, color }}>
             {eyebrow}
           </Typography>
@@ -338,6 +336,8 @@ function ActionRow({
 }) {
   return (
     <Box
+      role="button"
+      tabIndex={0}
       onClick={onClick}
       sx={{
         display: "flex",

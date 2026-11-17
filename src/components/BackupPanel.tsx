@@ -1,0 +1,386 @@
+import { useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Paper,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
+import ContentPasteRoundedIcon from "@mui/icons-material/ContentPasteRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import {
+  PERIOD_LABELS,
+  buildExport,
+  parseExport,
+  periodStart,
+  planMerge,
+} from "../lib/backup";
+import type { BackupData, BackupPeriod, MergePlan } from "../lib/backup";
+import { today } from "../lib/format";
+import { L, useT } from "../lib/i18n";
+import { haptic } from "../lib/telegram";
+import type { Exercise } from "../lib/types";
+
+const PERIODS: BackupPeriod[] = ["day", "week", "month", "all"];
+
+function sizeLabel(text: string): string {
+  const kb = new TextEncoder().encode(text).length / 1024;
+  return kb < 1024
+    ? `${Math.max(1, Math.round(kb))} ${L("КБ", "KB")}`
+    : `${(kb / 1024).toFixed(1)} ${L("МБ", "MB")}`;
+}
+
+/** Строка-кнопка в стиле профиля: плашка-иконка с градиентом и шеврон. */
+function Row({
+  color,
+  icon,
+  title,
+  sub,
+  onClick,
+}: {
+  color: string;
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+  onClick: () => void;
+}) {
+  return (
+    <Box
+      component="button"
+      onClick={onClick}
+      sx={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        p: 0,
+        py: 0.5,
+        border: "none",
+        bgcolor: "transparent",
+        color: "text.primary",
+        textAlign: "left",
+        fontFamily: "inherit",
+        cursor: "pointer",
+      }}
+    >
+      <Box
+        sx={{
+          width: 36,
+          height: 36,
+          borderRadius: 2,
+          flexShrink: 0,
+          display: "grid",
+          placeItems: "center",
+          color,
+          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
+        }}
+      >
+        {icon}
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {sub}
+        </Typography>
+      </Box>
+      <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
+    </Box>
+  );
+}
+
+/**
+ * «Выгрузить историю» / «Вставить историю». Текст выгрузки: читаемая сводка
+ * (для Claude) + точный JSON-блок (для восстановления). Переносится через
+ * буфер обмена — работает и во встроенном браузере Telegram.
+ */
+export default function BackupPanel({
+  data,
+  allExercises,
+  onRestore,
+}: {
+  data: BackupData;
+  allExercises: Exercise[];
+  onRestore: (next: BackupData) => void;
+}) {
+  const t = useT();
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  return (
+    <>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+        {t("История", "History")}
+      </Typography>
+      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+        <Stack spacing={1}>
+          <Row
+            color="#4ade80"
+            icon={<IosShareRoundedIcon fontSize="small" />}
+            title={t("Выгрузить историю", "Export history")}
+            sub={t("Текстом: для переноса и для разбора в Claude", "As text: to move it or have Claude review it")}
+            onClick={() => setExportOpen(true)}
+          />
+          <Row
+            color="#38bdf8"
+            icon={<ContentPasteRoundedIcon fontSize="small" />}
+            title={t("Вставить историю", "Import history")}
+            sub={t("Восстановить из выгрузки — без дублей", "Restore from an export — no duplicates")}
+            onClick={() => setImportOpen(true)}
+          />
+        </Stack>
+      </Paper>
+
+      {exportOpen && (
+        <ExportDialog data={data} allExercises={allExercises} onClose={() => setExportOpen(false)} />
+      )}
+      {importOpen && (
+        <ImportDialog current={data} onRestore={onRestore} onClose={() => setImportOpen(false)} />
+      )}
+    </>
+  );
+}
+
+function ExportDialog({
+  data,
+  allExercises,
+  onClose,
+}: {
+  data: BackupData;
+  allExercises: Exercise[];
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [period, setPeriod] = useState<BackupPeriod>("all");
+  const [status, setStatus] = useState<"idle" | "copied" | "manual">("idle");
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+
+  const from = periodStart(period);
+  const count = data.sessions.filter((s) => (from == null || s.date >= from) && s.date <= today()).length;
+  const text = useMemo(() => buildExport(data, allExercises, period), [data, allExercises, period]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("copied");
+      haptic("success");
+    } catch {
+      // Буфер недоступен — показываем текст, чтобы скопировать вручную.
+      setStatus("manual");
+      setTimeout(() => {
+        areaRef.current?.focus();
+        areaRef.current?.select();
+      }, 50);
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose}>
+      <DialogTitle>{t("Выгрузить историю", "Export history")}</DialogTitle>
+      <DialogContent>
+        <ToggleButtonGroup
+          value={period}
+          exclusive
+          fullWidth
+          size="small"
+          onChange={(_, v: BackupPeriod | null) => {
+            if (v) {
+              setPeriod(v);
+              setStatus("idle");
+            }
+          }}
+          sx={{ mb: 1.5 }}
+        >
+          {PERIODS.map((p) => (
+            <ToggleButton key={p} value={p} sx={{ minHeight: 36, textTransform: "none" }}>
+              {PERIOD_LABELS[p]}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        <Typography variant="body2" color="text.secondary">
+          {t("Тренировок", "Workouts")}: <b>{count}</b> · {t("размер", "size")} {sizeLabel(text)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+          {t(
+            "Программы, свои упражнения и цель входят всегда. Фото прогресса не выгружаются. Для переезда выбирай «Всё время» и сохрани текст, например в «Избранное» Telegram — длинный текст он предложит отправить файлом.",
+            "Programs, custom exercises and goal are always included. Progress photos are not exported. To move, choose “All time” and save the text, e.g. to Telegram Saved Messages — it will offer to send long text as a file.",
+          )}
+        </Typography>
+        {status === "copied" && (
+          <Alert severity="success" sx={{ mt: 1.5 }}>
+            {t("Скопировано в буфер обмена", "Copied to clipboard")}
+          </Alert>
+        )}
+        {status === "manual" && (
+          <>
+            <Alert severity="info" sx={{ mt: 1.5 }}>
+              {t(
+                "Буфер недоступен — выдели текст ниже и скопируй вручную.",
+                "Clipboard unavailable — select the text below and copy it.",
+              )}
+            </Alert>
+            <Box
+              component="textarea"
+              ref={areaRef}
+              readOnly
+              value={text}
+              sx={{
+                mt: 1,
+                width: "100%",
+                height: 160,
+                p: 1,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "background.default",
+                color: "text.primary",
+                font: "inherit",
+                fontSize: 12,
+                resize: "vertical",
+              }}
+            />
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t("Закрыть", "Close")}</Button>
+        <Button variant="contained" onClick={copy}>
+          {t("Скопировать", "Copy")}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function ImportDialog({
+  current,
+  onRestore,
+  onClose,
+}: {
+  current: BackupData;
+  onRestore: (next: BackupData) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<MergePlan | null>(null);
+  const [done, setDone] = useState(false);
+
+  function check(value: string) {
+    setText(value);
+    setPlan(null);
+    setError(null);
+    if (!value.trim()) return;
+    const res = parseExport(value);
+    if (!res.ok) setError(res.error);
+    else setPlan(planMerge(current, res.file.data));
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      check(await navigator.clipboard.readText());
+    } catch {
+      setError(
+        t(
+          "Нет доступа к буферу — вставь текст в поле вручную (долгое нажатие → «Вставить»).",
+          "No clipboard access — paste into the field manually (long press → Paste).",
+        ),
+      );
+    }
+  }
+
+  function restore() {
+    if (!plan) return;
+    onRestore(plan.next);
+    haptic("success");
+    setDone(true);
+  }
+
+  const nothingNew =
+    plan != null && Object.values(plan.added).every((n) => n === 0);
+
+  return (
+    <Dialog open onClose={onClose}>
+      <DialogTitle>{t("Вставить историю", "Import history")}</DialogTitle>
+      <DialogContent>
+        {done && plan ? (
+          <Alert severity="success">
+            {t("Готово. Добавлено тренировок", "Done. Workouts added")}: {plan.added.sessions}
+          </Alert>
+        ) : (
+          <>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<ContentPasteRoundedIcon />}
+              onClick={pasteFromClipboard}
+              sx={{ mb: 1.5 }}
+            >
+              {t("Вставить из буфера", "Paste from clipboard")}
+            </Button>
+            <Box
+              component="textarea"
+              value={text}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => check(e.target.value)}
+              placeholder={t("…или вставь текст выгрузки сюда", "…or paste the export text here")}
+              aria-label={t("Текст выгрузки", "Export text")}
+              sx={{
+                width: "100%",
+                height: 120,
+                p: 1,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "background.default",
+                color: "text.primary",
+                font: "inherit",
+                fontSize: 13,
+                resize: "vertical",
+              }}
+            />
+            {error && (
+              <Alert severity="error" sx={{ mt: 1.5 }}>
+                {error}
+              </Alert>
+            )}
+            {plan && (
+              <Alert severity={nothingNew ? "info" : "success"} sx={{ mt: 1.5 }}>
+                {nothingNew ? (
+                  t("Всё из этой выгрузки уже есть — добавлять нечего.", "Everything from this export is already here.")
+                ) : (
+                  <>
+                    {t("Будет добавлено", "Will add")}: {t("тренировок", "workouts")} {plan.added.sessions}
+                    {plan.added.programs ? `, ${t("программ", "programs")} ${plan.added.programs}` : ""}
+                    {plan.added.bodyEntries ? `, ${t("записей веса", "weight entries")} ${plan.added.bodyEntries}` : ""}
+                    {plan.added.recovery ? `, ${t("чек-инов", "check-ins")} ${plan.added.recovery}` : ""}
+                    {plan.added.customExercises ? `, ${t("своих упражнений", "custom exercises")} ${plan.added.customExercises}` : ""}
+                    {plan.skipped ? `. ${t("Уже есть", "Already here")}: ${plan.skipped}` : ""}
+                  </>
+                )}
+              </Alert>
+            )}
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{done ? t("Закрыть", "Close") : t("Отмена", "Cancel")}</Button>
+        {!done && (
+          <Button variant="contained" disabled={!plan || nothingNew} onClick={restore}>
+            {t("Восстановить", "Restore")}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}

@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -15,7 +15,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { alpha } from "@mui/material/styles";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -46,6 +46,7 @@ import { TYPE_COLOR } from "../lib/activityColors";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import RestBalanceCard from "../components/analytics/RestBalanceCard";
 import SummaryHero from "../components/analytics/SummaryHero";
+import StrengthHero from "../components/analytics/StrengthHero";
 import type { HeroData } from "../components/analytics/SummaryHero";
 import {
   activePlateaus,
@@ -94,9 +95,7 @@ import {
   METRIC_META,
   formatPercent,
 } from "../lib/metricMeta";
-import { areaPath, smoothPath } from "../lib/chart";
 import { L, useLang, useT } from "../lib/i18n";
-import type { Pt } from "../lib/chart";
 import {
   weekdaysShort,
     addDays,
@@ -431,7 +430,7 @@ export default function AnalyticsScreen({
     const mobilityCount = sessions.filter((s) => s.kind === "mobility" && inP(s.date)).length;
     const recoveryCount = allSessions.filter((s) => s.kind === "recovery" && inP(s.date)).length;
     return {
-      title: `${L("Итоги", "Summary")}: ${modeWord}`,
+      title: L(`Итоги ${modeWord}`, `This ${modeWord}`),
       changeLabel: `${L("к", "vs")} ${compareWord}`,
       changePercent: pct,
       workoutsText: `${wk} ${lang === "ru" ? ruPlural(wk, "тренировка", "тренировки", "тренировок") : wk === 1 ? "workout" : "workouts"}`,
@@ -629,6 +628,8 @@ export default function AnalyticsScreen({
       {plateaus.length > 0 && (
         <Paper
           variant="outlined"
+          role="button"
+          tabIndex={0}
           onClick={openPlateaus}
           sx={{
             mb: 2,
@@ -694,24 +695,10 @@ export default function AnalyticsScreen({
 
       {view === "volume" && (
         <>
-      {/* KPI: сетка по 2 в ряд, друг под другом */}
-      <Box
-        sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}
-      >
-        {KPI_METRICS.map((m) => (
-          <KpiCard
-            key={m}
-            metric={m}
-            comparison={compareMetric(sessions, period, m)}
-            spark={series(sessions, period, m).map((p) => p.value)}
-          />
-        ))}
-      </Box>
-
       {/* Главный интерактивный график */}
-      <Paper variant="outlined" sx={{ p: 2, mt: 2, borderRadius: 2 }}>
+      <Paper variant="outlined" sx={{ p: 2, mb: 1.5, borderRadius: 2 }}>
         <Box
-          sx={{ display: "flex", gap: 0.5, overflowX: "auto", mb: 1, pb: 0.5 }}
+          sx={{ display: "flex", gap: 1, overflowX: "auto", mb: 1, pb: 0.5 }}
         >
           {CHART_METRICS.map((m) => (
             <Chip
@@ -721,6 +708,7 @@ export default function AnalyticsScreen({
               onClick={() => setMetric(m)}
               color={metric === m ? "primary" : "default"}
               variant={metric === m ? "filled" : "outlined"}
+              sx={{ height: 32, borderRadius: 2, flexShrink: 0 }}
             />
           ))}
         </Box>
@@ -735,6 +723,24 @@ export default function AnalyticsScreen({
           format={METRIC_META[metric].format}
           labelOf={labelOf}
         />
+      </Paper>
+
+      {/* KPI: одна панель цифр, 2 колонки на тонких линиях — без спарклайнов.
+          Главный график выше — он визуальный центр раздела. */}
+      <Paper
+        variant="outlined"
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          borderRadius: 2,
+          overflow: "hidden",
+          "& > *": { borderBottom: "1px solid", borderColor: "divider" },
+          "& > *:nth-of-type(odd)": { borderRight: "1px solid", borderRightColor: "divider" },
+        }}
+      >
+        {KPI_METRICS.map((m) => (
+          <KpiCard key={m} metric={m} comparison={compareMetric(sessions, period, m)} />
+        ))}
       </Paper>
 
       {/* Распределение активности */}
@@ -768,7 +774,7 @@ export default function AnalyticsScreen({
             {t("Эта неделя", "This week")}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            🔥 {t("серия", "streak")} {cons.currentStreak}
+            {t("серия", "streak")} {cons.currentStreak}
           </Typography>
         </Stack>
         <WeekDots active={weekActive} labels={weekdaysShort()} todayIndex={todayIdx} />
@@ -790,6 +796,9 @@ export default function AnalyticsScreen({
 
       {view === "strength" && (
         <>
+      {/* Главный график раздела: прогноз максимума + полоса плато */}
+      <StrengthHero exercises={trained} sessions={sessions} initialId={plateaus[0]?.id ?? null} />
+
       {/* Плато — разбор: динамика по неделям и что делать */}
       <Box ref={plateauRef}>
         <PlateauCard
@@ -1163,73 +1172,36 @@ const KPI_ICON: Record<MetricKey, typeof FitnessCenterOutlinedIcon> = {
 function KpiCard({
   metric,
   comparison,
-  spark,
 }: {
   metric: MetricKey;
   comparison: MetricComparison;
-  spark: number[];
 }) {
-  const theme = useTheme();
+  const t = useT();
   const meta = METRIC_META[metric];
   const Icon = KPI_ICON[metric];
-  const { trend, absolute, percent } = comparison;
+  const { trend, absolute, percent, current } = comparison;
   // Снижение не красим красным — только зелёный акцент на росте.
   const deltaColor = trend === "up" ? "primary.main" : "text.secondary";
   const sign = absolute > 0 ? "+" : absolute < 0 ? "−" : "";
-
-  const gid = useId().replace(/:/g, "");
-  const max = Math.max(1, ...spark);
-  const n = spark.length;
-  const green = theme.palette.primary.main;
-  const pts: Pt[] = spark.map((v, i) => [
-    (i / Math.max(1, n - 1)) * 100,
-    30 - (v / max) * 22,
-  ]);
-  const line = smoothPath(pts);
-  const area = areaPath(pts, 32, 0, 100);
+  const empty = !current;
+  const flat = !empty && (percent == null || Math.round(percent) === 0) && absolute === 0;
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, display: "flex", flexDirection: "column" }}>
-      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "text.secondary", mb: 1 }}>
-        <Icon sx={{ fontSize: 17 }} />
-        <Typography variant="caption">{meta.label}</Typography>
+    <Box sx={{ py: 1.5, px: 2, minWidth: 0 }}>
+      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "text.secondary", mb: 0.5 }}>
+        <Icon sx={{ fontSize: 16 }} />
+        <Typography variant="caption" noWrap>{meta.label}</Typography>
       </Stack>
-      <Typography sx={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>
-        {meta.format(comparison.current)}
-      </Typography>
-      <Box
-        component="svg"
-        viewBox="0 0 100 32"
-        preserveAspectRatio="none"
-        sx={{ width: "100%", height: 34, my: 1.25, display: "block" }}
+      <Typography
+        noWrap
+        sx={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, fontVariantNumeric: "tabular-nums", color: empty ? "text.disabled" : "text.primary" }}
       >
-        <defs>
-          <linearGradient id={`spark-${gid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={green} stopOpacity={0.26} />
-            <stop offset="100%" stopColor={green} stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <path d={area} fill={`url(#spark-${gid})`} />
-        <path
-          d={line}
-          fill="none"
-          stroke={green}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </Box>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
-        <Typography variant="body2" sx={{ color: deltaColor, fontWeight: 700 }}>
-          {formatPercent(percent)}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {sign}
-          {meta.format(Math.abs(absolute))}
-        </Typography>
-      </Stack>
-    </Paper>
+        {meta.format(current)}
+      </Typography>
+      <Typography variant="caption" noWrap sx={{ display: "block", mt: 0.25, fontWeight: 600, color: flat || empty ? "text.secondary" : deltaColor }}>
+        {empty ? "\u00a0" : flat ? t("без изменений", "no change") : `${formatPercent(percent)} · ${sign}${meta.format(Math.abs(absolute))}`}
+      </Typography>
+    </Box>
   );
 }
 

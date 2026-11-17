@@ -91,6 +91,8 @@ export default function ProgramDetail({
             <Paper
               key={workout.id}
               variant="outlined"
+              role="button"
+              tabIndex={0}
               onClick={() => onStart(program, index, deload)}
               sx={{
                 p: 1.5,
@@ -120,7 +122,7 @@ export default function ProgramDetail({
                       {workout.name}
                     </Typography>
                     {isNext && (
-                      <Chip label={t("следующая", "next")} size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                      <Chip label={t("следующая", "next")} size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
                     )}
                   </Stack>
                   <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>

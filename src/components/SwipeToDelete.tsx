@@ -104,6 +104,10 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
           ощущения отдельной панели. Иконка «Удалить» — в правой зоне, где
           карточка отъезжает. */}
       <Box
+        role="button"
+        // Панель под карточкой доступна только когда открыта свайпом.
+        tabIndex={open ? 0 : -1}
+        aria-hidden={!open}
         onClick={onDelete}
         sx={{
           position: "absolute",

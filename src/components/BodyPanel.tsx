@@ -166,6 +166,8 @@ export default function BodyPanel({ bodyEntries, photos, onChangeBody, onOpenPho
             <Paper
               key={entry.id}
               variant="outlined"
+              role="button"
+              tabIndex={0}
               onClick={() => setEditing(entry)}
               sx={{ p: 1.5, borderRadius: 2, cursor: "pointer", display: "flex", alignItems: "center" }}
             >
@@ -189,6 +191,8 @@ export default function BodyPanel({ bodyEntries, photos, onChangeBody, onOpenPho
       </Typography>
       <Paper
         variant="outlined"
+        role="button"
+        tabIndex={0}
         onClick={onOpenPhotos}
         sx={{
           p: 1.5,

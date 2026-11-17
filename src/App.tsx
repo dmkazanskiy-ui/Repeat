@@ -46,6 +46,8 @@ import {
   startProgramWorkout,
 } from "./lib/store";
 import { newId } from "./lib/id";
+import type { BackupData } from "./lib/backup";
+import { setTelegramBack } from "./lib/telegram";
 import { today } from "./lib/format";
 import {
   acuteChronicLoad,
@@ -365,6 +367,42 @@ export default function App() {
     void savePrograms(next);
   }, []);
 
+  // Снимок для выгрузки истории (без фото) и восстановление из вставки.
+  const backupData: BackupData = {
+    sessions,
+    customExercises: exercises.filter((e) => e.custom),
+    cardioKinds,
+    mobilityKinds,
+    bodyEntries,
+    programs,
+    recovery,
+    focusGoal,
+  };
+  const restoreBackup = useCallback(
+    (next: BackupData) => {
+      commit(next.sessions);
+      const ex = [...exercises.filter((e) => !e.custom), ...next.customExercises];
+      setExercises(ex);
+      void saveCustomExercises(ex);
+      setCardioKinds(next.cardioKinds);
+      void saveCardioKinds(next.cardioKinds);
+      setMobilityKinds(next.mobilityKinds);
+      void saveMobilityKinds(next.mobilityKinds);
+      setBodyEntries(next.bodyEntries);
+      void saveBodyEntries(next.bodyEntries);
+      setPrograms(next.programs);
+      void savePrograms(next.programs);
+      setRecovery(next.recovery);
+      void saveRecovery(next.recovery);
+      setFocusGoal(next.focusGoal);
+      void saveFocusGoal(next.focusGoal);
+      // Восстановили историю — онбординг больше не нужен.
+      setOnboarded(true);
+      void saveOnboarded(true);
+    },
+    [commit, exercises],
+  );
+
   const createProgram = useCallback(() => {
     const program = newProgram();
     commitPrograms([...programs, program]);
@@ -538,6 +576,31 @@ export default function App() {
   const programBeingViewed = openProgramId
     ? (programs.find((p) => p.id === openProgramId) ?? null)
     : null;
+
+  // Системная «Назад» Telegram — повторяет стрелку назад текущего экрана.
+  // HIIT не трогаем: у него свой полноэкранный режим с таймером.
+  const backHandler: (() => void) | null = showHiit
+    ? null
+    : programBeingEdited
+      ? () => setProgramEditId(null)
+      : programBeingViewed
+        ? () => setOpenProgramId(null)
+        : showPhotos
+          ? () => setShowPhotos(false)
+          : showPrograms
+            ? () => setShowPrograms(false)
+            : open
+              ? closeSession
+              : null;
+  const backRef = useRef(backHandler);
+  backRef.current = backHandler;
+  const hasBack = backHandler != null;
+  useEffect(() => setTelegramBack(hasBack ? () => backRef.current?.() : null), [hasBack]);
+
+  // Язык страницы — для VoiceOver: английский текст не читается русским голосом.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   return (
     <LangContext.Provider value={lang}>
@@ -762,6 +825,9 @@ export default function App() {
                 onChangeRecovery={changeRecovery}
                 onChangeFocusGoal={changeFocusGoal}
                 onChangeLang={changeLang}
+                backupData={backupData}
+                allExercises={exercises}
+                onRestore={restoreBackup}
               />
             )}
           </Box>
@@ -769,7 +835,7 @@ export default function App() {
 
         <Snackbar
           open={Boolean(undo)}
-          autoHideDuration={6000}
+          autoHideDuration={10000}
           onClose={() => setUndo(null)}
           message={t("Тренировка удалена", "Workout deleted")}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
@@ -789,7 +855,7 @@ export default function App() {
 
         <Snackbar
           open={Boolean(toast)}
-          autoHideDuration={6000}
+          autoHideDuration={10000}
           onClose={() => {
             setToast(null);
             setToastAction(null);
@@ -820,31 +886,27 @@ export default function App() {
         <Box
           sx={{
             position: "fixed",
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
+            bottom: 0,
             left: 0,
             right: 0,
-            px: 2,
             zIndex: 20,
-            pointerEvents: "none",
+            // Закреплённый бар вместо плавающей капсулы: не перекрывает
+            // контент и не съезжает от жестов.
+            pb: "env(safe-area-inset-bottom, 0px)",
+            bgcolor: "background.default",
+            borderTop: "1px solid",
+            borderColor: "divider",
           }}
         >
           <Box
             sx={{
-              pointerEvents: "auto",
               maxWidth: 600,
               mx: "auto",
+              height: 64,
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               px: 1.5,
-              py: 0.5,
-              borderRadius: 6,
-              // «Жидкое стекло»: полупрозрачный фон + блюр + тонкая рамка.
-              bgcolor: "rgba(22, 27, 34, 0.72)",
-              backdropFilter: "blur(24px) saturate(180%)",
-              WebkitBackdropFilter: "blur(24px) saturate(180%)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              boxShadow: "0 10px 34px rgba(0,0,0,0.45)",
             }}
           >
             <NavItem
@@ -933,7 +995,7 @@ function NavItem({
       }}
     >
       {children}
-      <Typography variant="caption" sx={{ fontSize: 10, lineHeight: 1 }}>
+      <Typography variant="caption" sx={{ fontSize: 11, lineHeight: 1 }}>
         {label}
       </Typography>
     </Box>

@@ -15,6 +15,7 @@ import {
   Menu,
   MenuItem,
   Paper,
+  Snackbar,
   Stack,
   TextField,
   Typography,
@@ -28,6 +29,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import EditIcon from "@mui/icons-material/Edit";
 import RestTimer from "../components/RestTimer";
+import { haptic } from "../lib/telegram";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
 import StopIcon from "@mui/icons-material/Stop";
@@ -219,6 +221,9 @@ export default function SessionEditor({
     group: number;
   } | null>(null);
   const [copyDate, setCopyDate] = useState("");
+  // Последний удалённый подход — для «Вернуть»: корзина стоит рядом с
+  // галочкой «выполнено», промах пальцем не должен стоить данных.
+  const [removedSet, setRemovedSet] = useState<{ exId: string; set: WorkoutSet; index: number } | null>(null);
   // Диалог завершения: длительность и средний пульс вводятся вручную —
   // «Начать» жать необязательно.
   const [finishing, setFinishing] = useState(false);
@@ -1238,6 +1243,8 @@ export default function SessionEditor({
                           sx={{ mb: 1, alignItems: "center" }}
                         >
                           <Box
+                            role="button"
+                            tabIndex={0}
                             onClick={() => headerClick(item.id)}
                             sx={{
                               flex: 1,
@@ -1313,7 +1320,10 @@ export default function SessionEditor({
                               set.warmup ? t("Разминочный подход", "Warm-up set") : t("Рабочий подход", "Working set")
                             }
                             sx={{
-                              width: 16,
+                              // Видимая ширина — цифра, зона нажатия ≥ 28×40.
+                              minWidth: 28,
+                              height: 40,
+                              mx: -0.5,
                               p: 0,
                               border: "none",
                               bgcolor: "transparent",
@@ -1348,6 +1358,7 @@ export default function SessionEditor({
                             onChange={(event) => {
                               const checked = event.target.checked;
                               patchSet(item.id, set.id, { done: checked });
+                              if (checked) haptic("light");
                               // Отдых стартует только по живому тапу по самому
                               // чекбоксу и только на переходе «не отмечен →
                               // отмечен»: правка веса/повторов или любой
@@ -1367,12 +1378,14 @@ export default function SessionEditor({
                           <IconButton
                             size="small"
                             aria-label={t("Убрать подход", "Remove set")}
-                            onClick={() =>
+                            sx={{ ml: 0.5 }}
+                            onClick={() => {
+                              setRemovedSet({ exId: item.id, set, index });
                               patchExercise(item.id, (ex) => ({
                                 ...ex,
                                 sets: ex.sets.filter((s) => s.id !== set.id),
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <DeleteOutlineIcon fontSize="small" />
                           </IconButton>
@@ -1696,6 +1709,31 @@ export default function SessionEditor({
           onSkip={() => setRestEndsAt(null)}
         />
       )}
+      <Snackbar
+        open={removedSet != null}
+        autoHideDuration={10000}
+        onClose={(_, reason) => reason !== "clickaway" && setRemovedSet(null)}
+        message={t("Подход удалён", "Set removed")}
+        action={
+          <Button
+            size="small"
+            onClick={() => {
+              const r = removedSet;
+              if (r) {
+                patchExercise(r.exId, (ex) => {
+                  const sets = [...ex.sets];
+                  sets.splice(Math.min(r.index, sets.length), 0, r.set);
+                  return { ...ex, sets };
+                });
+              }
+              setRemovedSet(null);
+            }}
+          >
+            {t("Вернуть", "Undo")}
+          </Button>
+        }
+        sx={{ bottom: { xs: 96 } }}
+      />
     </Box>
     </ThemeProvider>
   );

@@ -9,7 +9,7 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import SkipNextRoundedIcon from "@mui/icons-material/SkipNextRounded";
 import StopRoundedIcon from "@mui/icons-material/StopRounded";
 import { TYPE_COLOR } from "../lib/activityColors";
-import { useT } from "../lib/i18n";
+import { L, useT } from "../lib/i18n";
 import {
   buildHiitPhases,
   clampHiit,
@@ -116,11 +116,11 @@ function Stepper({ label, value, unit, onDelta, big }: { label: string; value: n
     <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", py: 1 }}>
       <Typography variant="body1" sx={{ fontWeight: 600 }}>{label}</Typography>
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-        <IconButton size="small" onClick={() => onDelta(-step)} sx={{ border: 1, borderColor: "divider" }}><RemoveRoundedIcon fontSize="small" /></IconButton>
+        <IconButton onClick={() => onDelta(-step)} aria-label={`${label}: ${L("меньше", "less")}`} sx={{ width: 40, height: 40, border: 1, borderColor: "divider" }}><RemoveRoundedIcon fontSize="small" /></IconButton>
         <Typography sx={{ minWidth: 62, textAlign: "center", fontWeight: 800, fontSize: 18, fontVariantNumeric: "tabular-nums" }}>
           {value}{unit ? <Typography component="span" variant="caption" color="text.secondary">&nbsp;{unit}</Typography> : null}
         </Typography>
-        <IconButton size="small" onClick={() => onDelta(step)} sx={{ border: 1, borderColor: "divider" }}><AddRoundedIcon fontSize="small" /></IconButton>
+        <IconButton onClick={() => onDelta(step)} aria-label={`${label}: ${L("больше", "more")}`} sx={{ width: 40, height: 40, border: 1, borderColor: "divider" }}><AddRoundedIcon fontSize="small" /></IconButton>
       </Stack>
     </Stack>
   );
@@ -135,7 +135,7 @@ function ConfigView({ cfg, color, onBack, onPatch, onStart, onPreset, t }: {
   return (
     <Box sx={{ p: 2, pb: 6, maxWidth: 560, mx: "auto" }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 2 }}>
-        <IconButton onClick={onBack} edge="start"><ArrowBackIcon /></IconButton>
+        <IconButton onClick={onBack} edge="start" aria-label={L("Назад", "Back")}><ArrowBackIcon /></IconButton>
         <Typography variant="h6" sx={{ fontWeight: 800 }}>{t("HIIT-таймер", "HIIT timer")}</Typography>
       </Stack>
 
@@ -144,7 +144,7 @@ function ConfigView({ cfg, color, onBack, onPatch, onStart, onPreset, t }: {
         {HIIT_PRESETS.map((p) => {
           const active = cfg.workSec === p.config.workSec && cfg.restSec === p.config.restSec && cfg.rounds === p.config.rounds;
           return (
-            <Box key={p.id} onClick={() => onPreset({ ...p.config, warmupSec: cfg.warmupSec, cooldownSec: cfg.cooldownSec })}
+            <Box key={p.id} role="button" tabIndex={0} onClick={() => onPreset({ ...p.config, warmupSec: cfg.warmupSec, cooldownSec: cfg.cooldownSec })}
               sx={{ px: 1.75, py: 0.75, borderRadius: 999, cursor: "pointer", fontWeight: 700, fontSize: 14,
                 border: 1, borderColor: active ? color : "divider",
                 bgcolor: active ? alpha(color, 0.16) : "transparent", color: active ? color : "text.primary" }}>
@@ -304,7 +304,7 @@ function RunnerView({ cfg, onExit, onFinish, t }: {
       transition: "background-color .25s",
     }}>
       <Box sx={{ position: "absolute", top: 14, left: 14 }}>
-        <IconButton onClick={onExit}><ArrowBackIcon /></IconButton>
+        <IconButton onClick={onExit} aria-label={L("Выйти из таймера", "Exit timer")}><ArrowBackIcon /></IconButton>
       </Box>
 
       <Typography sx={{ fontFamily: "ui-monospace, monospace", letterSpacing: 2, fontWeight: 800, fontSize: 20, color: accent }}>

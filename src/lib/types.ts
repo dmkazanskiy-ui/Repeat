@@ -82,12 +82,12 @@ export const PERCEIVED_EFFECT_LABELS: Record<PerceivedEffect, string> = {
 };
 
 /** Самочувствие после активности (1–5): выше = больше сил/бодрее (легаси, mood заменил). */
-export const AFTER_STATES: ReadonlyArray<{ value: number; label: string; emoji: string }> = [
-  { value: 1, get label() { return L("Выжат", "Drained"); }, emoji: "😵" },
-  { value: 2, get label() { return L("Устал", "Tired"); }, emoji: "😮‍💨" },
-  { value: 3, get label() { return L("Нормально", "Okay"); }, emoji: "🙂" },
-  { value: 4, get label() { return L("Бодр", "Energized"); }, emoji: "😃" },
-  { value: 5, get label() { return L("Полон сил", "Full of energy"); }, emoji: "🔥" },
+export const AFTER_STATES: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 1, get label() { return L("Выжат", "Drained"); } },
+  { value: 2, get label() { return L("Устал", "Tired"); } },
+  { value: 3, get label() { return L("Нормально", "Okay"); } },
+  { value: 4, get label() { return L("Бодр", "Energized"); } },
+  { value: 5, get label() { return L("Полон сил", "Full of energy"); } },
 ];
 
 export const AFTER_STATE_LABELS: Record<number, string> = {

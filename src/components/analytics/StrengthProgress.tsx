@@ -109,6 +109,8 @@ function ExerciseRow({
   return (
     <Box sx={{ borderRadius: 2, overflow: "hidden", border: "1px solid", borderColor: alpha(PURPLE, 0.22) }}>
       <Box
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen((v) => !v)}
         sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1.25, cursor: "pointer" }}
       >
@@ -138,14 +140,14 @@ function ExerciseRow({
               size="small"
               variant="outlined"
               label={`${TREND_LABEL[trend]}${deltaText}`}
-              sx={{ height: 20, fontSize: 10.5, color: tc, borderColor: alpha(tc, 0.4) }}
+              sx={{ height: 20, fontSize: 11.5, color: tc, borderColor: alpha(tc, 0.4) }}
             />
             {plateau.currentWeeks >= 3 && (
               <Chip
                 size="small"
                 variant="outlined"
                 label={`${t("плато", "plateau")} ${plateau.currentWeeks} ${t("нед", "wk")}`}
-                sx={{ height: 20, fontSize: 10.5, color: "#f59e0b", borderColor: alpha("#f59e0b", 0.4) }}
+                sx={{ height: 20, fontSize: 11.5, color: "#f59e0b", borderColor: alpha("#f59e0b", 0.4) }}
               />
             )}
           </Stack>
@@ -170,7 +172,7 @@ function ExerciseRow({
             sx={{ mb: 1.5 }}
           >
             {RANGES.map((r) => (
-              <ToggleButton key={r.key} value={r.key} sx={{ fontSize: 12, py: 0.5 }}>
+              <ToggleButton key={r.key} value={r.key} sx={{ fontSize: 12, py: 0.5, minHeight: 36 }}>
                 {r.label}
               </ToggleButton>
             ))}
@@ -264,14 +266,14 @@ export default function StrengthProgress({
       <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
         <ToggleButtonGroup value={metric} exclusive size="small" onChange={(_, v) => v && setMetric(v)}>
           {METRICS.map((m) => (
-            <ToggleButton key={m.key} value={m.key} sx={{ fontSize: 12, py: 0.4, px: 1.25, textTransform: "none" }}>
+            <ToggleButton key={m.key} value={m.key} sx={{ fontSize: 12, py: 0.5, px: 1.5, minHeight: 36, textTransform: "none" }}>
               {m.label}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
         <ToggleButtonGroup value={compare} exclusive size="small" onChange={(_, v) => v && setCompare(v)}>
           {COMPARES.map((c) => (
-            <ToggleButton key={c.key} value={c.key} sx={{ fontSize: 12, py: 0.4, px: 1.25, textTransform: "none" }}>
+            <ToggleButton key={c.key} value={c.key} sx={{ fontSize: 12, py: 0.5, px: 1.5, minHeight: 36, textTransform: "none" }}>
               {c.label}
             </ToggleButton>
           ))}

@@ -19,7 +19,6 @@ import ContentPasteIcon from "@mui/icons-material/ContentPaste";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import RadioButtonUncheckedRoundedIcon from "@mui/icons-material/RadioButtonUncheckedRounded";
@@ -148,6 +147,8 @@ function TypeCard({
 }) {
   return (
     <Box
+      role="button"
+      tabIndex={0}
       onClick={onClick}
       sx={{
         display: "flex",
@@ -208,6 +209,8 @@ function SelectCard({
 }) {
   return (
     <Box
+      role="button"
+      tabIndex={0}
       onClick={onClick}
       sx={{
         display: "flex",
@@ -383,7 +386,6 @@ export default function NewSessionDialog({
             {/* Блок «Подсказка тренера» — умный подбор тренировки */}
             <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 2, mt: 1 }}>
               <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "primary.main", mb: 0.5 }}>
-                <AutoAwesomeIcon sx={{ fontSize: 18 }} />
                 <Typography variant="subtitle2">{t("Подсказка тренера", "Coach suggestion")}</Typography>
               </Stack>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
@@ -489,7 +491,6 @@ export default function NewSessionDialog({
         {step === "result" && suggestion && (
           <Stack spacing={1.5}>
             <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "primary.main" }}>
-              <AutoAwesomeIcon sx={{ fontSize: 20 }} />
               <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                 {t("Твоя тренировка готова", "Your workout is ready")}
               </Typography>
@@ -771,6 +772,8 @@ export default function NewSessionDialog({
                 return (
                   <Box
                     key={workout.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       onStartProgram(activeProgram, index);
                       close();
@@ -806,7 +809,7 @@ export default function NewSessionDialog({
                           {workout.name}
                         </Typography>
                         {isNext && (
-                          <Chip label={t("следующая", "next")} size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                          <Chip label={t("следующая", "next")} size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
                         )}
                       </Stack>
                       <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
@@ -865,6 +868,8 @@ function renderGrid(
       {items.map((item) => (
         <Box
           key={item.label}
+          role="button"
+          tabIndex={0}
           onClick={() => {
             item.onPick();
             close();
@@ -908,6 +913,8 @@ function renderGrid(
 
       {addTile && (
         <Box
+          role="button"
+          tabIndex={0}
           onClick={addTile.onClick}
           sx={{
             display: "flex",
