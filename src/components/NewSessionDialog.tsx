@@ -31,6 +31,8 @@ import { L, useT } from "../lib/i18n";
 import {
   CARDIO_ICONS,
   CARDIO_LABELS,
+  cleanName,
+  MIN_NAME_LENGTH,
   MOBILITY_ICONS,
   MOBILITY_LABELS,
 } from "../lib/types";
@@ -310,8 +312,8 @@ export default function NewSessionDialog({
   }
 
   function submitCustom() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    const trimmed = cleanName(name);
+    if (trimmed.length < MIN_NAME_LENGTH) return;
     onAddCustom(branch, { name: trimmed, icon });
     onCreate(branch === "cardio" ? "cardio" : "mobility", { customKind: trimmed, icon });
     close();

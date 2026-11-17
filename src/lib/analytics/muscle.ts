@@ -1,4 +1,4 @@
-import { setVolume } from "../types";
+import { countedSession, setVolume } from "../types";
 import type { Exercise, Session } from "../types";
 import { today } from "../format";
 import { isWorkingSet } from "./metrics";
@@ -32,7 +32,7 @@ function aggregate(
 
   for (const s of sessions) {
     if (s.kind !== "strength" || s.date < start || s.date > end) continue;
-    for (const ex of s.exercises) {
+    for (const ex of countedSession(s).exercises) {
       const exercise = byId.get(ex.exerciseId);
       if (!exercise) continue;
       const cls = classifyExercise(exercise);
@@ -172,7 +172,7 @@ export function movementBalance(
 
   for (const s of sessions) {
     if (s.kind !== "strength" || s.date < start || s.date > end) continue;
-    for (const ex of s.exercises) {
+    for (const ex of countedSession(s).exercises) {
       const exercise = byId.get(ex.exerciseId);
       if (!exercise) continue;
       const working = ex.sets.filter(isWorkingSet).length;
@@ -198,4 +198,25 @@ export function movementBalance(
     { key: "delts", leftLabel: L("Передняя дельта", "Front delt"), left: Math.round(adj("frontDelt")), rightLabel: L("Задняя дельта", "Rear delt"), right: Math.round(adj("rearDelt")) },
   ];
   return rows.filter((r) => r.left > 0 || r.right > 0);
+}
+
+/**
+ * Рабочие подходы по мышцам за диапазон: прямые (мышца — главная в упражнении)
+ * и взвешенные (с вкладом подсобных). Для выгрузки и разбора перекосов.
+ */
+export function muscleSetTotals(
+  sessions: Session[],
+  exercises: Exercise[],
+  start: string,
+  end: string,
+): Array<{ muscle: Muscle; label: string; directSets: number; adjustedSets: number }> {
+  const agg = aggregate(sessions, exercises, start, end);
+  return [...agg]
+    .map(([muscle, a]) => ({
+      muscle,
+      label: MUSCLE_LABEL[muscle],
+      directSets: a.directSets,
+      adjustedSets: a.adjustedSets,
+    }))
+    .sort((a, b) => b.adjustedSets - a.adjustedSets);
 }

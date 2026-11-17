@@ -1,4 +1,4 @@
-import { epley, exerciseName, sessionDurationSec } from "../types";
+import { countedSession, epley, exerciseName, sessionDurationSec } from "../types";
 import type { Exercise, Session } from "../types";
 import { workingVolume } from "./metrics";
 import { exerciseWorkingVolume } from "./strength";
@@ -22,7 +22,7 @@ function exercisePeaks(sessions: Session[]) {
 
   for (const s of sessions) {
     if (s.kind !== "strength") continue;
-    for (const ex of s.exercises) {
+    for (const ex of countedSession(s).exercises) {
       const vol = exerciseWorkingVolume(ex);
       if (vol > 0) volume.set(ex.exerciseId, higher(volume.get(ex.exerciseId) ?? null, vol, s.date));
       for (const set of ex.sets) {

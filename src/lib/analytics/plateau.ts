@@ -3,7 +3,7 @@
 // скользящим средним по 3 точкам → плато, пока сглаженный уровень не превысил
 // уровень последнего прорыва более чем на 1.5% (прирост копится). Разгрузочные недели исключаются.
 
-import { epley } from "../types";
+import { countedSession, epley } from "../types";
 import type { Exercise, Session, SessionExercise } from "../types";
 import { isWorkingSet } from "./metrics";
 import { weekStart } from "./period";
@@ -38,7 +38,7 @@ export function weeklyPeaks(sessions: Session[], exerciseId: string): WeekPeak[]
     if (s.kind !== "strength") continue;
     const wk = weekStart(s.date);
     if (s.deload) deloadWeeks.add(wk);
-    for (const ex of s.exercises) {
+    for (const ex of countedSession(s).exercises) {
       if (ex.exerciseId !== exerciseId) continue;
       const e = bestWorkingE1rm(ex);
       if (e != null) byWeek.set(wk, Math.max(byWeek.get(wk) ?? 0, e));
@@ -179,7 +179,7 @@ export function plateauWeeks(sessions: Session[], exerciseId: string): PlateauWe
     if (s.deload) deloadWeeks.add(wk);
 
     let touched = false;
-    for (const ex of s.exercises) {
+    for (const ex of countedSession(s).exercises) {
       if (ex.exerciseId !== exerciseId) continue;
       touched = true;
       const row =

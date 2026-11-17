@@ -1,4 +1,4 @@
-import { epley, exerciseName, isDone, setVolume } from "../types";
+import { countedSession, epley, exerciseName, isDone, setVolume } from "../types";
 import type { Exercise, Session, SessionExercise, TrainingProgram } from "../types";
 import { L } from "../i18n";
 import { isWorkingSet } from "./metrics";
@@ -86,11 +86,13 @@ function statusOf(delta: ExerciseDelta): DeltaStatus {
  * поздняя правка шаблона не влияет на историю.
  */
 function compareSessions(
-  prev: Session,
-  curr: Session,
+  prevRaw: Session,
+  currRaw: Session,
   workoutName: string,
   exercises: Exercise[],
 ): WorkoutComparison {
+  const prev = countedSession(prevRaw);
+  const curr = countedSession(currRaw);
   const nameOf = (id: string) => {
     const ex = exercises.find((e) => e.id === id);
     return ex ? exerciseName(ex) : L("Упражнение", "Exercise");

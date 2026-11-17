@@ -7,6 +7,7 @@
 //       гасят прибавку и срезают подход; высокая — зелёный свет на +.
 // Всё это ПРЕДЛОЖЕНИЕ: значения предзаполняются, но редактируемы и пропускаемы.
 
+import { countedSession } from "../types";
 import type { Exercise, ProgramWorkout, Session, SessionExercise } from "../types";
 import { classifyExercise } from "./muscles";
 import type { AcwrLevel } from "./sessionLoad";
@@ -106,7 +107,7 @@ export function autoregPlan(input: AutoregInput): AutoregPlan {
   const adjustments: ExerciseAdjustment[] = [...workout.exercises]
     .sort((a, b) => a.order - b.order)
     .map((pe) => {
-      const prev = lastSession?.exercises.find(
+      const prev = (lastSession ? countedSession(lastSession) : null)?.exercises.find(
         (e) => e.plannedExerciseId === pe.id || e.exerciseId === pe.exerciseId,
       );
       const { baseWeight, reps } = prevPerformance(prev);

@@ -4,7 +4,7 @@
 // нейтральные, без медицинских выводов.
 
 import { formatVolume } from "../format";
-import { bestE1rm } from "../types";
+import { bestE1rm, countedSession } from "../types";
 import type { Exercise, Session, TrainingProgram } from "../types";
 import { compareMetric, summarize } from "./metrics";
 import { muscleLoads } from "./muscle";
@@ -38,7 +38,7 @@ export function summaryFacts(
   let best: { name: string; value: number } | null = null;
   for (const s of sessions) {
     if (s.kind !== "strength" || s.date < period.startDate || s.date > period.endDate) continue;
-    for (const ex of s.exercises) {
+    for (const ex of countedSession(s).exercises) {
       const e = bestE1rm(ex);
       if (e != null && (best == null || e > best.value)) {
         best = { name: exerciseName(exercises.find((x) => x.id === ex.exerciseId)), value: e };

@@ -19,7 +19,7 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
 import { MUSCLE_GROUPS, MUSCLE_LABELS } from "../lib/catalog";
-import { exerciseName } from "../lib/types";
+import { cleanName, exerciseName, MIN_NAME_LENGTH } from "../lib/types";
 import { useT } from "../lib/i18n";
 import type { Exercise, MuscleGroup } from "../lib/types";
 
@@ -94,9 +94,21 @@ export default function ExercisePickerDialog({
     onClose();
   }
 
+  const cleanNew = cleanName(newName);
+  const tooShort = cleanNew.length > 0 && cleanNew.length < MIN_NAME_LENGTH;
+  // Такое упражнение уже есть — выбираем его, а не плодим дубль.
+  const existing = cleanNew
+    ? exercises.find((e) => e.name.toLowerCase() === cleanNew.toLowerCase())
+    : undefined;
+
   function submitNew() {
-    const name = newName.trim();
-    if (!name) return;
+    const name = cleanNew;
+    if (name.length < MIN_NAME_LENGTH) return;
+    if (existing) {
+      onPick(existing.id);
+      close();
+      return;
+    }
     const created = onCreate(name, newGroup);
     onPick(created.id);
     close();
@@ -124,6 +136,14 @@ export default function ExercisePickerDialog({
               autoFocus
               fullWidth
               onChange={(event) => setNewName(event.target.value)}
+              error={tooShort}
+              helperText={
+                tooShort
+                  ? t("Минимум 2 символа", "At least 2 characters")
+                  : existing
+                    ? t("Уже есть — выберем его", "Already exists — we’ll pick it")
+                    : undefined
+              }
               onKeyDown={(event) => {
                 if (event.key === "Enter") submitNew();
               }}
@@ -145,7 +165,7 @@ export default function ExercisePickerDialog({
               <Button fullWidth onClick={() => setCreating(false)}>
                 {t("Назад", "Back")}
               </Button>
-              <Button fullWidth variant="contained" onClick={submitNew}>
+              <Button fullWidth variant="contained" onClick={submitNew} disabled={cleanNew.length < MIN_NAME_LENGTH}>
                 {t("Добавить", "Add")}
               </Button>
             </Stack>

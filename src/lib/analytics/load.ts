@@ -5,6 +5,7 @@
 // «норма» была персональной, а не универсальной.
 
 import { addDays, today } from "../format";
+import { countedSession } from "../types";
 import type { Session } from "../types";
 import { isWorkingSet } from "./metrics";
 import { weekStart } from "./period";
@@ -15,7 +16,7 @@ import { L } from "../i18n";
 /** Рабочие подходы силовой сессии (разминка не в счёт). */
 export function workingSetsOf(session: Session): number {
   if (session.kind !== "strength") return 0;
-  return session.exercises.reduce(
+  return countedSession(session).exercises.reduce(
     (n, e) => n + e.sets.filter(isWorkingSet).length,
     0,
   );

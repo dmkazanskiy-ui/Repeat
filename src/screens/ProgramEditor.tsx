@@ -504,6 +504,12 @@ export default function ProgramEditor({
                             integer
                             value={pe.targetRepMax ?? null}
                             onChange={(v) => patchPlanned(workout.id, pe.id, { targetRepMax: v })}
+                            error={pe.targetRepMin != null && pe.targetRepMax != null && pe.targetRepMin > pe.targetRepMax}
+                            helperText={
+                              pe.targetRepMin != null && pe.targetRepMax != null && pe.targetRepMin > pe.targetRepMax
+                                ? t("Меньше «от» — поменяем местами", "Below “from” — will swap")
+                                : undefined
+                            }
                           />
                         )}
                       </FieldGrid>

@@ -1,5 +1,5 @@
 import { sessionCalories } from "../calories";
-import { countsDoneOnly, sessionDurationSec, setVolume } from "../types";
+import { countedSession, countsDoneOnly, sessionDurationSec, setVolume } from "../types";
 import type { Session, WorkoutSet } from "../types";
 import { bucketKey, bucketStarts } from "./period";
 import type {
@@ -17,7 +17,7 @@ export function isWorkingSet(set: WorkoutSet): boolean {
 }
 
 function workingSets(session: Session): WorkoutSet[] {
-  return session.exercises.flatMap((ex) => ex.sets.filter(isWorkingSet));
+  return countedSession(session).exercises.flatMap((ex) => ex.sets.filter(isWorkingSet));
 }
 
 /** Тоннаж рабочих подходов силовой — честный, по выполненным подходам. */

@@ -1,4 +1,4 @@
-import { bestE1rm, epley, exerciseName, setVolume } from "../types";
+import { bestE1rm, countedSession, epley, exerciseName, setVolume } from "../types";
 import type { Exercise, Session, SessionExercise } from "../types";
 import { L } from "../i18n";
 import { isWorkingSet } from "./metrics";
@@ -41,7 +41,7 @@ export function exercisePerformance(
   const points: ExercisePerformancePoint[] = [];
   for (const s of sessions) {
     if (s.kind !== "strength") continue;
-    const entries = s.exercises.filter((e) => e.exerciseId === exerciseId);
+    const entries = countedSession(s).exercises.filter((e) => e.exerciseId === exerciseId);
     if (entries.length === 0) continue;
 
     let top: ReturnType<typeof topWorkingSet> = null;

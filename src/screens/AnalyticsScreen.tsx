@@ -108,7 +108,7 @@ import {
   today,
   weekGrid,
 } from "../lib/format";
-import { bestE1rm, exerciseName, isTrainingSession } from "../lib/types";
+import { bestE1rm, countedSession, exerciseName, isTrainingSession } from "../lib/types";
 import type {
   BodyEntry,
   Exercise,
@@ -334,7 +334,7 @@ export default function AnalyticsScreen({
     for (const s of sessions) {
       if (s.kind !== "strength") continue;
       if (s.date < period.startDate || s.date > period.endDate) continue;
-      for (const ex of s.exercises) {
+      for (const ex of countedSession(s).exercises) {
         const v = bestE1rm(ex);
         if (v != null && v > best) {
           best = v;
@@ -364,7 +364,7 @@ export default function AnalyticsScreen({
       if (s.kind === "strength") {
         let ss = 0;
         let best = 0;
-        for (const ex of s.exercises) {
+        for (const ex of countedSession(s).exercises) {
           ss += ex.sets.length;
           const v = bestE1rm(ex);
           if (v != null && v > best) best = v;

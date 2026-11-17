@@ -304,6 +304,45 @@ export interface PlannedExercise {
   note?: string | null;
 }
 
+/** Название своего упражнения/вида: без крайних и двойных пробелов. */
+export function cleanName(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+/** Короче двух букв — почти наверняка опечатка («Т»). */
+export const MIN_NAME_LENGTH = 2;
+
+/** Диапазон повторов «от 12 до 10» — перепутанные границы меняем местами. */
+function orderedRange<T extends Record<string, unknown>>(obj: T, minKey: keyof T, maxKey: keyof T): T {
+  const lo = obj[minKey] as number | null | undefined;
+  const hi = obj[maxKey] as number | null | undefined;
+  if (lo == null || hi == null || lo <= hi) return obj;
+  return { ...obj, [minKey]: hi, [maxKey]: lo };
+}
+
+/**
+ * Программа с правильными диапазонами повторов: «от» не больше «до» у
+ * упражнений и у недель волны. Возвращает тот же объект, если чинить нечего.
+ */
+export function normalizeProgramReps(program: TrainingProgram): TrainingProgram {
+  let changed = false;
+  const workouts = program.workouts.map((w) => {
+    const exercises = w.exercises.map((pe) => {
+      const next = orderedRange(pe as unknown as Record<string, unknown>, "targetRepMin", "targetRepMax") as unknown as PlannedExercise;
+      if (next !== pe) changed = true;
+      return next;
+    });
+    return exercises.some((e, i) => e !== w.exercises[i]) ? { ...w, exercises } : w;
+  });
+  const weeks = program.wave?.weeks.map((wk) => {
+    const next = orderedRange(wk as unknown as Record<string, unknown>, "repMin", "repMax") as unknown as WeekType;
+    if (next !== wk) changed = true;
+    return next;
+  });
+  if (!changed) return program;
+  return { ...program, workouts, wave: program.wave && weeks ? { ...program.wave, weeks } : program.wave };
+}
+
 /** Тренировка-день программы (A/B/C/D или своё название). */
 /**
  * Тип недели в волне (мезоцикле): лёгкая / средняя / тяжёлая. Задаёт число
@@ -438,6 +477,13 @@ export interface Session {
   pausedMs?: number | null;
   /** Момент постановки на паузу (ISO). Есть — тренировка сейчас на паузе. */
   pausedAt?: string | null;
+  /** Последнее изменение идущей тренировки (ISO): правка подхода, отметка и т. п.
+      По нему забытую тренировку закрываем автоматически. */
+  lastActivityAt?: string | null;
+  /** Закрыта автоматически: «Завершить» не нажали, время финиша оценено. */
+  autoEnded?: boolean;
+  /** Исходный финиш до автоисправления зависшего таймера — на случай отката. */
+  rawEndedAt?: string | null;
   /** Средний пульс за тренировку, введённый вручную при завершении. */
   avgHr?: number | null;
   /** Только для kind === "recovery": процедура, длительность, заметка. */
@@ -631,6 +677,31 @@ export function countsDoneOnly(session: Session): boolean {
   return session.exercises.some((ex) => ex.sets.some((s) => s.done));
 }
 
+const countedCache = new WeakMap<Session, Session>();
+
+/**
+ * Тренировка «как засчитана»: если считаем только выполненное
+ * (`countsDoneOnly`), неотмеченные подходы убраны. Плановые подходы из
+ * программы, которые не сделали, не должны раздувать e1RM, плато и нагрузку
+ * по мышцам. Разминки остаются — их отсекает `isWorkingSet`. Результат
+ * кешируется по ссылке: сессии иммутабельны.
+ */
+export function countedSession(session: Session): Session {
+  const hit = countedCache.get(session);
+  if (hit) return hit;
+  let out = session;
+  if (session.kind === "strength" && countsDoneOnly(session)) {
+    out = {
+      ...session,
+      exercises: session.exercises.map((ex) =>
+        ex.sets.every((s) => s.done) ? ex : { ...ex, sets: ex.sets.filter((s) => s.done) },
+      ),
+    };
+  }
+  countedCache.set(session, out);
+  return out;
+}
+
 /** Тоннаж всей силовой — честный, по выполненным подходам. */
 export function sessionVolume(session: Session): number {
   const doneOnly = countsDoneOnly(session);
@@ -648,6 +719,15 @@ export function sessionDoneSetCount(session: Session): number {
     (total, ex) => total + ex.sets.filter((s) => s.done).length,
     0,
   );
+}
+
+/**
+ * Средний пульс тренировки. Раньше жил в двух полях (у сессии и у кардио) и
+ * мог разъехаться: 100 в одном, 74 в другом. Теперь пишутся оба сразу, а
+ * читаем отсюда: у кардио приоритет поля из формы, оно введено явно.
+ */
+export function sessionAvgHr(session: Session): number | null {
+  return session.cardio?.avgHr ?? session.avgHr ?? null;
 }
 
 /** Тренировка закрыта: нажали «Завершить». Такую показываем read-only. */

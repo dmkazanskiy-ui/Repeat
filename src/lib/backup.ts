@@ -12,17 +12,19 @@
  *
  * Фото прогресса не выгружаются — это картинки, в текст они не помещаются.
  */
-import { activePlateaus, formatWodResult, sessionAttempt } from "./analytics";
+import { activePlateaus, formatWodResult, muscleSetTotals, sessionAttempt } from "./analytics";
 import { addDays, formatDistance, formatDuration, formatVolume, formatWeight, today } from "./format";
 import { L } from "./i18n";
 import {
   INTENSITY_LABELS,
   SESSION_LABELS,
+  BODY_METRICS,
   activityLabel,
+  countsDoneOnly,
   exerciseName,
-  isDone,
   moodContextFor,
   moodReading,
+  sessionAvgHr,
   sessionDurationSec,
   sessionVolume,
 } from "./types";
@@ -118,10 +120,13 @@ export function buildExport(
   return `${renderSummary(data, allExercises, period, from, to)}\n\n${BEGIN}\n${JSON.stringify(file)}\n${END}\n`;
 }
 
-function setText(set: WorkoutSet): string {
+function setText(set: WorkoutSet, doneOnly: boolean): string {
   const main = `${formatWeight(set.weight)}×${set.reps ?? "—"}`;
   const drops = (set.drops ?? []).map((d) => ` → ${formatWeight(d.weight)}×${d.reps ?? "—"}`).join("");
-  return `${set.warmup ? L("разминка ", "warm-up ") : ""}${main}${drops}`;
+  // Неотмеченный подход в тоннаж и прогресс не идёт — помечаем, чтобы разбор
+  // не принял план за сделанное.
+  const skipped = doneOnly && !set.done ? L(" (не отмечен)", " (not checked)") : "";
+  return `${set.warmup ? L("разминка ", "warm-up ") : ""}${main}${drops}${skipped}`;
 }
 
 function sessionLines(s: Session, exercises: Exercise[]): string[] {
@@ -134,19 +139,24 @@ function sessionLines(s: Session, exercises: Exercise[]): string[] {
   if (s.intensity) meta.push(INTENSITY_LABELS[s.intensity].toLowerCase());
   const kcal = sessionCalories(s);
   if (kcal) meta.push(`${Math.round(kcal)} ${L("ккал", "kcal")}`);
-  if (s.avgHr) meta.push(`${L("пульс", "HR")} ${s.avgHr}`);
+  const hr = sessionAvgHr(s);
+  if (hr) meta.push(`${L("пульс", "HR")} ${hr}`);
   if (s.deload) meta.push(L("разгрузка", "deload"));
   if (s.weekType) meta.push(`${L("неделя", "week")}: ${s.weekType.name}`);
-  if (!isDone(s)) meta.push(L("не завершена", "not finished"));
+  // «Не завершена» — только у начатой и не законченной; у записей без таймера
+  // (восстановление, внесённое задним числом) это не ошибка.
+  if (s.startedAt && !s.endedAt) meta.push(L("ещё идёт", "in progress"));
+  if (s.autoEnded) meta.push(L("время оценено: «Завершить» не нажата", "time estimated: Finish wasn’t tapped"));
 
   const head = `- ${s.time ? `${s.time} ` : ""}**${title}** (${SESSION_LABELS[s.kind].toLowerCase()})${meta.length ? ` — ${meta.join(", ")}` : ""}`;
   const lines = [head];
 
+  const doneOnly = countsDoneOnly(s);
   for (const item of s.exercises) {
     const sets = item.sets.filter((x) => x.weight != null || x.reps != null);
     if (!sets.length) continue;
     const name = exerciseName(exercises.find((e) => e.id === item.exerciseId));
-    lines.push(`  - ${name}${item.groupId ? L(" (супер-сет)", " (superset)") : ""}: ${sets.map(setText).join(", ")}`);
+    lines.push(`  - ${name}${item.groupId ? L(" (супер-сет)", " (superset)") : ""}: ${sets.map((x) => setText(x, doneOnly)).join(", ")}`);
     if (item.notes) lines.push(`    - ${L("заметка", "note")}: ${item.notes}`);
   }
   if (s.cardio) {
@@ -154,7 +164,6 @@ function sessionLines(s: Session, exercises: Exercise[]): string[] {
     const parts = [
       c.durationSec ? formatDuration(c.durationSec) : null,
       c.distanceM ? formatDistance(c.distanceM, s.cardioKind) : null,
-      c.avgHr ? `${L("пульс", "HR")} ${c.avgHr}` : null,
       c.inclineDeg != null ? `${L("наклон", "incline")} ${c.inclineDeg}°` : null,
       c.resistance != null ? `${L("уровень", "level")} ${c.resistance}` : null,
       c.powerW != null ? `${c.powerW} ${L("Вт", "W")}` : null,
@@ -181,6 +190,20 @@ function sessionLines(s: Session, exercises: Exercise[]): string[] {
   return lines;
 }
 
+function bodyLabel(key: (typeof BODY_METRICS)[number]["key"]): string {
+  const labels: Record<string, [string, string]> = {
+    weightKg: ["вес", "weight"],
+    chest: ["грудь", "chest"],
+    waist: ["талия", "waist"],
+    hips: ["бёдра", "hips"],
+    biceps: ["бицепс", "biceps"],
+    thigh: ["бедро", "thigh"],
+    neck: ["шея", "neck"],
+  };
+  const [ru, en] = labels[key] ?? [key, key];
+  return L(ru, en);
+}
+
 function renderSummary(
   data: BackupData,
   exercises: Exercise[],
@@ -205,7 +228,10 @@ function renderSummary(
   const days = new Set(trainings.map((s) => s.date)).size;
   const volume = data.sessions.reduce((sum, s) => sum + sessionVolume(s), 0);
   out.push(`## ${L("Итог", "Summary")}`);
-  out.push(`- ${L("Тренировок", "Workouts")}: ${trainings.length}, ${L("активных дней", "active days")}: ${days}`);
+  const recoveryCount = data.sessions.length - trainings.length;
+  out.push(
+    `- ${L("Тренировок", "Workouts")}: ${trainings.length}${recoveryCount ? ` ${L(`(плюс процедур восстановления: ${recoveryCount}, всего записей: ${data.sessions.length})`, `(plus ${recoveryCount} recovery sessions, ${data.sessions.length} entries total)`)}` : ""}, ${L("активных дней", "active days")}: ${days}`,
+  );
   if (volume > 0) out.push(`- ${L("Общий тоннаж", "Total volume")}: ${formatVolume(volume)}`);
   const byKind = new Map<string, number>();
   for (const s of data.sessions) byKind.set(SESSION_LABELS[s.kind], (byKind.get(SESSION_LABELS[s.kind]) ?? 0) + 1);
@@ -222,11 +248,39 @@ function renderSummary(
   }
   out.push("");
 
-  // Вес тела
-  const weights = data.bodyEntries.filter((e) => e.weightKg != null).sort((a, b) => a.date.localeCompare(b.date));
-  if (weights.length) {
-    out.push(`## ${L("Вес тела", "Body weight")}`);
-    for (const e of weights) out.push(`- ${e.date}: ${formatWeight(e.weightKg)} ${L("кг", "kg")}`);
+  // Нагрузка по мышцам: рабочие подходы в неделю (засчитанные, без разминок).
+  const sessionDates = data.sessions.map((s) => s.date).sort();
+  if (sessionDates.length) {
+    const start = from ?? sessionDates[0];
+    const weeks = Math.max(1, (Date.parse(to) - Date.parse(start)) / (7 * 86_400_000));
+    const muscles = muscleSetTotals(data.sessions, exercises, start, to).filter((m) => m.adjustedSets >= 0.5);
+    if (muscles.length) {
+      out.push(`## ${L("Нагрузка по мышцам", "Load by muscle")}`);
+      out.push(
+        L(
+          "_Рабочих подходов в неделю: прямые (мышца — главная в упражнении) / с учётом подсобной работы._",
+          "_Working sets per week: direct (muscle is the prime mover) / including assisting work._",
+        ),
+      );
+      for (const m of muscles) {
+        out.push(`- ${m.label}: ${(m.directSets / weeks).toFixed(1)} / ${(m.adjustedSets / weeks).toFixed(1)}`);
+      }
+      out.push("");
+    }
+  }
+
+  // Тело: вес и обхваты — всё, что вносилось.
+  const body = data.bodyEntries
+    .filter((e) => BODY_METRICS.some((m) => e[m.key] != null))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (body.length) {
+    out.push(`## ${L("Тело: вес и замеры", "Body: weight and measurements")}`);
+    for (const e of body) {
+      const parts = BODY_METRICS.filter((m) => e[m.key] != null).map(
+        (m) => `${bodyLabel(m.key)} ${formatWeight(e[m.key] as number)} ${m.unit === "кг" ? L("кг", "kg") : L("см", "cm")}`,
+      );
+      out.push(`- ${e.date}: ${parts.join(", ")}${e.notes ? ` — ${e.notes}` : ""}`);
+    }
     out.push("");
   }
 

@@ -27,6 +27,7 @@ import {
   groupExercises,
   moodContextFor,
   moodReading,
+  sessionAvgHr,
   sessionDurationSec,
   sessionSetCount,
   sessionVolume,
@@ -76,7 +77,6 @@ export default function SessionView({
   // Мелкие показатели вида — строкой под крупными.
   const cardio = session.cardio;
   const cardioExtras = [
-    cardio?.avgHr != null ? `${t("Средний пульс", "Avg HR")} ${cardio.avgHr}` : null,
     cardio?.inclineDeg != null ? `${t("Наклон", "Incline")} ${cardio.inclineDeg}°` : null,
     cardio?.resistance != null ? `${t("Уровень", "Resistance")} ${cardio.resistance}` : null,
     cardio?.powerW != null ? `${cardio.powerW} ${t("Вт", "W")}` : null,
@@ -132,11 +132,12 @@ export default function SessionView({
         </Box>
         <Box>
           <Typography variant="h1">{sessionTitle(session)}</Typography>
-          {(duration != null || session.avgHr != null) && (
+          {(duration != null || sessionAvgHr(session) != null) && (
             <Typography variant="body2" color="text.secondary">
               {[
                 duration != null ? formatDuration(duration) : null,
-                session.avgHr != null ? `${session.avgHr} ${t("уд/мин", "bpm")}` : null,
+                sessionAvgHr(session) != null ? `${sessionAvgHr(session)} ${t("уд/мин", "bpm")}` : null,
+                session.autoEnded ? t("завершена автоматически", "closed automatically") : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}

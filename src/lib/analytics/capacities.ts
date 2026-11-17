@@ -10,7 +10,7 @@
 //                   тренда инвертируется.
 
 import { addDays } from "../format";
-import { bestE1rm } from "../types";
+import { bestE1rm, countedSession } from "../types";
 import type { CardioKind, Session } from "../types";
 import { isWorkingSet } from "./metrics";
 import { diffDays, weekStart } from "./period";
@@ -59,7 +59,7 @@ function inWeek(date: string, weekStartKey: string): boolean {
 
 /** Средний e1RM силовой сессии — среднее по упражнениям с рабочими подходами. */
 function sessionStrength(session: Session): number | null {
-  const values = session.exercises
+  const values = countedSession(session).exercises
     .map((ex) => bestE1rm(ex))
     .filter((v): v is number => v != null);
   if (values.length === 0) return null;
@@ -159,7 +159,7 @@ export function capacityProgress(
     let cardioMin = 0;
     for (const s of week) {
       if (s.kind === "strength") {
-        workSets += s.exercises.reduce(
+        workSets += countedSession(s).exercises.reduce(
           (n, ex) => n + ex.sets.filter(isWorkingSet).length,
           0,
         );

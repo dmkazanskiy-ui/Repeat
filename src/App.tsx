@@ -15,7 +15,8 @@ import PersonIcon from "@mui/icons-material/Person";
 import AddIcon from "@mui/icons-material/Add";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
-import { LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
+import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
+import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
 import {
   currentWeekType,
   lastSameTypeSession,
@@ -49,6 +50,7 @@ import { newId } from "./lib/id";
 import type { BackupData } from "./lib/backup";
 import { setTelegramBack } from "./lib/telegram";
 import { today } from "./lib/format";
+import { diffDays } from "./lib/analytics/period";
 import {
   acuteChronicLoad,
   autoregPlan,
@@ -76,7 +78,7 @@ import NewSessionDialog from "./components/NewSessionDialog";
 import type { CreateOptions } from "./components/NewSessionDialog";
 import type { ProgramPreset } from "./lib/programLibrary";
 import type { FocusGoal, WorkoutSuggestion } from "./lib/workoutBuilder";
-import { isDiscardableSession, isDone } from "./lib/types";
+import { cleanName, isDiscardableSession, isDone, normalizeProgramReps } from "./lib/types";
 import { withCalorieEstimates } from "./lib/calories";
 import type {
   BodyEntry,
@@ -91,6 +93,12 @@ import type {
 } from "./lib/types";
 
 type Tab = "calendar" | "history" | "stats" | "profile";
+
+function staleToast(n: number): string {
+  return n === 1
+    ? L("Тренировку без «Завершить» закрыли автоматически — время можно поправить", "A workout left running was closed automatically — you can adjust the time")
+    : L(`Закрыли автоматически тренировок без «Завершить»: ${n}. Время можно поправить`, `Closed ${n} workouts left running. You can adjust the times`);
+}
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -136,13 +144,24 @@ export default function App() {
 
   useEffect(() => {
     load().then((data) => {
-      setSessions(withCalorieEstimates(data.sessions, data.bodyEntries));
+      // Зависшие таймеры: разово чиним историю и закрываем брошенные тренировки.
+      const fixedOld = fixDurationOutliers(data.sessions);
+      const stale = autoFinishStale(fixedOld.sessions, Date.now());
+      const loaded = withCalorieEstimates(stale.sessions, data.bodyEntries);
+      setSessions(loaded);
+      if (fixedOld.fixed || stale.closed) {
+        void saveSessions(loaded);
+        setToast(staleToast(fixedOld.fixed + stale.closed));
+      }
       setExercises(data.exercises);
       setCardioKinds(data.cardioKinds);
       setMobilityKinds(data.mobilityKinds);
       setBodyEntries(data.bodyEntries);
       setPhotos(data.photos);
-      setPrograms(data.programs);
+      // Перепутанные «от/до» повторов в старых программах чиним на загрузке.
+      const programsFixed = data.programs.map(normalizeProgramReps);
+      setPrograms(programsFixed);
+      if (programsFixed.some((p, i) => p !== data.programs[i])) void savePrograms(programsFixed);
       setRecovery(data.recovery);
       setFocusGoal(data.focusGoal);
       // Онбординг — только для новых: если уже есть тренировки, не показываем.
@@ -159,7 +178,14 @@ export default function App() {
   const sessionsRef = useRef<Session[]>([]);
   sessionsRef.current = sessions;
   const commit = useCallback((next: Session[]) => {
-    const stamped = withCalorieEstimates(next, bodyRef.current);
+    // Любая правка идущей тренировки — отметка активности: по ней забытую
+    // тренировку закроем через час тишины (см. staleSessions).
+    const prevById = new Map(sessionsRef.current.map((s) => [s.id, s]));
+    const nowIso = new Date().toISOString();
+    const touched = next.map((s) =>
+      s.startedAt && !s.endedAt && prevById.get(s.id) !== s ? { ...s, lastActivityAt: nowIso } : s,
+    );
+    const stamped = withCalorieEstimates(touched, bodyRef.current);
     setSessions(stamped);
     void saveSessions(stamped);
   }, []);
@@ -170,6 +196,24 @@ export default function App() {
     },
     [sessions, commit],
   );
+
+  // Вернулись в приложение — проверяем, не бросили ли тренировку.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      const res = autoFinishStale(sessionsRef.current, Date.now());
+      if (res.closed) {
+        commit(res.sessions);
+        setToast(staleToast(res.closed));
+      }
+    };
+    document.addEventListener("visibilitychange", check);
+    const timer = window.setInterval(check, 5 * 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.clearInterval(timer);
+    };
+  }, [commit]);
 
   const openSession = useCallback((id: string) => {
     setOpenId(id);
@@ -277,7 +321,7 @@ export default function App() {
 
   const createExercise = useCallback(
     (name: string, group: MuscleGroup): Exercise => {
-      const exercise: Exercise = { id: newId(), name, muscleGroup: group, custom: true };
+      const exercise: Exercise = { id: newId(), name: cleanName(name), muscleGroup: group, custom: true };
       const next = [...exercises, exercise];
       setExercises(next);
       void saveCustomExercises(next);
@@ -567,6 +611,21 @@ export default function App() {
     setCreating(true);
   }, []);
 
+  // Вес старше двух недель — напоминаем: по нему считаются калории.
+  // Тем, кто силовые не ведёт и вес не вносил ни разу, не надоедаем, пока нет тренировок.
+  const lastWeightDate = bodyEntries
+    .filter((b) => b.weightKg != null)
+    .reduce<string | null>((max, b) => (max == null || b.date > max ? b.date : max), null);
+  const weightAge = lastWeightDate ? diffDays(lastWeightDate, today()) : null;
+  const weightStaleDays =
+    lastWeightDate == null
+      ? sessions.length > 0
+        ? Infinity
+        : null
+      : weightAge != null && weightAge > 14
+        ? weightAge
+        : null;
+
   const open = openId ? (sessions.find((s) => s.id === openId) ?? null) : null;
   // Завершённую тренировку по умолчанию показываем read-only.
   const showView = open && isDone(open) && !editing;
@@ -582,7 +641,11 @@ export default function App() {
   const backHandler: (() => void) | null = showHiit
     ? null
     : programBeingEdited
-      ? () => setProgramEditId(null)
+      ? () => {
+          const fixed = normalizeProgramReps(programBeingEdited);
+          if (fixed !== programBeingEdited) updateProgram(fixed);
+          setProgramEditId(null);
+        }
       : programBeingViewed
         ? () => setOpenProgramId(null)
         : showPhotos
@@ -626,7 +689,12 @@ export default function App() {
             program={programBeingEdited}
             exercises={exercises}
             onChange={updateProgram}
-            onBack={() => setProgramEditId(null)}
+            onBack={() => {
+              // Пока печатают, «от» может временно быть больше «до» — чиним на выходе.
+              const fixed = normalizeProgramReps(programBeingEdited);
+              if (fixed !== programBeingEdited) updateProgram(fixed);
+              setProgramEditId(null);
+            }}
             onArchive={() => archiveProgram(programBeingEdited.id)}
             onCreateExercise={createExercise}
           />
@@ -768,6 +836,8 @@ export default function App() {
                   onSuggest={() => openCreate("goal")}
                   onOpenLibrary={() => setShowPrograms(true)}
                   onRepeatLast={repeatSession}
+                  weightStaleDays={weightStaleDays}
+                  onUpdateWeight={() => setTab("profile")}
                 />
                 <NewSessionDialog
                   open={creating}

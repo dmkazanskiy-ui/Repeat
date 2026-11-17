@@ -86,6 +86,7 @@ import {
   liveElapsedSec,
   segmentTotals,
   sessionDoneSetCount,
+  sessionAvgHr,
   sessionDurationSec,
   sessionSetCount,
   sessionVolume,
@@ -147,6 +148,13 @@ function markFilledSetsDone(exercises: SessionExercise[]): SessionExercise[] {
       s.weight != null || s.reps != null ? { ...s, done: true } : s,
     ),
   }));
+}
+
+/** Убрать неотмеченные подходы; упражнение, где не осталось ни одного, — тоже. */
+function dropUncheckedSets(exercises: SessionExercise[]): SessionExercise[] {
+  return exercises
+    .map((ex) => ({ ...ex, sets: ex.sets.filter((s) => s.done) }))
+    .filter((ex) => ex.sets.length > 0);
 }
 
 /** Круговой таймер: кольцо — прогресс подходов, центр — прошедшее время. */
@@ -230,6 +238,12 @@ export default function SessionEditor({
   const [finishMin, setFinishMin] = useState<number | null>(null);
   const [finishHr, setFinishHr] = useState<number | null>(null);
   const [finishKcal, setFinishKcal] = useState<number | null>(null);
+  // Как поступить с подходами при завершении (выбор из диалога неотмеченных).
+  const [finishSettle, setFinishSettle] = useState<(exs: SessionExercise[]) => SessionExercise[]>(
+    () => markFilledSetsDone,
+  );
+  // Сколько заполненных подходов не отмечено — открывает вопрос при завершении.
+  const [uncheckedPrompt, setUncheckedPrompt] = useState<number | null>(null);
   // Источник объединения в супер-сет: включается из меню упражнения.
   const [linkingId, setLinkingId] = useState<string | null>(null);
 
@@ -478,7 +492,9 @@ export default function SessionEditor({
             integer
             label={label}
             value={session.cardio?.avgHr ?? null}
-            onChange={(value) => patchCardio({ avgHr: value })}
+            onChange={(value) =>
+              onChange({ ...session, avgHr: value, cardio: { ...session.cardio!, avgHr: value } })
+            }
           />
         );
       case "resistance":
@@ -588,7 +604,12 @@ export default function SessionEditor({
       : next;
   }
 
-  function commitFinish(min: number | null, hr: number | null, kcal: number | null) {
+  function commitFinish(
+    min: number | null,
+    hr: number | null,
+    kcal: number | null,
+    settle: (exs: SessionExercise[]) => SessionExercise[] = markFilledSetsDone,
+  ) {
     const now = new Date();
     // При правке уже завершённой сохраняем исходное время финиша (не сдвигаем
     // тренировку на «сейчас»); при первом завершении финиш = сейчас.
@@ -606,10 +627,13 @@ export default function SessionEditor({
       endedAt,
       pausedMs: override ? 0 : (session.pausedMs ?? null),
       pausedAt: null,
+      // Время подтверждено руками — пометка «оценено» больше не нужна.
+      autoEnded: false,
       avgHr: hr,
+      cardio: session.cardio ? { ...session.cardio, avgHr: hr } : session.cardio,
       calories: kcal,
       time: session.time ?? nowTime(),
-      exercises: markFilledSetsDone(session.exercises),
+      exercises: settle(session.exercises),
     };
     // Кардио: держим «Время, мин» в синхроне с заданной длительностью, иначе
     // темп/дистанция считались бы от старого значения.
@@ -626,7 +650,7 @@ export default function SessionEditor({
   function editDuration() {
     const sec = sessionDurationSec(session);
     setFinishMin(sec != null ? Math.round(sec / 60) : null);
-    setFinishHr(session.avgHr ?? session.cardio?.avgHr ?? null);
+    setFinishHr(sessionAvgHr(session));
     setFinishKcal(session.calories ?? null);
     setFinishing(true);
   }
@@ -645,7 +669,29 @@ export default function SessionEditor({
     }
   }
 
+  /**
+   * Перед первым завершением: если часть подходов отмечена, а заполненные
+   * неотмеченные остались (обычно — плановые из программы), спрашиваем, что с
+   * ними. Молча отмечать их нельзя: они раздували тоннаж, e1RM и плато.
+   * Кто галочки не ставит вовсе — старое поведение, всё заполненное засчитано.
+   */
   function handleFinish() {
+    if (!session.endedAt && session.kind === "strength") {
+      const anyDone = session.exercises.some((ex) => ex.sets.some((s) => s.done));
+      const pending = session.exercises.reduce(
+        (n, ex) => n + ex.sets.filter((s) => !s.done && (s.weight != null || s.reps != null)).length,
+        0,
+      );
+      if (anyDone && pending > 0) {
+        setUncheckedPrompt(pending);
+        return;
+      }
+    }
+    finishWith(markFilledSetsDone);
+  }
+
+  function finishWith(settle: (exs: SessionExercise[]) => SessionExercise[]) {
+    setUncheckedPrompt(null);
     if (running && session.startedAt) {
       // Реальный старт и паузы сохраняем — длительность посчитается корректно.
       const extraPause = session.pausedAt ? Date.now() - Date.parse(session.pausedAt) : 0;
@@ -655,9 +701,9 @@ export default function SessionEditor({
           endedAt: new Date().toISOString(),
           pausedMs: (session.pausedMs ?? 0) + extraPause,
           pausedAt: null,
-          avgHr: session.avgHr ?? session.cardio?.avgHr ?? null,
+          avgHr: sessionAvgHr(session),
           time: session.time ?? nowTime(),
-          exercises: markFilledSetsDone(session.exercises),
+          exercises: settle(session.exercises),
         }),
       );
       onExitEditing?.();
@@ -666,15 +712,12 @@ export default function SessionEditor({
     const cardioDur =
       session.kind === "cardio" ? (session.cardio?.durationSec ?? null) : null;
     if (cardioDur) {
-      commitFinish(
-        Math.round(cardioDur / 60),
-        session.cardio?.avgHr ?? session.avgHr ?? null,
-        session.calories ?? null,
-      );
+      commitFinish(Math.round(cardioDur / 60), sessionAvgHr(session), session.calories ?? null, settle);
       return;
     }
+    setFinishSettle(() => settle);
     setFinishMin(null);
-    setFinishHr(session.cardio?.avgHr ?? session.avgHr ?? null);
+    setFinishHr(sessionAvgHr(session));
     setFinishKcal(session.calories ?? null);
     setFinishing(true);
   }
@@ -802,6 +845,7 @@ export default function SessionEditor({
               {(running || session.endedAt) && (
                 <Typography variant="caption" color="text.secondary">
                   {formatDuration(session.endedAt ? sessionDurationSec(session) : elapsedSec)}
+                  {session.autoEnded && ` · ${t("оценено", "estimated")}`}
                 </Typography>
               )}
               {session.endedAt && (
@@ -888,10 +932,10 @@ export default function SessionEditor({
                 <Typography variant="caption" color="text.secondary">{t("Подходы", "Sets")}</Typography>
                 <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{totalSets}</Typography>
               </Box>
-              {session.avgHr && (
+              {sessionAvgHr(session) != null && (
                 <Box>
                   <Typography variant="caption" color="text.secondary">{t("Пульс", "HR")}</Typography>
-                  <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{session.avgHr}</Typography>
+                  <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{sessionAvgHr(session)}</Typography>
                 </Box>
               )}
               {kcal != null && (
@@ -1647,6 +1691,27 @@ export default function SessionEditor({
         </MenuItem>
       </Menu>
 
+      <Dialog open={uncheckedPrompt != null} onClose={() => setUncheckedPrompt(null)} fullWidth>
+        <DialogTitle>{t("Не все подходы отмечены", "Some sets aren’t checked")}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            {t(
+              `Заполнено, но не отмечено: ${uncheckedPrompt ?? 0}. Их сделали? В тоннаж и прогресс идут только выполненные подходы.`,
+              `Filled in but not checked: ${uncheckedPrompt ?? 0}. Did you do them? Only completed sets count toward tonnage and progress.`,
+            )}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, flexWrap: "wrap", gap: 1 }}>
+          <Button onClick={() => setUncheckedPrompt(null)}>{t("Отмена", "Cancel")}</Button>
+          <Button color="error" onClick={() => finishWith(dropUncheckedSets)}>
+            {t("Удалить невыполненные", "Remove unchecked")}
+          </Button>
+          <Button variant="contained" onClick={() => finishWith(markFilledSetsDone)}>
+            {t("Все сделаны", "All done")}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={finishing} onClose={() => setFinishing(false)} fullWidth>
         <DialogTitle>
           {session.endedAt
@@ -1694,7 +1759,7 @@ export default function SessionEditor({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setFinishing(false)}>{t("Отмена", "Cancel")}</Button>
-          <Button variant="contained" onClick={() => commitFinish(finishMin, finishHr, finishKcal)}>
+          <Button variant="contained" onClick={() => commitFinish(finishMin, finishHr, finishKcal, session.endedAt ? undefined : finishSettle)}>
             {session.endedAt ? t("Сохранить", "Save") : t("Завершить", "Finish")}
           </Button>
         </DialogActions>

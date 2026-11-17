@@ -100,6 +100,9 @@ interface Props {
   onSuggest: () => void;
   onOpenLibrary: () => void;
   onRepeatLast: (session: Session) => void;
+  /** Сколько дней не обновлялся вес (null — свежий). Калории считаются по нему. */
+  weightStaleDays?: number | null;
+  onUpdateWeight?: () => void;
 }
 
 export default function CalendarScreen({
@@ -118,6 +121,8 @@ export default function CalendarScreen({
   onSuggest,
   onOpenLibrary,
   onRepeatLast,
+  weightStaleDays = null,
+  onUpdateWeight,
 }: Props) {
   const t = useT();
   const [cursor, setCursor] = useState(() => parseDateKey(selected));
@@ -269,6 +274,42 @@ export default function CalendarScreen({
 
       {/* Итог дня — та же hero-карточка, что «Итоги недели» в аналитике. */}
       {dayHero && <SummaryHero hero={dayHero} />}
+
+      {selected === todayKey && weightStaleDays != null && onUpdateWeight && (
+        <Box
+          component="button"
+          onClick={onUpdateWeight}
+          sx={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            mb: 1.5,
+            px: 1.5,
+            py: 1,
+            borderRadius: 2,
+            border: "1px solid",
+            borderColor: "divider",
+            bgcolor: "transparent",
+            color: "text.secondary",
+            font: "inherit",
+            textAlign: "left",
+            cursor: "pointer",
+          }}
+        >
+          <Typography variant="body2" sx={{ flex: 1 }}>
+            {weightStaleDays === Infinity
+              ? t("Внеси вес — по нему считаются калории", "Add your weight — calories are based on it")
+              : t(
+                  `Вес не обновлялся ${weightStaleDays} дн. — калории считаются по старому`,
+                  `Weight not updated for ${weightStaleDays} days — calories use the old value`,
+                )}
+          </Typography>
+          <Typography variant="body2" color="primary" sx={{ fontWeight: 600, flexShrink: 0 }}>
+            {t("Обновить", "Update")}
+          </Typography>
+        </Box>
+      )}
 
       {dayList.length === 0 ? (
         selected === todayKey ? (

@@ -109,3 +109,26 @@ describe("backup export/import", () => {
     expect(parseExport(broken).ok).toBe(false);
   });
 });
+
+describe("сводка выгрузки", () => {
+  it("восстановление без таймера не помечено «не завершена», замеры и мышцы на месте", () => {
+    const src = data();
+    const rec = newSession(addDays(today(), -1), "recovery");
+    src.sessions.push(rec);
+    src.bodyEntries[0] = { ...src.bodyEntries[0], waist: 84, chest: 102 };
+    const text = buildExport(src, exercises, "all");
+    const summary = text.slice(0, text.indexOf("<<<REPEAT-EXPORT"));
+    expect(summary).not.toMatch(/не завершена|ещё идёт/);
+    expect(summary).toMatch(/талия 84/);
+    expect(summary).toMatch(/Нагрузка по мышцам/);
+    expect(summary).toMatch(/всего записей: 3/);
+  });
+
+  it("неотмеченный подход в тренировке с отметками помечен и не идёт в прогресс", () => {
+    const src = data();
+    const s = src.sessions[1];
+    s.exercises[0].sets[0] = { ...s.exercises[0].sets[0], weight: 140, done: false };
+    const text = buildExport(src, exercises, "all");
+    expect(text).toMatch(/140×8 \(не отмечен\)/);
+  });
+});

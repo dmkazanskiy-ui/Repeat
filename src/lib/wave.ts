@@ -9,6 +9,7 @@
 // Волна идёт по календарю от `startWeek`: пропущенная неделя её не ломает.
 
 import { newId } from "./id";
+import { countedSession } from "./types";
 import { L } from "./i18n";
 import { weekStart } from "./analytics/period";
 import { isWorkingSet } from "./analytics/metrics";
@@ -97,7 +98,7 @@ export function lastSameTypeSession(
 
 /** Самый тяжёлый рабочий вес и повторы упражнения в сессии. */
 function performanceOf(session: Session | null, plannedId: string, exerciseId: string) {
-  const entry = session?.exercises.find(
+  const entry = (session ? countedSession(session) : null)?.exercises.find(
     (e) => e.plannedExerciseId === plannedId || e.exerciseId === exerciseId,
   );
   const working = (entry?.sets ?? []).filter(isWorkingSet);
