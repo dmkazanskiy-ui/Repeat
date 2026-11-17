@@ -40,6 +40,7 @@ import type {
 } from "./types";
 import { FOCUS_GOALS } from "./workoutBuilder";
 import type { FocusGoal } from "./workoutBuilder";
+import type { Consent } from "./consent";
 
 export const BACKUP_FORMAT = "repeat-export";
 export const BACKUP_VERSION = 1;
@@ -58,6 +59,8 @@ export interface BackupData {
   programs: TrainingProgram[];
   recovery: RecoveryEntry[];
   focusGoal: FocusGoal | null;
+  /** Согласие на обработку данных — синхронизируется как подтверждение. */
+  consent?: Consent | null;
 }
 
 interface BackupFile {

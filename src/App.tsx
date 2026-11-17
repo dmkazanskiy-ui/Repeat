@@ -18,6 +18,8 @@ import { theme } from "./theme";
 import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
 import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
 import { runSync, takeResetNotice } from "./lib/sync";
+import { CONSENT_VERSION, isConsentValid, loadConsent, saveConsent } from "./lib/consent";
+import type { Consent } from "./lib/consent";
 import {
   currentWeekType,
   lastSameTypeSession,
@@ -109,12 +111,18 @@ export default function App() {
   const [recovery, setRecovery] = useState<RecoveryEntry[]>([]);
   const [focusGoal, setFocusGoal] = useState<FocusGoal | null>(null);
   const [onboarded, setOnboarded] = useState(true);
+  const [consent, setConsent] = useState<Consent | null>(null);
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
   const [showHiit, setShowHiit] = useState(false);
   const [hiitCfg, setHiitCfg] = useState<HiitConfig>(() => loadHiit());
   const [tab, setTab] = useState<Tab>("calendar");
+  // Запрос из напоминания «обнови вес»: открыть «Тело» с формой замера.
+  const [weightRequest, setWeightRequest] = useState(false);
+  useEffect(() => {
+    if (tab === "stats" && weightRequest) setWeightRequest(false);
+  }, [tab, weightRequest]);
   const [lang, setLang] = useState<Lang>(loadLang);
   const [selected, setSelected] = useState(today);
   const t = (ru: string, en: string) => (lang === "ru" ? ru : en);
@@ -138,6 +146,7 @@ export default function App() {
   const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null);
 
   useEffect(() => {
+    void loadConsent().then(setConsent);
     load().then((data) => {
       // Зависшие таймеры: разово чиним историю и закрываем брошенные тренировки.
       const fixedOld = fixDurationOutliers(data.sessions);
@@ -368,6 +377,9 @@ export default function App() {
   const finishOnboarding = useCallback(() => {
     setOnboarded(true);
     void saveOnboarded(true);
+    const c: Consent = { version: CONSENT_VERSION, at: new Date().toISOString() };
+    setConsent(c);
+    void saveConsent(c);
   }, []);
 
   /** Заменить упражнение в шаблоне программы — по кнопке в тосте после замены. */
@@ -413,6 +425,7 @@ export default function App() {
     programs,
     recovery,
     focusGoal,
+    consent,
   };
   // Синхронизация между устройствами (только в Telegram, см. lib/sync).
   // Пришедшие с сервера данные кладём напрямую, минуя commit: он ставит
@@ -457,7 +470,7 @@ export default function App() {
     if (!ready) return;
     const id = window.setTimeout(() => void doSync(), 1500);
     return () => window.clearTimeout(id);
-  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal]);
+  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent]);
   // И при возврате в приложение, и раз в минуту — чтобы подтянуть чужие правки.
   useEffect(() => {
     if (!ready) return;
@@ -717,11 +730,12 @@ export default function App() {
     <LangContext.Provider value={lang}>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {ready && !onboarded && (
+      {ready && (!onboarded || !isConsentValid(consent)) && (
         <OnboardingScreen
           focusGoal={focusGoal}
           onPickGoal={changeFocusGoal}
           onDone={finishOnboarding}
+          consentOnly={onboarded}
         />
       )}
       <Container maxWidth="sm" sx={{ py: 2 }}>
@@ -878,7 +892,11 @@ export default function App() {
                   onOpenLibrary={() => setShowPrograms(true)}
                   onRepeatLast={repeatSession}
                   weightStaleDays={weightStaleDays}
-                  onUpdateWeight={() => setTab("profile")}
+                  onUpdateWeight={() => {
+                    // Форма веса живёт в «Прогресс → Тело» — открываем её сразу.
+                    setWeightRequest(true);
+                    setTab("stats");
+                  }}
                 />
                 <NewSessionDialog
                   open={creating}
@@ -923,6 +941,7 @@ export default function App() {
                 focusGoal={focusGoal}
                 bodyEntries={bodyEntries}
                 onChangeBody={changeBody}
+                startWithWeight={weightRequest}
               />
             )}
             {tab === "profile" && (

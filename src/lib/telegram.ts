@@ -5,6 +5,7 @@ interface TelegramWebApp {
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   initData?: string;
+  openLink?: (url: string) => void;
   colorScheme?: "light" | "dark";
   BackButton?: {
     show: () => void;

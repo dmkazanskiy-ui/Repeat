@@ -13,6 +13,7 @@ function data(ids: string[]): BackupData {
     programs: [],
     recovery: [],
     focusGoal: "strength",
+    consent: { version: 1, at: "2026-11-17T10:00:00.000Z" },
   };
 }
 const shadowOf = (d: BackupData) =>

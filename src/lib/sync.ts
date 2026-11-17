@@ -12,6 +12,7 @@
 import { useSyncExternalStore } from "react";
 import { del, get, keys, set } from "./db";
 import type { BackupData } from "./backup";
+import { isConsentValid } from "./consent";
 
 type Collection =
   | "sessions"
@@ -59,6 +60,7 @@ export function toRecords(d: BackupData): Map<string, Rec> {
   for (const p of d.programs) put("programs", p.id, p);
   for (const r of d.recovery) put("recovery", r.id, r);
   if (d.focusGoal != null) put("settings", "focusGoal", d.focusGoal);
+  if (d.consent != null) put("settings", "consent", d.consent);
   return out;
 }
 
@@ -80,6 +82,7 @@ export function fromRecords(recs: Map<string, Rec>, order: BackupData): BackupDa
     return list;
   };
   const goal = recs.get(k("settings", "focusGoal"));
+  const consent = recs.get(k("settings", "consent"));
   return {
     sessions: pick("sessions", order.sessions, (s) => s.id),
     customExercises: pick("customExercises", order.customExercises, (e) => e.id),
@@ -89,6 +92,7 @@ export function fromRecords(recs: Map<string, Rec>, order: BackupData): BackupDa
     programs: pick("programs", order.programs, (p) => p.id),
     recovery: pick("recovery", order.recovery, (r) => r.id),
     focusGoal: goal ? (JSON.parse(goal.json) as BackupData["focusGoal"]) : null,
+    consent: consent ? (JSON.parse(consent.json) as BackupData["consent"]) : null,
   };
 }
 
@@ -197,6 +201,8 @@ export function runSync(getLocal: () => BackupData): Promise<SyncResult> {
     again = true;
     return running;
   }
+  // Без согласия на обработку данных на сервер ничего не уходит.
+  if (!isConsentValid(getLocal().consent)) return Promise.resolve(null);
   running = (async () => {
     let result: SyncResult = null;
     try {

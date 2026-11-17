@@ -126,6 +126,8 @@ interface Props {
   /** Вкладка «Тело»: замеры и вход в галерею фото. */
   bodyEntries: BodyEntry[];
   onChangeBody: (entries: BodyEntry[]) => void;
+  /** Открыть сразу «Тело» с формой нового замера (из напоминания про вес). */
+  startWithWeight?: boolean;
 }
 
 // Разделы аналитики — по четырём вопросам пользователя.
@@ -139,6 +141,7 @@ export default function AnalyticsScreen({
   focusGoal,
   bodyEntries,
   onChangeBody,
+  startWithWeight = false,
 }: Props) {
   const t = useT();
   const lang = useLang();
@@ -154,7 +157,7 @@ export default function AnalyticsScreen({
   const [from, setFrom] = useState(addDays(today(), -29));
   const [to, setTo] = useState(today());
   const [metric, setMetric] = useState<MetricKey>("workouts");
-  const [view, setView] = useState<View>("volume");
+  const [view, setView] = useState<View>(startWithWeight ? "body" : "volume");
   const [lensGoal, setLensGoal] = useState<FocusGoal>(focusGoal ?? "strength");
   const [strengthOpen, setStrengthOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
@@ -957,6 +960,7 @@ export default function AnalyticsScreen({
         <BodyPanel
           bodyEntries={bodyEntries}
           onChangeBody={onChangeBody}
+          autoAdd={startWithWeight}
         />
       )}
 

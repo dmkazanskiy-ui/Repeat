@@ -26,6 +26,8 @@ import { useLang, useT } from "../lib/i18n";
 interface Props {
   bodyEntries: BodyEntry[];
   onChangeBody: (entries: BodyEntry[]) => void;
+  /** Сразу открыть форму нового замера. */
+  autoAdd?: boolean;
 }
 
 /** EN-подписи (локально, чтобы не тянуть lang через весь lib). */
@@ -46,13 +48,13 @@ function sortByDate<T extends { date: string }>(items: T[], desc = false): T[] {
 }
 
 /**
- * Вкладка «Тело» в аналитике: вес, замеры и вход в галерею фото. Раньше всё
+ * Вкладка «Тело» в аналитике: вес и замеры. Раньше всё
  * это жило в профиле и разрасталось там, выдавливая настройки и цель.
  */
-export default function BodyPanel({ bodyEntries, onChangeBody }: Props) {
+export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }: Props) {
   const lang = useLang();
   const t = useT();
-  const [editing, setEditing] = useState<BodyEntry | null>(null);
+  const [editing, setEditing] = useState<BodyEntry | null>(() => (autoAdd ? newBodyEntry(today()) : null));
 
   const asc = useMemo(() => sortByDate(bodyEntries), [bodyEntries]);
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, Button, Stack, Typography, useTheme } from "@mui/material";
+import { Box, Button, Checkbox, Link, Stack, Typography, useTheme } from "@mui/material";
 import { L } from "../lib/i18n";
 import { alpha } from "@mui/material/styles";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
@@ -13,11 +13,72 @@ import { areaPath, smoothPath } from "../lib/chart";
 import type { Pt } from "../lib/chart";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
+import { CONSENT_URL, PRIVACY_URL, openDoc } from "../lib/consent";
 
 interface Props {
   focusGoal: FocusGoal | null;
   onPickGoal: (goal: FocusGoal) => void;
+  /** Вызывается только после согласия на обработку данных. */
   onDone: () => void;
+  /** Обучение уже пройдено раньше — показать только экран согласия. */
+  consentOnly?: boolean;
+}
+
+/**
+ * Согласие на обработку данных. Галочка не стоит заранее; ссылка ведёт на
+ * отдельный документ согласия (так требует 152-ФЗ с 01.09.2025), политика —
+ * отдельной ссылкой.
+ */
+function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  const doc = (path: string, label: string) => (
+    <Link
+      component="button"
+      type="button"
+      onClick={(e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openDoc(path);
+      }}
+      sx={{ verticalAlign: "baseline", font: "inherit", color: "primary.main" }}
+    >
+      {label}
+    </Link>
+  );
+  return (
+    <Box
+      component="label"
+      sx={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 0.5,
+        width: "100%",
+        maxWidth: 420,
+        p: 1,
+        pr: 1.5,
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: checked ? "primary.main" : "divider",
+        textAlign: "left",
+        cursor: "pointer",
+      }}
+    >
+      <Checkbox
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        sx={{ mt: -0.5 }}
+        slotProps={{ input: { "aria-describedby": "consent-text" } }}
+      />
+      <Typography id="consent-text" variant="body2" color="text.secondary" sx={{ pt: 0.25 }}>
+        {L("Я даю ", "I give my ")}
+        {doc(CONSENT_URL, L("согласие на обработку персональных данных", "consent to the processing of personal data"))}
+        {L(
+          ", включая сведения о здоровье (вес, замеры, пульс, самочувствие), и ознакомлен с ",
+          ", including health data (weight, measurements, heart rate, wellbeing), and have read the ",
+        )}
+        {doc(PRIVACY_URL, L("политикой обработки данных", "privacy policy"))}
+      </Typography>
+    </Box>
+  );
 }
 
 /** Пример карточки тренировки — наш реальный визуал (силовая, фиолетовая). */
@@ -161,10 +222,19 @@ const SLIDES = [
   },
 ];
 
-export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Props) {
-  const [slide, setSlide] = useState(0);
+export default function OnboardingScreen({ focusGoal, onPickGoal, onDone, consentOnly = false }: Props) {
+  const [slide, setSlide] = useState(consentOnly ? SLIDES.length - 1 : 0);
+  const [agreed, setAgreed] = useState(false);
   const last = slide === SLIDES.length - 1;
-  const info = SLIDES[slide];
+  const info = consentOnly
+    ? {
+        title: L("Согласие на обработку данных", "Consent to data processing"),
+        sub: L(
+          "История теперь синхронизируется между устройствами через сервер Repeat. Чтобы хранить её там, нужно твоё согласие. Удалить всё можно в любой момент в профиле.",
+          "Your history now syncs between devices via the Repeat server. To store it there we need your consent. You can delete everything anytime in your profile.",
+        ),
+      }
+    : SLIDES[slide];
 
   return (
     <Box
@@ -183,7 +253,7 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Prop
       {/* Пропустить */}
       <Stack direction="row" sx={{ justifyContent: "flex-end", minHeight: 36 }}>
         {!last && (
-          <Button size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={onDone}>
+          <Button size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => setSlide(SLIDES.length - 1)}>
             {L("Пропустить", "Skip")}
           </Button>
         )}
@@ -253,7 +323,7 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Prop
               })}
             </Stack>
           )}
-          {slide === 3 && (
+          {slide === 3 && !consentOnly && (
             <Box
               sx={{
                 width: 96,
@@ -272,8 +342,14 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Prop
         </Box>
       </Stack>
 
+      {last && (
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+          <ConsentCheck checked={agreed} onChange={setAgreed} />
+        </Box>
+      )}
+
       {/* Точки */}
-      <Stack direction="row" spacing={1} sx={{ justifyContent: "center", mb: 2 }}>
+      <Stack direction="row" spacing={1} sx={{ justifyContent: "center", mb: 2, visibility: consentOnly ? "hidden" : "visible" }}>
         {SLIDES.map((_, i) => (
           <Box
             key={i}
@@ -292,9 +368,10 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone }: Prop
         fullWidth
         variant="contained"
         size="large"
+        disabled={last && !agreed}
         onClick={() => (last ? onDone() : setSlide((s) => s + 1))}
       >
-        {last ? L("Начать", "Start") : L("Продолжить", "Continue")}
+        {last ? L("Запустить", "Launch") : L("Продолжить", "Continue")}
       </Button>
     </Box>
   );
