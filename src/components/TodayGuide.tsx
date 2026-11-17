@@ -26,6 +26,7 @@ import {
 } from "../lib/types";
 import type { RecoveryEntry, Session, TrainingProgram } from "../lib/types";
 import { addDays, today } from "../lib/format";
+import { ink } from "../lib/themeMode";
 
 interface Props {
   sessions: Session[];
@@ -45,7 +46,7 @@ interface Props {
 }
 
 const GREEN = TYPE_COLOR.mobility;
-const PROGRAM_COLOR = "#f59e0b";
+const PROGRAM_COLOR = ink("#f59e0b");
 
 /**
  * Проактивный пустой «Сегодня»: вместо строки-заглушки ведём пользователя к
@@ -224,7 +225,7 @@ export default function TodayGuide({
           />
         )}
         <ActionRow
-          color="#94a3b8"
+          color={ink("#94a3b8")}
           icon={<AddRoundedIcon sx={{ fontSize: 20 }} />}
           label={t("Добавить вручную", "Add manually")}
           sub={t("Силовая, кардио, мобилити или восстановление", "Strength, cardio, mobility or recovery")}

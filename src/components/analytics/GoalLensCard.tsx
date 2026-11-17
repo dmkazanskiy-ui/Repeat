@@ -8,11 +8,12 @@ import { FOCUS_GOALS } from "../../lib/workoutBuilder";
 import { useT } from "../../lib/i18n";
 import type { FocusGoal } from "../../lib/workoutBuilder";
 import type { Dir, GoalVerdict, LensTone } from "../../lib/analytics";
+import { ink } from "../../lib/themeMode";
 
 const TONE_COLOR: Record<LensTone, string> = {
-  great: "#4ade80",
-  on_track: "#38bdf8",
-  attention: "#f59e0b",
+  great: ink("#4ade80"),
+  on_track: ink("#38bdf8"),
+  attention: ink("#f59e0b"),
 };
 
 function DirIcon({ dir, color }: { dir: Dir; color: string }) {

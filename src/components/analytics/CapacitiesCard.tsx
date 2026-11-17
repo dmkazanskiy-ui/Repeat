@@ -7,6 +7,7 @@ import type { Pt } from "../../lib/chart";
 import { capacitySummary } from "../../lib/analytics";
 import { L, useT } from "../../lib/i18n";
 import type { CapacityKey, CapacityProgress } from "../../lib/analytics";
+import { ink } from "../../lib/themeMode";
 
 const ICON: Record<CapacityKey, IconKey> = {
   strength: "gym",
@@ -16,9 +17,9 @@ const ICON: Record<CapacityKey, IconKey> = {
 
 /** Цвет качества — сила фиолет, выносливость янтарь, скорость розовый. */
 const COLOR: Record<CapacityKey, string> = {
-  strength: "#a78bfa",
-  endurance: "#f59e0b",
-  speed: "#f472b6",
+  strength: ink("#a78bfa"),
+  endurance: ink("#f59e0b"),
+  speed: ink("#f472b6"),
 };
 
 const ARROW: Record<CapacityProgress["direction"], string> = {

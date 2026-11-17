@@ -5,14 +5,15 @@
 // Графики и аналитика остаются на одном зелёном акценте (наша айдентика).
 
 import type { SessionKind } from "./types";
+import { ink } from "./themeMode";
 
 /** Основной цвет вида. Мобилити = наш зелёный primary. */
 export const TYPE_COLOR: Record<SessionKind, string> = {
-  strength: "#a78bfa", // фиолетовый
-  cardio: "#f472b6", // розовый
-  mobility: "#4ade80", // зелёный (наш акцент)
-  recovery: "#38bdf8", // голубой
-  wod: "#fb923c", // оранжевый — задания/WOD и HYROX
+  strength: ink("#a78bfa"), // фиолетовый
+  cardio: ink("#f472b6"), // розовый
+  mobility: ink("#4ade80"), // зелёный (наш акцент)
+  recovery: ink("#38bdf8"), // голубой
+  wod: ink("#fb923c"), // оранжевый — задания/WOD и HYROX
 };
 
 export function typeColor(kind: SessionKind): string {

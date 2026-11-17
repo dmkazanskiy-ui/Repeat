@@ -20,6 +20,7 @@ import {
   type HiitPhase,
   type HiitPhaseKind,
 } from "../lib/hiit";
+import { ink } from "../lib/themeMode";
 
 interface Props {
   initial: HiitConfig;
@@ -178,11 +179,11 @@ function ConfigView({ cfg, color, onBack, onPatch, onStart, onPreset, t }: {
 /* ------------------------------- RUNNER ------------------------------- */
 
 const PHASE_COLOR: Record<HiitPhaseKind, string> = {
-  prep: "#f59e0b",
-  warmup: "#f59e0b",
-  work: "#f472b6",
-  rest: "#38bdf8",
-  cooldown: "#4ade80",
+  prep: ink("#f59e0b"),
+  warmup: ink("#f59e0b"),
+  work: ink("#f472b6"),
+  rest: ink("#38bdf8"),
+  cooldown: ink("#4ade80"),
 };
 
 function phaseLabel(kind: HiitPhaseKind, t: ReturnType<typeof useT>): string {
@@ -267,7 +268,7 @@ function RunnerView({ cfg, onExit, onFinish, t }: {
   const remSec = paused
     ? Math.ceil(pausedRemRef.current / 1000)
     : Math.max(0, Math.ceil((endsAtRef.current - now) / 1000));
-  const accent = phase ? PHASE_COLOR[phase.kind] : "#f472b6";
+  const accent = phase ? PHASE_COLOR[phase.kind] : ink("#f472b6");
   const phaseProgress = phase ? Math.max(0, Math.min(1, 1 - (endsAtRef.current - now) / (phase.sec * 1000))) : 0;
 
   const togglePause = () => {

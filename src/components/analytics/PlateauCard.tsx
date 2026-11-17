@@ -8,9 +8,10 @@ import type { WeightRepsPoint } from "./WeightRepsChart";
 import { formatDate, formatWeight } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import type { PlateauDetail } from "../../lib/analytics";
+import { ink } from "../../lib/themeMode";
 
 /** Плато — янтарное: это «внимание», а не «плохо». */
-export const PLATEAU_COLOR = "#f59e0b";
+export const PLATEAU_COLOR = ink("#f59e0b");
 
 /**
  * Блок «Плато» во вкладке «Прогресс»: в свёрнутом виде — список упражнений,

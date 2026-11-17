@@ -43,7 +43,10 @@ import { useLang, useT } from "../lib/i18n";
 import type { Lang } from "../lib/i18n";
 import { applyTextScale, loadTextScale } from "../lib/a11y";
 import type { TextScale } from "../lib/a11y";
+import { loadThemePref, MODE, resolveMode, saveThemePref } from "../lib/themeMode";
+import type { ThemePref } from "../lib/themeMode";
 import type { RecoveryEntry, TrainingProgram } from "../lib/types";
+import { ink } from "../lib/themeMode";
 
 interface Props {
   recovery: RecoveryEntry[];
@@ -59,8 +62,8 @@ interface Props {
   onRestore: (next: BackupData) => void;
 }
 
-const RECOVERY_BLUE = "#38bdf8";
-const PROGRAM_AMBER = "#f59e0b";
+const RECOVERY_BLUE = ink("#38bdf8");
+const PROGRAM_AMBER = ink("#f59e0b");
 
 /** EN-подписи (локально, чтобы не тянуть lang через весь lib). */
 const GOAL_EN: Record<FocusGoal, string> = {
@@ -88,6 +91,7 @@ export default function ProfileScreen({
   // Настройки таймера отдыха: устройство, не аккаунт — держим в localStorage.
   const [restOn, setRestOn] = useState(loadRestEnabled);
   const [textScale, setTextScale] = useState<TextScale>(loadTextScale);
+  const [themePref, setThemePref] = useState<ThemePref>(loadThemePref);
   const [restSec, setRestSec] = useState(loadRestSec);
 
   function toggleRest(on: boolean) {
@@ -271,8 +275,8 @@ export default function ProfileScreen({
               flexShrink: 0,
               display: "grid",
               placeItems: "center",
-              color: "#a78bfa",
-              backgroundImage: `linear-gradient(135deg, ${alpha("#a78bfa", 0.28)}, ${alpha("#a78bfa", 0.08)})`,
+              color: ink("#a78bfa"),
+              backgroundImage: `linear-gradient(135deg, ${alpha(ink("#a78bfa"), 0.28)}, ${alpha(ink("#a78bfa"), 0.08)})`,
             }}
           >
             <TimerOutlinedIcon fontSize="small" />
@@ -326,6 +330,30 @@ export default function ProfileScreen({
           </>
         )}
         <Divider sx={{ my: 1.5 }} />
+        {/* Тема: «Авто» — как в Telegram/системе. Смена перезапускает приложение. */}
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+            {t("Тема", "Theme")}
+          </Typography>
+          <ToggleButtonGroup
+            value={themePref}
+            exclusive
+            size="small"
+            onChange={(_, v: ThemePref | null) => {
+              if (v == null || v === themePref) return;
+              setThemePref(v);
+              saveThemePref(v);
+              if (resolveMode(v) !== MODE) window.location.reload();
+            }}
+            aria-label={t("Тема", "Theme")}
+          >
+            {(["auto", "light", "dark"] as const).map((v) => (
+              <ToggleButton key={v} value={v} sx={{ minHeight: 36, px: 1.25, textTransform: "none", fontSize: 13 }}>
+                {{ auto: t("Авто", "Auto"), light: t("Светлая", "Light"), dark: t("Тёмная", "Dark") }[v]}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Stack>
         {/* Размер интерфейса: Telegram не берёт системный размер шрифта iPhone. */}
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
@@ -447,7 +475,7 @@ function RecoveryDialog({
           onChange={(m) => setDraft({ ...draft, mood: m })}
           yLabels={yLabels}
           xLabels={xLabels}
-          color="#4ade80"
+          color={ink("#4ade80")}
         />
       </DialogContent>
       <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>

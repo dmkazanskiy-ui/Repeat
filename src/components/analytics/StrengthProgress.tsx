@@ -18,6 +18,7 @@ import { exercisePlateau, metricDelta, metricSeries, metricTrend, metricValue } 
 import { L, useT } from "../../lib/i18n";
 import type { CompareMode, ExerciseInsight, StrengthMetric, StrengthTrend } from "../../lib/analytics";
 import type { Session } from "../../lib/types";
+import { ink } from "../../lib/themeMode";
 
 const RANGES: Array<{ key: string; label: string; days: number | null }> = [
   { key: "1m", get label() { return L("Месяц", "Month"); }, days: 30 },
@@ -45,13 +46,13 @@ const TREND_LABEL: Record<StrengthTrend, string> = {
   get insufficient() { return L("мало данных", "not enough data"); },
 };
 
-const PURPLE = "#a78bfa";
+const PURPLE = ink("#a78bfa");
 
 /** Цвет тренда: рост зелёный, откат — янтарь (не тревожно-красный), иначе серый. */
 function trendColor(trend: StrengthTrend): string {
-  if (trend === "up") return "#4ade80";
-  if (trend === "down") return "#f59e0b";
-  return "#94a3b3";
+  if (trend === "up") return ink("#4ade80");
+  if (trend === "down") return ink("#f59e0b");
+  return ink("#94a3b3");
 }
 
 function fmtMetric(metric: StrengthMetric, value: number, kg: string): string {
@@ -147,7 +148,7 @@ function ExerciseRow({
                 size="small"
                 variant="outlined"
                 label={`${t("плато", "plateau")} ${plateau.currentWeeks} ${t("нед", "wk")}`}
-                sx={{ height: 20, fontSize: 11.5, color: "#f59e0b", borderColor: alpha("#f59e0b", 0.4) }}
+                sx={{ height: 20, fontSize: 11.5, color: ink("#f59e0b"), borderColor: alpha(ink("#f59e0b"), 0.4) }}
               />
             )}
           </Stack>

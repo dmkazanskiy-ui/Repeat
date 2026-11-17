@@ -18,6 +18,7 @@ import { theme } from "./theme";
 import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
 import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
 import { runSync, takeResetNotice } from "./lib/sync";
+import { loadThemePref, MODE, onSystemModeChange, resolveMode } from "./lib/themeMode";
 import { CONSENT_VERSION, isConsentValid, loadConsent, saveConsent } from "./lib/consent";
 import type { Consent } from "./lib/consent";
 import {
@@ -201,6 +202,15 @@ export default function App() {
       commit(sessions.map((s) => (s.id === updated.id ? updated : s)));
     },
     [sessions, commit],
+  );
+
+  // «Авто»: системная тема сменилась на ходу — перезапускаемся в новой.
+  useEffect(
+    () =>
+      onSystemModeChange(() => {
+        if (loadThemePref() === "auto" && resolveMode("auto") !== MODE) window.location.reload();
+      }),
+    [],
   );
 
   // Вернулись в приложение — проверяем, не бросили ли тренировку.

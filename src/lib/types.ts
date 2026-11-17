@@ -8,6 +8,7 @@ import type { IconKey } from "./icons";
 import { RECOVERY_ICONS, RECOVERY_LABELS } from "./recovery/catalog";
 import { findWodPreset } from "./wod/catalog";
 import { L } from "./i18n";
+import { ink } from "./themeMode";
 
 export type MuscleGroup =
   | "chest"
@@ -113,31 +114,31 @@ export const MOOD_CONTEXTS: Record<
     get title() { return L("Как ты после силовой?", "How do you feel after strength?"); },
     get y() { return [L("Выжат", "Drained"), L("Полон сил", "Energized")] as [string, string]; },
     get x() { return [L("Тяжело далось", "Tough"), L("Легко", "Easy")] as [string, string]; },
-    color: "#a78bfa",
+    color: ink("#a78bfa"),
   },
   cardio: {
     get title() { return L("Как ты после кардио?", "How do you feel after cardio?"); },
     get y() { return [L("Выжат", "Drained"), L("Бодр", "Fresh")] as [string, string]; },
     get x() { return [L("Загнался", "Gassed"), L("Дышалось легко", "Easy breathing")] as [string, string]; },
-    color: "#f472b6",
+    color: ink("#f472b6"),
   },
   mobility: {
     get title() { return L("Как ты после мобилити?", "How do you feel after mobility?"); },
     get y() { return [L("Вялый", "Sluggish"), L("В тонусе", "Toned up")] as [string, string]; },
     get x() { return [L("Зажат", "Tight"), L("Расслаблен", "Loose")] as [string, string]; },
-    color: "#4ade80",
+    color: ink("#4ade80"),
   },
   recovery: {
     get title() { return L("Как зашло восстановление?", "How was the recovery?"); },
     get y() { return [L("Не помогло", "Didn't help"), L("Восстановило", "Restored")] as [string, string]; },
     get x() { return [L("Напряжён", "Tense"), L("Расслаблен", "Relaxed")] as [string, string]; },
-    color: "#38bdf8",
+    color: ink("#38bdf8"),
   },
   daily: {
     get title() { return L("Самочувствие за день", "How you feel today"); },
     get y() { return [L("Нет сил", "No energy"), L("Полон энергии", "Full of energy")] as [string, string]; },
     get x() { return [L("Плохое настроение", "Bad mood"), L("Хорошее", "Good")] as [string, string]; },
-    color: "#4ade80",
+    color: ink("#4ade80"),
   },
 };
 

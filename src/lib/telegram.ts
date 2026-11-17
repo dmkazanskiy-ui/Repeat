@@ -1,3 +1,8 @@
+import { MODE } from "./themeMode";
+
+export const DARK_BG = "#0e1116";
+export const LIGHT_BG = "#f4f6f9";
+
 interface TelegramWebApp {
   ready: () => void;
   expand: () => void;
@@ -6,6 +11,8 @@ interface TelegramWebApp {
   setBackgroundColor?: (color: string) => void;
   initData?: string;
   openLink?: (url: string) => void;
+  onEvent?: (event: string, cb: () => void) => void;
+  offEvent?: (event: string, cb: () => void) => void;
   colorScheme?: "light" | "dark";
   BackButton?: {
     show: () => void;
@@ -40,8 +47,9 @@ export function initTelegram(): void {
   app.ready();
   app.expand();
   app.disableVerticalSwipes?.();
-  app.setHeaderColor?.("#0e1116");
-  app.setBackgroundColor?.("#0e1116");
+  const bg = MODE === "light" ? LIGHT_BG : DARK_BG;
+  app.setHeaderColor?.(bg);
+  app.setBackgroundColor?.(bg);
 }
 
 export function isTelegram(): boolean {

@@ -13,6 +13,7 @@ import SpaOutlinedIcon from "@mui/icons-material/SpaOutlined";
 import { smoothPath } from "../../lib/chart";
 import { useT } from "../../lib/i18n";
 import type { Pt } from "../../lib/chart";
+import { ink } from "../../lib/themeMode";
 
 interface Insight {
   value: string;
@@ -52,7 +53,7 @@ export interface HeroData {
   recovery?: Insight;
 }
 
-const RECOVERY_COLOR = "#38bdf8";
+const RECOVERY_COLOR = ink("#38bdf8");
 
 /**
  * Вертикальные бары дневного объёма — «эквалайзер» справа, но по реальным

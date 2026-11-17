@@ -31,6 +31,7 @@ import { L, useT } from "../lib/i18n";
 import { haptic } from "../lib/telegram";
 import { deleteAccount, syncAvailable, useSyncState } from "../lib/sync";
 import type { Exercise } from "../lib/types";
+import { ink } from "../lib/themeMode";
 
 const PERIODS: BackupPeriod[] = ["day", "week", "month", "all"];
 
@@ -129,14 +130,14 @@ export default function BackupPanel({
       <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
         <Stack spacing={1}>
           <Row
-            color="#4ade80"
+            color={ink("#4ade80")}
             icon={<IosShareRoundedIcon fontSize="small" />}
             title={t("Выгрузить историю", "Export history")}
             sub={t("Текстом: для переноса и для разбора в Claude", "As text: to move it or have Claude review it")}
             onClick={() => setExportOpen(true)}
           />
           <Row
-            color="#38bdf8"
+            color={ink("#38bdf8")}
             icon={<ContentPasteRoundedIcon fontSize="small" />}
             title={t("Вставить историю", "Import history")}
             sub={t("Восстановить из выгрузки — без дублей", "Restore from an export — no duplicates")}
@@ -147,7 +148,7 @@ export default function BackupPanel({
 
       <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mt: 1.5 }}>
         <Row
-          color="#f87171"
+          color={ink("#f87171")}
           icon={<DeleteForeverRoundedIcon fontSize="small" />}
           title={t("Удалить аккаунт", "Delete account")}
           sub={t("Все данные с сервера и с этого устройства", "All data on the server and this device")}

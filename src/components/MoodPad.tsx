@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import { ink } from "../lib/themeMode";
 
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -86,7 +87,7 @@ export default function MoodPad({
           // Сетка точек + мягкий блик к «лучшему» верхнему углу.
           backgroundColor: "action.hover",
           backgroundImage: `radial-gradient(circle at 72% 22%, ${alpha(color, 0.16)}, transparent 60%), radial-gradient(${alpha(
-            "#94a3b3",
+            ink("#94a3b3"),
             0.28,
           )} 1.1px, transparent 1.3px)`,
           backgroundSize: "100% 100%, 12.5% 12.5%",

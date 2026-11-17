@@ -5,6 +5,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import { useT } from "../lib/i18n";
+import { ink } from "../lib/themeMode";
 
 interface Props {
   /** Метка времени (ms), когда отдых заканчивается. */
@@ -55,7 +56,7 @@ export default function RestTimer({ endsAt, target, color, onAdjust, onSkip }: P
 
   const abs = Math.abs(remaining);
   const clock = `${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, "0")}`;
-  const accent = done ? "#4ade80" : color;
+  const accent = done ? ink("#4ade80") : color;
   const progress = done ? 1 : Math.max(0, Math.min(1, 1 - remaining / target));
 
   return (

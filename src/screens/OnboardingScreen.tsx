@@ -14,6 +14,7 @@ import type { Pt } from "../lib/chart";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import { CONSENT_URL, PRIVACY_URL, openDoc } from "../lib/consent";
+import { ink } from "../lib/themeMode";
 
 interface Props {
   focusGoal: FocusGoal | null;
@@ -39,7 +40,7 @@ function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (v: b
         e.stopPropagation();
         openDoc(path);
       }}
-      sx={{ verticalAlign: "baseline", font: "inherit", color: "primary.main" }}
+      sx={{ display: "inline", p: 0, verticalAlign: "baseline", textAlign: "left", font: "inherit", color: "primary.main" }}
     >
       {label}
     </Link>
@@ -83,7 +84,7 @@ function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (v: b
 
 /** Пример карточки тренировки — наш реальный визуал (силовая, фиолетовая). */
 function SampleCard() {
-  const color = "#a78bfa";
+  const color = ink("#a78bfa");
   return (
     <Box
       sx={{

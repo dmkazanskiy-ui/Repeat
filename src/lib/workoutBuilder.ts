@@ -7,6 +7,7 @@ import type { IconKey } from "./icons";
 import type { Exercise, MuscleGroup, Session, SessionKind } from "./types";
 import { addDays, today } from "./format";
 import { L } from "./i18n";
+import { ink } from "./themeMode";
 
 export type Goal =
   | "strength"
@@ -29,10 +30,10 @@ export const PLACES: Array<{ place: Place; label: string; sub: string; icon: Ico
 export type FocusGoal = "strength" | "muscle" | "endurance" | "weight_loss";
 
 export const FOCUS_GOALS: Array<{ goal: FocusGoal; label: string; icon: IconKey; color: string }> = [
-  { goal: "strength", get label() { return L("Растить силу", "Build strength"); }, icon: "gym", color: "#4ade80" },
-  { goal: "muscle", get label() { return L("Набрать мышцы", "Gain muscle"); }, icon: "body", color: "#38bdf8" },
-  { goal: "endurance", get label() { return L("Стать выносливее", "Get fitter"); }, icon: "run", color: "#f59e0b" },
-  { goal: "weight_loss", get label() { return L("Скинуть вес", "Lose weight"); }, icon: "bolt", color: "#a78bfa" },
+  { goal: "strength", get label() { return L("Растить силу", "Build strength"); }, icon: "gym", color: ink("#4ade80") },
+  { goal: "muscle", get label() { return L("Набрать мышцы", "Gain muscle"); }, icon: "body", color: ink("#38bdf8") },
+  { goal: "endurance", get label() { return L("Стать выносливее", "Get fitter"); }, icon: "run", color: ink("#f59e0b") },
+  { goal: "weight_loss", get label() { return L("Скинуть вес", "Lose weight"); }, icon: "bolt", color: ink("#a78bfa") },
 ];
 
 export interface PlanExercise {
@@ -64,11 +65,11 @@ export interface WorkoutSuggestion {
 }
 
 export const GOALS: Array<{ goal: Goal; label: string; sub: string; icon: IconKey; color: string }> = [
-  { goal: "strength", get label() { return L("Развивать силу", "Build strength"); }, get sub() { return L("Увеличить силовые показатели", "Raise your strength numbers"); }, icon: "gym", color: "#4ade80" },
-  { goal: "endurance", get label() { return L("Прокачать выносливость", "Boost endurance"); }, get sub() { return L("Улучшить кардио и выносливость", "Improve cardio and stamina"); }, icon: "run", color: "#f59e0b" },
-  { goal: "muscle", get label() { return L("Набрать мышечную массу", "Gain muscle mass"); }, get sub() { return L("Увеличить объём мышц", "Increase muscle volume"); }, icon: "body", color: "#38bdf8" },
-  { goal: "weight_loss", get label() { return L("Похудеть / сжечь жир", "Lose weight / burn fat"); }, get sub() { return L("Снизить вес и процент жира", "Cut weight and body fat"); }, icon: "bolt", color: "#a78bfa" },
-  { goal: "recovery", get label() { return L("Восстановиться", "Recover"); }, get sub() { return L("Снять усталость и напряжение", "Ease fatigue and tension"); }, icon: "spa", color: "#2dd4bf" },
+  { goal: "strength", get label() { return L("Развивать силу", "Build strength"); }, get sub() { return L("Увеличить силовые показатели", "Raise your strength numbers"); }, icon: "gym", color: ink("#4ade80") },
+  { goal: "endurance", get label() { return L("Прокачать выносливость", "Boost endurance"); }, get sub() { return L("Улучшить кардио и выносливость", "Improve cardio and stamina"); }, icon: "run", color: ink("#f59e0b") },
+  { goal: "muscle", get label() { return L("Набрать мышечную массу", "Gain muscle mass"); }, get sub() { return L("Увеличить объём мышц", "Increase muscle volume"); }, icon: "body", color: ink("#38bdf8") },
+  { goal: "weight_loss", get label() { return L("Похудеть / сжечь жир", "Lose weight / burn fat"); }, get sub() { return L("Снизить вес и процент жира", "Cut weight and body fat"); }, icon: "bolt", color: ink("#a78bfa") },
+  { goal: "recovery", get label() { return L("Восстановиться", "Recover"); }, get sub() { return L("Снять усталость и напряжение", "Ease fatigue and tension"); }, icon: "spa", color: ink("#2dd4bf") },
 ];
 
 export const TIME_OPTIONS: Array<{ time: TimeBudget; label: string; sub: string }> = [
@@ -173,10 +174,10 @@ const REASON: Record<Goal, string> = {
 };
 
 const EFFECT: Record<string, Effect> = {
-  strength: { get label() { return L("Силу", "Strength"); }, icon: "gym", color: "#4ade80" },
-  endurance: { get label() { return L("Выносливость", "Endurance"); }, icon: "run", color: "#f59e0b" },
-  muscle: { get label() { return L("Мышцы", "Muscle"); }, icon: "body", color: "#38bdf8" },
-  recovery: { get label() { return L("Восстановление", "Recovery"); }, icon: "spa", color: "#2dd4bf" },
+  strength: { get label() { return L("Силу", "Strength"); }, icon: "gym", color: ink("#4ade80") },
+  endurance: { get label() { return L("Выносливость", "Endurance"); }, icon: "run", color: ink("#f59e0b") },
+  muscle: { get label() { return L("Мышцы", "Muscle"); }, icon: "body", color: ink("#38bdf8") },
+  recovery: { get label() { return L("Восстановление", "Recovery"); }, icon: "spa", color: ink("#2dd4bf") },
 };
 
 const EFFECTS: Record<Goal, Effect[]> = {

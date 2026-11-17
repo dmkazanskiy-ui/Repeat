@@ -65,6 +65,7 @@ import type {
   TrainingProgram,
   WodData,
 } from "../lib/types";
+import { ink } from "../lib/themeMode";
 
 export interface CreateOptions {
   cardioKind?: CardioKind | null;
@@ -107,7 +108,7 @@ const KIND_CARDS: Array<{
   hint: string;
 }> = [
   // «Программа» — первой, если она есть (фильтр ниже уберёт её без активной).
-  { id: "program", color: "#f59e0b", icon: "gym", get label() { return L("Программа", "Program"); }, get hint() { return L("Тренировка дня из твоего сплита", "Day's workout from your split"); } },
+  { id: "program", color: ink("#f59e0b"), icon: "gym", get label() { return L("Программа", "Program"); }, get hint() { return L("Тренировка дня из твоего сплита", "Day's workout from your split"); } },
   { id: "strength", color: TYPE_COLOR.strength, icon: "gym", get label() { return L("Силовая в зале", "Strength (gym)"); }, get hint() { return L("Упражнения, подходы, веса", "Exercises, sets, weights"); } },
   { id: "cardio", color: TYPE_COLOR.cardio, icon: "run", get label() { return L("Кардио", "Cardio"); }, get hint() { return L("Бег, вел, плавание и другое", "Running, cycling, swimming and more"); } },
   { id: "hiit", color: TYPE_COLOR.cardio, icon: "bolt", get label() { return L("HIIT", "HIIT"); }, get hint() { return L("Интервальный таймер: работа/отдых по раундам", "Interval timer: work/rest by rounds"); } },
@@ -449,7 +450,7 @@ export default function NewSessionDialog({
               <SelectCard
                 key={p.place}
                 icon={<ActivityIcon icon={p.icon} />}
-                color="#94a3b8"
+                color={ink("#94a3b8")}
                 label={p.label}
                 sub={p.sub}
                 selected={place === p.place}
@@ -476,7 +477,7 @@ export default function NewSessionDialog({
               <SelectCard
                 key={t.time}
                 icon={<ScheduleRoundedIcon />}
-                color="#94a3b8"
+                color={ink("#94a3b8")}
                 label={t.label}
                 sub={t.sub}
                 selected={time === t.time}
@@ -799,8 +800,8 @@ export default function NewSessionDialog({
                         flexShrink: 0,
                         display: "grid",
                         placeItems: "center",
-                        color: "#f59e0b",
-                        backgroundImage: `linear-gradient(135deg, ${alpha("#f59e0b", 0.28)}, ${alpha("#f59e0b", 0.08)})`,
+                        color: ink("#f59e0b"),
+                        backgroundImage: `linear-gradient(135deg, ${alpha(ink("#f59e0b"), 0.28)}, ${alpha(ink("#f59e0b"), 0.08)})`,
                       }}
                     >
                       <FitnessCenterIcon fontSize="small" />

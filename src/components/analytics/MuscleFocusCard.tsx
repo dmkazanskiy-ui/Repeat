@@ -9,9 +9,10 @@ import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
 import { useT } from "../../lib/i18n";
 import type { FocusItem, MuscleFocus } from "../../lib/analytics";
 import type { Muscle } from "../../lib/analytics";
+import { ink } from "../../lib/themeMode";
 
 /** Внимание — янтарное: это «посмотри сюда», а не «ты всё делаешь плохо». */
-const FOCUS_COLOR = "#f59e0b";
+const FOCUS_COLOR = ink("#f59e0b");
 
 function ReasonIcon({ reason }: { reason: FocusItem["reason"] }) {
   const sx = { fontSize: 16 };

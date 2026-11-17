@@ -116,6 +116,7 @@ import type {
   Session,
   TrainingProgram,
 } from "../lib/types";
+import { ink } from "../lib/themeMode";
 
 interface Props {
   sessions: Session[];
@@ -443,7 +444,7 @@ export default function AnalyticsScreen({
             : "—",
         sub: summary.distance > 0 ? L("дистанция", "distance") : L("нет кардио", "no cardio"),
         spark: heroSparks.cardio,
-        color: "#f87171",
+        color: ink("#f87171"),
       },
       best: {
         prefix: bestInPeriod ? "e1RM" : undefined,
@@ -454,34 +455,34 @@ export default function AnalyticsScreen({
             : L("лучший подход периода", "best set of the period")
           : L("нет силовых данных", "no strength data"),
         spark: heroSparks.best,
-        color: "#a78bfa",
+        color: ink("#a78bfa"),
       },
       records: {
         value: `${records.length}`,
         suffix: lang === "ru" ? ruPlural(records.length, "новый", "новых", "новых") : "new",
         sub: lang === "ru" ? ruPlural(records.length, "личный рекорд", "личных рекорда", "личных рекордов") : records.length === 1 ? "personal record" : "personal records",
         spark: heroSparks.records,
-        color: "#f59e0b",
+        color: ink("#f59e0b"),
       },
       progress: {
         value: up > 0 ? `${up} ${L("упр.", "ex.")}` : "—",
         sub: up > 0 ? L("растут в силе", "gaining strength") : L("пока без роста", "no gains yet"),
         spark: heroSparks.sets,
-        color: "#4ade80",
+        color: ink("#4ade80"),
       },
       mobility: {
         value: mobilityCount > 0 ? `${mobilityCount}` : "—",
         suffix: mobilityCount > 0 ? (lang === "ru" ? ruPlural(mobilityCount, "сессия", "сессии", "сессий") : mobilityCount === 1 ? "session" : "sessions") : undefined,
         sub: mobilityCount > 0 ? L("мобилити", "mobility") : L("нет мобилити", "no mobility"),
         spark: heroSparks.mobility,
-        color: "#4ade80",
+        color: ink("#4ade80"),
       },
       recovery: {
         value: recoveryCount > 0 ? `${recoveryCount}` : "—",
         suffix: recoveryCount > 0 ? (lang === "ru" ? ruPlural(recoveryCount, "процедура", "процедуры", "процедур") : recoveryCount === 1 ? "session" : "sessions") : undefined,
         sub: recoveryCount > 0 ? L("восстановление", "recovery") : L("нет восстановления", "no recovery"),
         spark: heroSparks.recovery,
-        color: "#38bdf8",
+        color: ink("#38bdf8"),
       },
     };
   }, [sessions, allSessions, period, summary, mode, strengthSummary, bestInPeriod, records, heroSparks, heroRecoveryDays, lang]);
@@ -879,7 +880,7 @@ export default function AnalyticsScreen({
 
       {/* Рекорды — свежие сверху, остальные под дропдауном */}
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 4, mb: 1.5 }}>
-        <EmojiEventsOutlinedIcon sx={{ color: "#f59e0b", fontSize: 22 }} />
+        <EmojiEventsOutlinedIcon sx={{ color: ink("#f59e0b"), fontSize: 22 }} />
         <Typography variant="h2">{t("Рекорды", "Records")}</Typography>
         {records.length > 0 && (
           <Chip
@@ -1259,7 +1260,7 @@ function Heatmap({ grid }: { grid: HeatCell[][] }) {
                   width: "100%",
                   aspectRatio: "1",
                   borderRadius: "3px",
-                  bgcolor: trained ? "primary.main" : cell.recovery ? "#38bdf8" : "action.hover",
+                  bgcolor: trained ? "primary.main" : cell.recovery ? ink("#38bdf8") : "action.hover",
                   opacity: trained ? opacity[cell.level] : cell.recovery ? 0.32 : 1,
                 }}
               />
@@ -1333,7 +1334,7 @@ function BalanceBar({ row }: { row: BalanceRow }) {
   );
 }
 
-const PROGRAM_COLOR = "#f59e0b";
+const PROGRAM_COLOR = ink("#f59e0b");
 
 /** Строка задания: последний результат, лучший и число попыток. */
 function WodRow({ summary }: { summary: WodSummary }) {
@@ -1529,14 +1530,14 @@ function recordVisual(type: PersonalRecord["type"]): {
 } {
   switch (type) {
     case "distance":
-      return { color: "#f472b6", Icon: PlaceOutlinedIcon };
+      return { color: ink("#f472b6"), Icon: PlaceOutlinedIcon };
     case "duration":
-      return { color: "#38bdf8", Icon: ScheduleOutlinedIcon };
+      return { color: ink("#38bdf8"), Icon: ScheduleOutlinedIcon };
     case "exerciseVolume":
     case "sessionVolume":
-      return { color: "#a78bfa", Icon: MonitorWeightOutlinedIcon };
+      return { color: ink("#a78bfa"), Icon: MonitorWeightOutlinedIcon };
     default:
-      return { color: "#a78bfa", Icon: FitnessCenterOutlinedIcon };
+      return { color: ink("#a78bfa"), Icon: FitnessCenterOutlinedIcon };
   }
 }
 
@@ -1628,7 +1629,7 @@ function StatusCount({
   tone: "up" | "flat" | "warn";
 }) {
   // Акцент только у растущих (зелёный) и плато (янтарь); остальное нейтрально.
-  const accent = tone === "up" ? "#4ade80" : tone === "warn" ? "#f59e0b" : null;
+  const accent = tone === "up" ? ink("#4ade80") : tone === "warn" ? ink("#f59e0b") : null;
   const tinted = accent != null && value > 0;
   const color = value === 0 ? "text.disabled" : (accent ?? "text.primary");
   return (

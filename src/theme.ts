@@ -1,4 +1,28 @@
 import { createTheme } from "@mui/material/styles";
+import { MODE } from "./lib/themeMode";
+import { DARK_BG, LIGHT_BG } from "./lib/telegram";
+
+const DARK = {
+  mode: "dark" as const,
+  primary: { main: "#4ade80", contrastText: "#06210f" },
+  background: { default: DARK_BG, paper: "#171c24" },
+  text: { primary: "#eef2f7", secondary: "#94a3b3" },
+  divider: "#2b3441",
+  error: { main: "#f87171" },
+};
+
+// Светлая: тот же характер (зелёный акцент, мягкие скругления), но акцент
+// глубже — неон на белом не читается. Белые карточки на чуть серой подложке.
+const LIGHT = {
+  mode: "light" as const,
+  primary: { main: "#16a34a", contrastText: "#ffffff" },
+  background: { default: LIGHT_BG, paper: "#ffffff" },
+  text: { primary: "#0f172a", secondary: "#5b6676" },
+  divider: "#e2e8f0",
+  error: { main: "#dc2626" },
+  success: { main: "#16a34a" },
+  warning: { main: "#d97706" },
+};
 
 /**
  * Material 3, но подкрученный: скругления мягче стандартных, плотность выше,
@@ -6,14 +30,7 @@ import { createTheme } from "@mui/material/styles";
  * современно и на Android, и на iPhone, а не как «андроид на айфоне».
  */
 export const theme = createTheme({
-  palette: {
-    mode: "dark",
-    primary: { main: "#4ade80", contrastText: "#06210f" },
-    background: { default: "#0e1116", paper: "#171c24" },
-    text: { primary: "#eef2f7", secondary: "#94a3b3" },
-    divider: "#2b3441",
-    error: { main: "#f87171" },
-  },
+  palette: MODE === "light" ? LIGHT : DARK,
   shape: { borderRadius: 14 },
   typography: {
     fontFamily:
