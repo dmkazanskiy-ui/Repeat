@@ -28,6 +28,7 @@ import type { BackupData, BackupPeriod, MergePlan } from "../lib/backup";
 import { today } from "../lib/format";
 import { L, useT } from "../lib/i18n";
 import { haptic } from "../lib/telegram";
+import { syncAvailable, useSyncState } from "../lib/sync";
 import type { Exercise } from "../lib/types";
 
 const PERIODS: BackupPeriod[] = ["day", "week", "month", "all"];
@@ -122,6 +123,7 @@ export default function BackupPanel({
       <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
         {t("История", "History")}
       </Typography>
+      <SyncLine />
       <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
         <Stack spacing={1}>
           <Row
@@ -148,6 +150,34 @@ export default function BackupPanel({
         <ImportDialog current={data} onRestore={onRestore} onClose={() => setImportOpen(false)} />
       )}
     </>
+  );
+}
+
+/** Строка статуса синхронизации между устройствами. */
+function SyncLine() {
+  const t = useT();
+  const s = useSyncState();
+  const time = (ms: number) =>
+    new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  let text: string;
+  let color = "text.secondary";
+  if (!syncAvailable()) {
+    text = t("Синхронизация работает только внутри Telegram", "Sync works only inside Telegram");
+  } else if (s.kind === "ok") {
+    text = t(`Синхронизировано с сервером в ${time(s.last)}`, `Synced with the server at ${time(s.last)}`);
+  } else if (s.kind === "error") {
+    color = "warning.main";
+    text =
+      s.message === "auth"
+        ? t("Сервер не принял вход — синхронизация выключена", "Server rejected sign-in — sync is off")
+        : t("Нет связи с сервером — данные сохранены на устройстве", "Can’t reach the server — data is saved on this device");
+  } else {
+    text = t("Синхронизация…", "Syncing…");
+  }
+  return (
+    <Typography variant="caption" sx={{ display: "block", mb: 1, color }}>
+      {text}
+    </Typography>
   );
 }
 

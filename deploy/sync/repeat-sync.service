@@ -1,0 +1,18 @@
+[Unit]
+Description=Repeat sync server
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/repeat-sync.env
+Environment=DATA_DIR=/var/lib/repeat-sync
+ExecStart=/usr/bin/python3 /opt/repeat-sync/server.py
+DynamicUser=yes
+StateDirectory=repeat-sync
+Restart=always
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

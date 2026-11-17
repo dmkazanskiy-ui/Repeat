@@ -17,6 +17,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
 import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
+import { runSync } from "./lib/sync";
 import {
   currentWeekType,
   lastSameTypeSession,
@@ -422,6 +423,62 @@ export default function App() {
     recovery,
     focusGoal,
   };
+  // Синхронизация между устройствами (только в Telegram, см. lib/sync).
+  // Пришедшие с сервера данные кладём напрямую, минуя commit: он ставит
+  // отметку активности идущей тренировке, и устройства перебрасывались бы
+  // ею бесконечно.
+  const backupRef = useRef(backupData);
+  backupRef.current = backupData;
+  const applySynced = useCallback((next: BackupData) => {
+    const stamped = withCalorieEstimates(next.sessions, next.bodyEntries);
+    setSessions(stamped);
+    void saveSessions(stamped);
+    setExercises((prev) => {
+      const ex = [...prev.filter((e) => !e.custom), ...next.customExercises];
+      void saveCustomExercises(ex);
+      return ex;
+    });
+    setCardioKinds(next.cardioKinds);
+    void saveCardioKinds(next.cardioKinds);
+    setMobilityKinds(next.mobilityKinds);
+    void saveMobilityKinds(next.mobilityKinds);
+    setBodyEntries(next.bodyEntries);
+    void saveBodyEntries(next.bodyEntries);
+    setPrograms(next.programs);
+    void savePrograms(next.programs);
+    setRecovery(next.recovery);
+    void saveRecovery(next.recovery);
+    setFocusGoal(next.focusGoal);
+    void saveFocusGoal(next.focusGoal);
+    if (next.sessions.length > 0) {
+      setOnboarded(true);
+      void saveOnboarded(true);
+    }
+  }, []);
+  const doSync = useCallback(async () => {
+    const next = await runSync(() => backupRef.current);
+    if (next) applySynced(next);
+  }, [applySynced]);
+  // Любая правка → обмен через 1,5 с (правки подряд склеиваются).
+  useEffect(() => {
+    if (!ready) return;
+    const id = window.setTimeout(() => void doSync(), 1500);
+    return () => window.clearTimeout(id);
+  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal]);
+  // И при возврате в приложение, и раз в минуту — чтобы подтянуть чужие правки.
+  useEffect(() => {
+    if (!ready) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void doSync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(() => void doSync(), 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [ready, doSync]);
+
   const restoreBackup = useCallback(
     (next: BackupData) => {
       commit(next.sessions);
