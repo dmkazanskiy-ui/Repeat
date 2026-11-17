@@ -532,6 +532,30 @@ describe("плато-детектор", () => {
     expect(p.longestWeeks).toBeGreaterThanOrEqual(3);
   });
 
+  it("медленный ровный рост (+1 кг в неделю) — не плато", () => {
+    const dates = Array.from({ length: 10 }, (_, i) => {
+      const d = new Date("2026-06-01T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + i * 7);
+      return d.toISOString().slice(0, 10);
+    });
+    const sessions = dates.map((d, i) => w(d, 100 + i));
+    expect(exercisePlateau(sessions, "base:Жим").currentWeeks).toBeLessThan(3);
+    expect(activePlateaus(sessions, [bench], 3)).toHaveLength(0);
+  });
+
+  it("рост, потом стоп — плато считается с момента остановки", () => {
+    const dates = Array.from({ length: 10 }, (_, i) => {
+      const d = new Date("2026-06-01T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + i * 7);
+      return d.toISOString().slice(0, 10);
+    });
+    const weights = [90, 93, 96, 99, 102, 102, 102, 102, 102, 102];
+    const sessions = dates.map((d, i) => w(d, weights[i]));
+    const p = exercisePlateau(sessions, "base:Жим");
+    expect(p.currentWeeks).toBeGreaterThanOrEqual(3);
+    expect(p.currentWeeks).toBeLessThanOrEqual(5);
+  });
+
   it("мало данных — плато не считается", () => {
     expect(exercisePlateau([w("2026-06-01", 100)], "base:Жим").currentWeeks).toBe(0);
   });

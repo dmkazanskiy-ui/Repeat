@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Пересборка и публикация на свой сервер: https://repeat.dm-kazanskiy.online
-# (VPS REG.RU, nginx, сайт в /var/www/repeat). GitHub Pages — deploy.sh.
+# (VPS REG.RU, nginx, сайт в /var/www/repeat). Старый адрес на GitHub Pages — deploy.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
 npm run build
