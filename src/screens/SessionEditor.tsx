@@ -1,3 +1,4 @@
+import { MODE } from "../lib/themeMode";
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
@@ -44,6 +45,9 @@ import { typeColor } from "../lib/activityColors";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
 import type { PickerSection } from "../components/ExercisePickerDialog";
 import NumberField from "../components/NumberField";
+import WeightField from "../components/WeightField";
+import { unitFor } from "../lib/units";
+import type { ExerciseUnits, WeightUnit } from "../lib/units";
 import { clampRestSec, loadRestEnabled, loadRestSec, saveRestSec } from "../lib/restTimer";
 import { lastWorkingWeight, recentExercises, similarExercises } from "../lib/exerciseSuggest";
 import { useT } from "../lib/i18n";
@@ -118,6 +122,9 @@ interface Props {
   onCopyToClipboard: () => void;
   /** Выйти из режима правки завершённой тренировки — обратно в read-only. */
   onExitEditing?: () => void;
+  /** Свои единицы веса упражнений и смена единицы для упражнения. */
+  exerciseUnits?: ExerciseUnits;
+  onExerciseUnit?: (exerciseId: string, unit: WeightUnit) => void;
   /** Упражнение заменили: App предложит заменить его и в программе. */
   onReplaced?: (info: {
     plannedExerciseId: string | null;
@@ -217,6 +224,8 @@ export default function SessionEditor({
   onCopyToClipboard,
   onExitEditing,
   onReplaced,
+  exerciseUnits,
+  onExerciseUnit,
 }: Props) {
   // Пикер упражнений: добавление нового или замена конкретного в слоте.
   const [picker, setPicker] = useState<
@@ -767,7 +776,7 @@ export default function SessionEditor({
               fontWeight: 600,
               cursor: "pointer",
               p: 0,
-              colorScheme: "dark",
+              colorScheme: MODE,
               "&:focus": { outline: "none" },
             }}
           />
@@ -1380,12 +1389,13 @@ export default function SessionEditor({
                           >
                             {set.warmup ? t("Р", "W") : index + 1}
                           </Box>
-                          <NumberField
-                            placeholder={t("кг", "kg")}
-                            value={set.weight}
-                            onChange={(value) =>
+                          <WeightField
+                            valueKg={set.weight}
+                            onChangeKg={(value) =>
                               patchSet(item.id, set.id, { weight: value })
                             }
+                            unit={unitFor(item.exerciseId, exerciseUnits)}
+                            onUnitChange={(u) => onExerciseUnit?.(item.exerciseId, u)}
                             sx={{ flex: 1, opacity: set.warmup ? 0.5 : 1 }}
                           />
                           <NumberField
@@ -1451,12 +1461,13 @@ export default function SessionEditor({
                             >
                               ↳
                             </Typography>
-                            <NumberField
-                              placeholder={t("кг", "kg")}
-                              value={drop.weight}
-                              onChange={(value) =>
+                            <WeightField
+                              valueKg={drop.weight}
+                              onChangeKg={(value) =>
                                 patchDrop(item.id, set.id, drop.id, { weight: value })
                               }
+                              unit={unitFor(item.exerciseId, exerciseUnits)}
+                              onUnitChange={(u) => onExerciseUnit?.(item.exerciseId, u)}
                               sx={{ flex: 1 }}
                             />
                             <NumberField

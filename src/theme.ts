@@ -24,13 +24,15 @@ const LIGHT = {
   warning: { main: "#d97706" },
 };
 
+const PALETTE = MODE === "light" ? LIGHT : DARK;
+
 /**
  * Material 3, но подкрученный: скругления мягче стандартных, плотность выше,
  * заглавные буквы на кнопках отключены. Цель — чтобы приложение читалось
  * современно и на Android, и на iPhone, а не как «андроид на айфоне».
  */
 export const theme = createTheme({
-  palette: MODE === "light" ? LIGHT : DARK,
+  palette: PALETTE,
   shape: { borderRadius: 14 },
   typography: {
     fontFamily:
@@ -40,6 +42,18 @@ export const theme = createTheme({
     h2: { fontSize: 18, fontWeight: 600 },
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        // Нативные контролы (каретка, пикеры, автозаполнение) берут цвета из
+        // color-scheme. Без этого WebView Telegram на iOS рисует каретку
+        // под системную тему — в светлой теме приложения она белая на белом.
+        html: { colorScheme: MODE },
+        "input, textarea, [contenteditable]": { caretColor: PALETTE.primary.main },
+      },
+    },
+    MuiInputBase: {
+      styleOverrides: { input: { caretColor: PALETTE.primary.main } },
+    },
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: { root: { paddingBlock: 12 } },

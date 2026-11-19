@@ -1,3 +1,5 @@
+import { globalUnit, unitFor, unitLabel } from "../lib/units";
+import type { ExerciseUnits, WeightUnit } from "../lib/units";
 import { Box, Button, Chip, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
 import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
 import { useMemo, useState } from "react";
@@ -50,13 +52,15 @@ interface Props {
   onDelete: () => void;
   onCopyToClipboard: () => void;
   onChange: (session: Session) => void;
+  /** Свои единицы веса упражнений (тренажёры в фунтах). */
+  exerciseUnits?: ExerciseUnits;
 }
 
 /** Подход текстом: «80×5», дропы дописываются стрелкой «→70×6». */
-function setText(set: WorkoutSet): string {
-  const main = `${formatWeight(set.weight)}×${set.reps ?? "—"}`;
+function setText(set: WorkoutSet, unit: WeightUnit): string {
+  const main = `${formatWeight(set.weight, unit)}×${set.reps ?? "—"}`;
   const drops = (set.drops ?? [])
-    .map((d) => `→${formatWeight(d.weight)}×${d.reps ?? "—"}`)
+    .map((d) => `→${formatWeight(d.weight, unit)}×${d.reps ?? "—"}`)
     .join("");
   return main + drops;
 }
@@ -69,6 +73,7 @@ export default function SessionView({
   onDelete,
   onCopyToClipboard,
   onChange,
+  exerciseUnits,
 }: Props) {
   const t = useT();
   const duration = sessionDurationSec(session);
@@ -238,8 +243,11 @@ export default function SessionView({
                       <Typography variant="body2" color="text.secondary">
                         {item.sets
                           .filter((s) => s.weight != null || s.reps != null)
-                          .map(setText)
+                          .map((s) => setText(s, unitFor(item.exerciseId, exerciseUnits)))
                           .join(" · ") || "—"}
+                        {item.sets.some((s) => s.weight != null) && unitFor(item.exerciseId, exerciseUnits) !== globalUnit()
+                          ? ` ${unitLabel(unitFor(item.exerciseId, exerciseUnits))}`
+                          : ""}
                       </Typography>
                     </Paper>
                   );

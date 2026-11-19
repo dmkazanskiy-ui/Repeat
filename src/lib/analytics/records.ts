@@ -1,3 +1,4 @@
+import { unitLabel } from "../units";
 import { countedSession, epley, exerciseName, sessionDurationSec } from "../types";
 import type { Exercise, Session } from "../types";
 import { workingVolume } from "./metrics";
@@ -68,9 +69,9 @@ export function newRecordsInPeriod(
   const records: PersonalRecord[] = [];
 
   const exerciseTypes: Array<[PrType, Map<string, Peak>, Map<string, Peak>, string]> = [
-    ["e1rm", duringEx.e1rm, beforeEx.e1rm, L("кг", "kg")],
-    ["weight", duringEx.weight, beforeEx.weight, L("кг", "kg")],
-    ["exerciseVolume", duringEx.volume, beforeEx.volume, L("кг", "kg")],
+    ["e1rm", duringEx.e1rm, beforeEx.e1rm, unitLabel()],
+    ["weight", duringEx.weight, beforeEx.weight, unitLabel()],
+    ["exerciseVolume", duringEx.volume, beforeEx.volume, unitLabel()],
   ];
 
   for (const [type, dur, prev, unit] of exerciseTypes) {
@@ -93,7 +94,7 @@ export function newRecordsInPeriod(
   // min — порог значимости: слишком короткие/мелкие результаты не рекорды.
   // Длительность < 60 с (случайно оставленный таймер) рекордом не считаем.
   const globals: Array<[PrType, (s: Session) => number, string, string, number]> = [
-    ["sessionVolume", workingVolume, L("Тоннаж тренировки", "Session tonnage"), L("кг", "kg"), 1],
+    ["sessionVolume", workingVolume, L("Тоннаж тренировки", "Session tonnage"), unitLabel(), 1],
     ["distance", (s) => (s.kind === "cardio" ? (s.cardio?.distanceM ?? 0) : 0), L("Дистанция", "Distance"), L("м", "m"), 1],
     ["duration", (s) => sessionDurationSec(s) ?? 0, L("Длительность", "Duration"), L("с", "s"), 60],
   ];

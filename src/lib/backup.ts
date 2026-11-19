@@ -41,6 +41,8 @@ import type {
 import { FOCUS_GOALS } from "./workoutBuilder";
 import type { FocusGoal } from "./workoutBuilder";
 import type { Consent } from "./consent";
+import type { ExerciseUnits } from "./units";
+import { globalUnit } from "./units";
 
 export const BACKUP_FORMAT = "repeat-export";
 export const BACKUP_VERSION = 1;
@@ -61,6 +63,8 @@ export interface BackupData {
   focusGoal: FocusGoal | null;
   /** Согласие на обработку данных — синхронизируется как подтверждение. */
   consent?: Consent | null;
+  /** Свои единицы веса упражнений (exerciseId → kg/lb). Вес везде в кг. */
+  exerciseUnits?: ExerciseUnits;
 }
 
 interface BackupFile {
@@ -230,6 +234,10 @@ function renderSummary(
   const trainings = data.sessions.filter((s) => s.kind !== "recovery");
   const days = new Set(trainings.map((s) => s.date)).size;
   const volume = data.sessions.reduce((sum, s) => sum + sessionVolume(s), 0);
+  if (globalUnit() === "lb") {
+    out.push(L("_Веса и тоннаж — в фунтах (lb)._", "_Weights and tonnage are in pounds (lb)._"));
+    out.push("");
+  }
   out.push(`## ${L("Итог", "Summary")}`);
   const recoveryCount = data.sessions.length - trainings.length;
   out.push(
@@ -280,7 +288,7 @@ function renderSummary(
     out.push(`## ${L("Тело: вес и замеры", "Body: weight and measurements")}`);
     for (const e of body) {
       const parts = BODY_METRICS.filter((m) => e[m.key] != null).map(
-        (m) => `${bodyLabel(m.key)} ${formatWeight(e[m.key] as number)} ${m.unit === "кг" ? L("кг", "kg") : L("см", "cm")}`,
+        (m) => `${bodyLabel(m.key)} ${formatWeight(e[m.key] as number, "kg")} ${m.unit === "кг" ? L("кг", "kg") : L("см", "cm")}`,
       );
       out.push(`- ${e.date}: ${parts.join(", ")}${e.notes ? ` — ${e.notes}` : ""}`);
     }
@@ -350,6 +358,7 @@ export function parseExport(text: string): ParseResult {
     programs: Array.isArray(d.programs) ? d.programs : [],
     recovery: Array.isArray(d.recovery) ? d.recovery : [],
     focusGoal: d.focusGoal ?? null,
+    exerciseUnits: d.exerciseUnits && typeof d.exerciseUnits === "object" ? d.exerciseUnits : {},
   };
   return { ok: true, file };
 }
@@ -398,6 +407,7 @@ export function planMerge(current: BackupData, incoming: BackupData): MergePlan 
       cardioKinds: mergeByName(current.cardioKinds, incoming.cardioKinds),
       mobilityKinds: mergeByName(current.mobilityKinds, incoming.mobilityKinds),
       focusGoal: current.focusGoal ?? incoming.focusGoal,
+      exerciseUnits: { ...(incoming.exerciseUnits ?? {}), ...(current.exerciseUnits ?? {}) },
     },
     added: {
       sessions: sessions.added,

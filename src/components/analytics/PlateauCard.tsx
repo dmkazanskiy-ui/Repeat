@@ -1,3 +1,4 @@
+import { unitLabel } from "../../lib/units";
 import { Box, Collapse, Paper, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
@@ -142,7 +143,7 @@ export default function PlateauCard({
                         </Typography>
                         <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
                           {w.topWeight != null
-                            ? `${formatWeight(w.topWeight)} ${t("кг", "kg")}${w.topReps != null ? ` × ${w.topReps}` : ""}`
+                            ? `${formatWeight(w.topWeight)} ${unitLabel()}${w.topReps != null ? ` × ${w.topReps}` : ""}`
                             : "—"}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">

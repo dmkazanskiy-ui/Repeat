@@ -1,3 +1,5 @@
+import { setGlobalUnit, unitLabel, useGlobalUnit } from "../lib/units";
+import type { WeightUnit } from "../lib/units";
 import { useState } from "react";
 import {
   Box,
@@ -92,6 +94,7 @@ export default function ProfileScreen({
   const [restOn, setRestOn] = useState(loadRestEnabled);
   const [textScale, setTextScale] = useState<TextScale>(loadTextScale);
   const [themePref, setThemePref] = useState<ThemePref>(loadThemePref);
+  const weightUnit = useGlobalUnit();
   const [restSec, setRestSec] = useState(loadRestSec);
 
   function toggleRest(on: boolean) {
@@ -350,6 +353,28 @@ export default function ProfileScreen({
             {(["auto", "light", "dark"] as const).map((v) => (
               <ToggleButton key={v} value={v} sx={{ minHeight: 36, px: 1.25, textTransform: "none", fontSize: 13 }}>
                 {{ auto: t("Авто", "Auto"), light: t("Светлая", "Light"), dark: t("Тёмная", "Dark") }[v]}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Stack>
+        {/* Единицы веса: в данных всегда кг, это только показ и ввод. У упражнения
+            может быть своя единица — выбирается прямо в поле веса подхода. */}
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+            {t("Единицы веса", "Weight units")}
+          </Typography>
+          <ToggleButtonGroup
+            value={weightUnit}
+            exclusive
+            size="small"
+            onChange={(_, v: WeightUnit | null) => {
+              if (v) setGlobalUnit(v);
+            }}
+            aria-label={t("Единицы веса", "Weight units")}
+          >
+            {(["kg", "lb"] as const).map((v) => (
+              <ToggleButton key={v} value={v} sx={{ minWidth: 44, minHeight: 36, px: 1.25, textTransform: "none", fontSize: 13 }}>
+                {unitLabel(v)}
               </ToggleButton>
             ))}
           </ToggleButtonGroup>

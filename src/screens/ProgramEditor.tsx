@@ -1,3 +1,5 @@
+import { fromUnit, toUnitOrNull, unitFor, unitLabel } from "../lib/units";
+import type { ExerciseUnits } from "../lib/units";
 import { useMemo, useState } from "react";
 import {
   Box,
@@ -47,6 +49,8 @@ interface Props {
   onBack: () => void;
   onArchive: () => void;
   onCreateExercise: (name: string, group: MuscleGroup) => Exercise;
+  /** Свои единицы веса упражнений; вес в программе хранится в кг. */
+  exerciseUnits?: ExerciseUnits;
 }
 
 function reindex<T extends { order: number }>(items: T[]): T[] {
@@ -94,6 +98,7 @@ export default function ProgramEditor({
   onBack,
   onArchive,
   onCreateExercise,
+  exerciseUnits,
 }: Props) {
   const t = useT();
   const lang = useLang();
@@ -484,9 +489,13 @@ export default function ProgramEditor({
                         )}
                         <NumberField
                           size="small"
-                          label={t("Вес, кг", "Weight, kg")}
-                          value={pe.targetWeight ?? null}
-                          onChange={(v) => patchPlanned(workout.id, pe.id, { targetWeight: v })}
+                          label={`${t("Вес", "Weight")}, ${unitLabel(unitFor(pe.exerciseId, exerciseUnits))}`}
+                          value={toUnitOrNull(pe.targetWeight ?? null, unitFor(pe.exerciseId, exerciseUnits))}
+                          onChange={(v) =>
+                            patchPlanned(workout.id, pe.id, {
+                              targetWeight: fromUnit(v, unitFor(pe.exerciseId, exerciseUnits)),
+                            })
+                          }
                         />
                         {!repMinFromWave && (
                           <NumberField

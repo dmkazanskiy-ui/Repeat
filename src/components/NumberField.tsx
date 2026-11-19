@@ -7,6 +7,8 @@ type Props = Omit<TextFieldProps, "value" | "onChange" | "type"> & {
   onChange: (value: number | null) => void;
   /** Целые числа (повторы, пульс) — запятую и точку не пропускаем. */
   integer?: boolean;
+  /** Смена ключа (например, единицы веса) перечитывает значение даже в фокусе. */
+  resetKey?: string;
 };
 
 function toText(value: number | null): string {
@@ -34,6 +36,7 @@ export default function NumberField({
   value,
   onChange,
   integer = false,
+  resetKey,
   ...rest
 }: Props) {
   const [text, setText] = useState(() => toText(value));
@@ -44,6 +47,14 @@ export default function NumberField({
   useEffect(() => {
     if (!focused.current) setText(toText(value));
   }, [value]);
+
+  // Сменили единицу — текст в поле должен показать то же значение в новой.
+  const lastKey = useRef(resetKey);
+  useEffect(() => {
+    if (lastKey.current === resetKey) return;
+    lastKey.current = resetKey;
+    setText(toText(value));
+  }, [resetKey, value]);
 
   return (
     <TextField

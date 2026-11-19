@@ -1,3 +1,4 @@
+import { fmtWeight, unitLabel } from "./units";
 // Волна недель (мезоцикл): лёгкая → средняя → тяжёлая, дальше по кругу.
 //
 // Смысл: план задаёт КОРИДОР недели (сколько подходов, какие повторы, от какого
@@ -218,7 +219,7 @@ export function waveToast(plan: WavePlan, exercises: Exercise[]): string {
   const nameOf = (id: string) => exercises.find((e) => e.id === id)?.name ?? "";
   const bumps = Object.values(plan.byPlanned)
     .filter((a) => a.deltaWeight > 0)
-    .map((a) => `+${a.deltaWeight} ${L("кг", "kg")} ${nameOf(a.exerciseId)}`.trim());
+    .map((a) => `+${fmtWeight(a.deltaWeight)} ${unitLabel()} ${nameOf(a.exerciseId)}`.trim());
   const estimate = Object.values(plan.byPlanned).some((a) => a.estimate)
     ? L("вес — ориентир, поправь", "weight is an estimate — adjust it")
     : null;

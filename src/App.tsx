@@ -18,6 +18,9 @@ import { theme } from "./theme";
 import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
 import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
 import { runSync, takeResetNotice } from "./lib/sync";
+import { get as dbGet, set as dbSet } from "./lib/db";
+import { globalUnit, useGlobalUnit } from "./lib/units";
+import type { ExerciseUnits, WeightUnit } from "./lib/units";
 import { loadThemePref, MODE, onSystemModeChange, resolveMode } from "./lib/themeMode";
 import { CONSENT_VERSION, isConsentValid, loadConsent, saveConsent } from "./lib/consent";
 import type { Consent } from "./lib/consent";
@@ -95,6 +98,8 @@ import type {
 
 type Tab = "calendar" | "history" | "stats" | "profile";
 
+const EXERCISE_UNITS_KEY = "exercise_units";
+
 function staleToast(n: number): string {
   return n === 1
     ? L("Тренировку без «Завершить» закрыли автоматически — время можно поправить", "A workout left running was closed automatically — you can adjust the time")
@@ -113,6 +118,9 @@ export default function App() {
   const [focusGoal, setFocusGoal] = useState<FocusGoal | null>(null);
   const [onboarded, setOnboarded] = useState(true);
   const [consent, setConsent] = useState<Consent | null>(null);
+  // Свои единицы веса упражнений (тренажёр в фунтах). Вес в данных — в кг.
+  const [exerciseUnits, setExerciseUnits] = useState<ExerciseUnits>({});
+  const weightUnit = useGlobalUnit();
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
@@ -148,6 +156,7 @@ export default function App() {
 
   useEffect(() => {
     void loadConsent().then(setConsent);
+    void dbGet<ExerciseUnits>(EXERCISE_UNITS_KEY).then((u) => setExerciseUnits(u ?? {}));
     load().then((data) => {
       // Зависшие таймеры: разово чиним историю и закрываем брошенные тренировки.
       const fixedOld = fixDurationOutliers(data.sessions);
@@ -436,6 +445,7 @@ export default function App() {
     recovery,
     focusGoal,
     consent,
+    exerciseUnits,
   };
   // Синхронизация между устройствами (только в Telegram, см. lib/sync).
   // Пришедшие с сервера данные кладём напрямую, минуя commit: он ставит
@@ -464,6 +474,8 @@ export default function App() {
     void saveRecovery(next.recovery);
     setFocusGoal(next.focusGoal);
     void saveFocusGoal(next.focusGoal);
+    setExerciseUnits(next.exerciseUnits ?? {});
+    void dbSet(EXERCISE_UNITS_KEY, next.exerciseUnits ?? {});
     if (next.sessions.length > 0) {
       setOnboarded(true);
       void saveOnboarded(true);
@@ -480,7 +492,18 @@ export default function App() {
     if (!ready) return;
     const id = window.setTimeout(() => void doSync(), 1500);
     return () => window.clearTimeout(id);
-  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent]);
+  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent, exerciseUnits]);
+
+  /** Единица для упражнения: совпадает с общей — снимаем свою, иначе запоминаем. */
+  const changeExerciseUnit = useCallback((exerciseId: string, unit: WeightUnit) => {
+    setExerciseUnits((prev) => {
+      const next = { ...prev };
+      if (unit === globalUnit()) delete next[exerciseId];
+      else next[exerciseId] = unit;
+      void dbSet(EXERCISE_UNITS_KEY, next);
+      return next;
+    });
+  }, []);
   // И при возврате в приложение, и раз в минуту — чтобы подтянуть чужие правки.
   useEffect(() => {
     if (!ready) return;
@@ -513,6 +536,10 @@ export default function App() {
       void saveRecovery(next.recovery);
       setFocusGoal(next.focusGoal);
       void saveFocusGoal(next.focusGoal);
+      if (next.exerciseUnits) {
+        setExerciseUnits(next.exerciseUnits);
+        void dbSet(EXERCISE_UNITS_KEY, next.exerciseUnits);
+      }
       // Восстановили историю — онбординг больше не нужен.
       setOnboarded(true);
       void saveOnboarded(true);
@@ -748,7 +775,8 @@ export default function App() {
           consentOnly={onboarded}
         />
       )}
-      <Container maxWidth="sm" sx={{ py: 2 }}>
+      {/* key: смена общей единицы веса пересобирает экраны — все числа в новой единице. */}
+      <Container key={weightUnit} maxWidth="sm" sx={{ py: 2 }}>
         {!ready ? null : showHiit ? (
           <HiitScreen
             initial={hiitCfg}
@@ -760,6 +788,7 @@ export default function App() {
           <ProgramEditor
             program={programBeingEdited}
             exercises={exercises}
+            exerciseUnits={exerciseUnits}
             onChange={updateProgram}
             onBack={() => {
               // Пока печатают, «от» может временно быть больше «до» — чиним на выходе.
@@ -819,6 +848,7 @@ export default function App() {
             <SessionView
               session={open}
               exercises={exercises}
+              exerciseUnits={exerciseUnits}
               onChange={updateSession}
               onBack={closeSession}
               onEdit={() => setEditing(true)}
@@ -846,6 +876,8 @@ export default function App() {
                 closeSession();
               }}
               onCreateExercise={createExercise}
+              exerciseUnits={exerciseUnits}
+              onExerciseUnit={changeExerciseUnit}
               onReplaced={(info) => {
                 setToast(
                   t(

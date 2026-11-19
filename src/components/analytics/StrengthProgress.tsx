@@ -1,3 +1,4 @@
+import { massToUnit, toUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
 import {
   Box,
@@ -13,7 +14,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
 import MiniChart from "../MiniChart";
 import WeightRepsChart from "./WeightRepsChart";
-import { addDays, formatDate, formatVolume, today } from "../../lib/format";
+import { addDays, formatDate, formatVolume, formatWeight, today } from "../../lib/format";
 import { exercisePlateau, metricDelta, metricSeries, metricTrend, metricValue } from "../../lib/analytics";
 import { L, useT } from "../../lib/i18n";
 import type { CompareMode, ExerciseInsight, StrengthMetric, StrengthTrend } from "../../lib/analytics";
@@ -56,7 +57,7 @@ function trendColor(trend: StrengthTrend): string {
 }
 
 function fmtMetric(metric: StrengthMetric, value: number, kg: string): string {
-  return metric === "volume" ? formatVolume(value) : `${Math.round(value)} ${kg}`;
+  return metric === "volume" ? formatVolume(value) : `${Math.round(massToUnit(value))} ${kg}`;
 }
 
 function ExerciseRow({
@@ -74,7 +75,7 @@ function ExerciseRow({
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState("3m");
   const plateau = exercisePlateau(sessions, ex.id);
-  const kg = t("кг", "kg");
+  const kg = unitLabel();
   const metricLabel = METRICS.find((m) => m.key === metric)!.label;
 
   const days = RANGES.find((r) => r.key === range)?.days ?? null;
@@ -84,7 +85,7 @@ function ExerciseRow({
   // (тоннаж уже агрегирован по неделям в metricSeries).
   const weightPoints = inRange
     .filter((p) => p.weight != null)
-    .map((p) => ({ label: formatDate(p.date), weight: p.weight as number, reps: p.reps ?? 0 }));
+    .map((p) => ({ label: formatDate(p.date), weight: toUnit(p.weight as number), reps: p.reps ?? 0 }));
   const chartPoints = metricSeries(inRange, metric).map((s) => ({ label: formatDate(s.date), value: s.v }));
 
   // Текущее значение метрики — последняя точка с данными.
@@ -190,7 +191,7 @@ function ExerciseRow({
           ) : chartPoints.length > 0 ? (
             <MiniChart
               points={chartPoints}
-              format={metric === "volume" ? (v) => formatVolume(v) : (v) => `${Math.round(v)}`}
+              format={metric === "volume" ? (v) => formatVolume(v) : (v) => `${Math.round(massToUnit(v))}`}
             />
           ) : (
             <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
@@ -199,10 +200,10 @@ function ExerciseRow({
           )}
 
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, mt: 1.5 }}>
-            <Metric label={t("Лучший вес", "Best weight")} value={`${ex.bestWeight} ${kg}`} />
+            <Metric label={t("Лучший вес", "Best weight")} value={`${formatWeight(ex.bestWeight)} ${kg}`} />
             <Metric label={t("Лучшие повторы", "Best reps")} value={`${ex.bestReps}`} />
             <Metric label={t("Лучший тоннаж", "Best tonnage")} value={formatVolume(ex.bestVolume)} />
-            <Metric label={t("Прогноз макс", "Est. max")} value={`${Math.round(ex.bestE1rm)} ${kg}`} />
+            <Metric label={t("Прогноз макс", "Est. max")} value={`${Math.round(massToUnit(ex.bestE1rm))} ${kg}`} />
             <Metric label={t("Тренировок", "Workouts")} value={`${ex.sessions}`} />
             <Metric label={t("Последний рекорд", "Last record")} value={formatDate(ex.lastPrDate)} />
             {plateau.currentWeeks > 0 && (

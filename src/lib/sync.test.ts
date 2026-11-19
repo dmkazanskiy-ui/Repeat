@@ -14,6 +14,7 @@ function data(ids: string[]): BackupData {
     recovery: [],
     focusGoal: "strength",
     consent: { version: 1, at: "2026-11-17T10:00:00.000Z" },
+    exerciseUnits: { leg_press: "lb" },
   };
 }
 const shadowOf = (d: BackupData) =>

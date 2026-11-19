@@ -1,3 +1,5 @@
+import { globalUnit, massToUnit, toUnit, unitLabel } from "./units";
+import type { WeightUnit } from "./units";
 import type { CardioKind } from "./types";
 import { L, getLang } from "./i18n";
 
@@ -126,15 +128,17 @@ export function nowTime(): string {
 }
 
 /** Тоннаж: «4 820 кг» с неразрывными пробелами в разрядах. */
-export function formatVolume(kg: number): string {
+/** Тоннаж в общей единице профиля (кг или lb). */
+export function formatVolume(kg: number, u: WeightUnit = globalUnit()): string {
   if (!kg) return "—";
   const locale = getLang() === "ru" ? "ru-RU" : "en-US";
-  return `${Math.round(kg).toLocaleString(locale)} ${L("кг", "kg")}`;
+  return `${Math.round(massToUnit(kg, u)).toLocaleString(locale)} ${unitLabel(u)}`;
 }
 
-export function formatWeight(value: number | null): string {
+/** Вес (хранится в кг) числом в единице — по умолчанию общей из профиля. */
+export function formatWeight(value: number | null, u: WeightUnit = globalUnit()): string {
   if (value == null) return "—";
-  return dec(Number(value.toFixed(2)));
+  return dec(Number(toUnit(value, u).toFixed(2)));
 }
 
 export function formatDuration(seconds: number | null): string {

@@ -61,6 +61,7 @@ export function toRecords(d: BackupData): Map<string, Rec> {
   for (const r of d.recovery) put("recovery", r.id, r);
   if (d.focusGoal != null) put("settings", "focusGoal", d.focusGoal);
   if (d.consent != null) put("settings", "consent", d.consent);
+  for (const [id, u] of Object.entries(d.exerciseUnits ?? {})) put("settings", `unit:${id}`, u);
   return out;
 }
 
@@ -93,6 +94,11 @@ export function fromRecords(recs: Map<string, Rec>, order: BackupData): BackupDa
     recovery: pick("recovery", order.recovery, (r) => r.id),
     focusGoal: goal ? (JSON.parse(goal.json) as BackupData["focusGoal"]) : null,
     consent: consent ? (JSON.parse(consent.json) as BackupData["consent"]) : null,
+    exerciseUnits: Object.fromEntries(
+      [...recs.values()]
+        .filter((r) => r.c === "settings" && r.id.startsWith("unit:"))
+        .map((r) => [r.id.slice(5), JSON.parse(r.json)]),
+    ),
   };
 }
 

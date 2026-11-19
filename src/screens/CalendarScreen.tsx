@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
+import { formatVolume } from "../lib/format";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import AddIcon from "@mui/icons-material/Add";
@@ -57,7 +58,7 @@ function buildDayHero(
   let volumeText = "—";
   let volumeLabel = t("Тоннаж дня", "Day tonnage");
   if (sum.tonnage > 0) {
-    volumeText = `${sum.tonnage.toLocaleString(t("ru-RU", "en-US"))} ${t("кг", "kg")}`;
+    volumeText = formatVolume(sum.tonnage);
   } else if (sum.durationSec >= 60) {
     volumeText = `${Math.round(sum.durationSec / 60)} ${t("мин", "min")}`;
     volumeLabel = t("Активное время", "Active time");

@@ -1,3 +1,4 @@
+import { fmtWeight, unitLabel } from "../units";
 // Авторегуляция: умная корректировка переноса весов при старте дня программы.
 // Две петли, обе детерминированные (без API):
 //   (A) прогрессия по факту прошлого раза — double progression против диапазона
@@ -129,7 +130,7 @@ export function autoregPlan(input: AutoregInput): AutoregPlan {
             action = "increase";
             weight = baseWeight + inc;
             repsTarget = repMin ?? repMax;
-            reasonText = `${L("взял верх диапазона", "hit top of range")} · +${inc} ${L("кг", "kg")}`;
+            reasonText = `${L("взял верх диапазона", "hit top of range")} · +${fmtWeight(inc)} ${unitLabel()}`;
           } else if (anyBelowMin) {
             action = "hold";
             weight = baseWeight;
@@ -198,7 +199,7 @@ export function autoregToast(plan: AutoregPlan, exercises: Exercise[]): string {
   const nameOf = (id: string) => exercises.find((e) => e.id === id)?.name ?? "";
   const bumps = plan.adjustments
     .filter((a) => a.action === "increase")
-    .map((a) => `+${a.deltaWeight} ${L("кг", "kg")} ${nameOf(a.exerciseId)}`.trim());
+    .map((a) => `+${fmtWeight(a.deltaWeight)} ${unitLabel()} ${nameOf(a.exerciseId)}`.trim());
   const parts = [plan.headline, ...bumps.slice(0, 3)];
   return parts.join(" · ");
 }

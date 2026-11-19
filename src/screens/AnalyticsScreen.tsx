@@ -1,3 +1,4 @@
+import { fmtWeightRound, unitLabel } from "../lib/units";
 import { useMemo, useRef, useState } from "react";
 import {
   Box,
@@ -448,7 +449,7 @@ export default function AnalyticsScreen({
       },
       best: {
         prefix: bestInPeriod ? "e1RM" : undefined,
-        value: bestInPeriod ? `${Math.round(bestInPeriod.value)} ${L("кг", "kg")}` : "—",
+        value: bestInPeriod ? fmtWeightRound(bestInPeriod.value) : "—",
         sub: bestInPeriod
           ? bestInPeriod.name
             ? `«${bestInPeriod.name}»`
@@ -851,7 +852,7 @@ export default function AnalyticsScreen({
                       size="small"
                       color="primary"
                       variant="outlined"
-                      label={`${exerciseName(g)} +${Math.round(g.delta)} ${L("кг", "kg")}`}
+                      label={`${exerciseName(g)} +${fmtWeightRound(g.delta)}`}
                     />
                   ))}
                 </Box>
@@ -1457,7 +1458,7 @@ function DeltaRow({
   deload: boolean;
 }) {
   const t = useT();
-  const kg = t("кг", "kg");
+  const kg = unitLabel();
   const weightText =
     d.prevWeight != null && d.currWeight != null
       ? `${formatWeight(d.prevWeight)} → ${formatWeight(d.currWeight)} ${kg}`
@@ -1510,7 +1511,7 @@ function formatRecordValue(record: PersonalRecord, value: number): string {
     case "exerciseVolume":
       return formatVolume(value);
     default:
-      return `${Math.round(value)} ${L("кг", "kg")}`;
+      return fmtWeightRound(value);
   }
 }
 

@@ -1,3 +1,4 @@
+import { massToUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
 import { Box, Chip, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -54,13 +55,15 @@ export default function StrengthHero({
 
   const days = RANGES.find((r) => r.key === range)?.days ?? null;
   const cutoff = days ? addDays(today(), -days) : "0000-00-00";
-  const series = metricSeries(ex.points, "e1rm").filter((p) => p.date >= cutoff);
+  const series = metricSeries(ex.points, "e1rm")
+    .filter((p) => p.date >= cutoff)
+    .map((p) => ({ ...p, v: massToUnit(p.v) }));
   const plateau = exercisePlateau(sessions, ex.id);
 
   const first = series[0]?.v ?? null;
   const last = series[series.length - 1]?.v ?? null;
   const delta = first != null && last != null ? last - first : null;
-  const kg = t("кг", "kg");
+  const kg = unitLabel();
 
   // Геометрия
   const W = 340;
