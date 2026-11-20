@@ -74,7 +74,11 @@ export default function StrengthHero({
   const W = 340;
   const H = 200;
   const padL = 4;
-  const padR = 6; // подписи оси — внутри графика, линия идёт до края
+  // Подписи оси прижаты к правому краю карточки, график кончается раньше —
+  // с отступом, чтобы линия и точки не наезжали на цифры.
+  const AXIS_W = 26;
+  const AXIS_GAP = 10;
+  const padR = AXIS_W + AXIS_GAP;
   const padT = 12;
   const padB = 24;
   const values = series.map((p) => p.v);
@@ -161,7 +165,7 @@ export default function StrengthHero({
           {ticks.map((v, i) => (
             <g key={i}>
               <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke={grid} strokeWidth={1} />
-              <text x={W - padR} y={y(v) - 4} fontSize={10} fill={muted} textAnchor="end">
+              <text x={W} y={y(v) + 3.5} fontSize={10} fill={muted} textAnchor="end">
                 {Math.round(v)}
               </text>
             </g>
