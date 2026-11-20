@@ -10,7 +10,9 @@ const IN: [number, number] = [520, 34]; // возвращаются
 const POP: [number, number] = [520, 16]; // «пружинка» кнопки
 const ROT: [number, number] = [320, 20]; // поворот плюса в крестик
 const STAGGER_MS = 45;
-const RADIUS = 118;
+const RADIUS = 124;
+/** Веер чуть приподнят над кнопкой, чтобы крайние капли не заходили на таб-бар. */
+const LIFT = 22;
 const MAIN = 50;
 const BUB = 46;
 
@@ -37,12 +39,12 @@ export default function GooMenu({ actions, label }: { actions: GooAction[]; labe
   const blobRefs = useRef<(HTMLDivElement | null)[]>([]);
   const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // Веер над кнопкой: от −155° до −25°.
+  // Веер над кнопкой: от −150° до −30°.
   const n = actions.length;
   const home = actions.map((_, i) => {
-    const deg = n === 1 ? -90 : -155 + (130 * i) / (n - 1);
+    const deg = n === 1 ? -90 : -150 + (120 * i) / (n - 1);
     const a = (deg * Math.PI) / 180;
-    return { x: Math.cos(a) * RADIUS, y: Math.sin(a) * RADIUS };
+    return { x: Math.cos(a) * RADIUS, y: Math.sin(a) * RADIUS - LIFT };
   });
 
   const st = useRef<{ sc: Spring; rot: Spring; bubs: { x: Spring; y: Spring; s: Spring }[]; timers: number[]; loop: ReturnType<typeof springLoop> | null }>(

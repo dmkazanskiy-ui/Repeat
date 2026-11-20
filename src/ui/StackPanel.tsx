@@ -52,7 +52,21 @@ export interface StackPage {
  * Kokonut UI). Строка открывает свою страницу справа, а её подпись улетает
  * в заголовок; назад — кнопкой, свайпом вправо или Escape.
  */
-export default function StackPanel({ pages, root }: { pages: Record<string, StackPage>; root: string }) {
+export default function StackPanel({
+  pages,
+  root,
+  bare = false,
+  onClose,
+  closeLabel = "Готово",
+}: {
+  pages: Record<string, StackPage>;
+  root: string;
+  /** Без своей рамки — когда панель живёт внутри окна-шторки. */
+  bare?: boolean;
+  /** Кнопка «Готово» справа в шапке. */
+  onClose?: () => void;
+  closeLabel?: string;
+}) {
   const [stack, setStack] = useState<string[]>([root]);
   const [height, setHeight] = useState<number | "auto">("auto");
   const [titleFrom, setTitleFrom] = useState<{ dx: number; dy: number; scale: number } | null>(null);
@@ -239,8 +253,8 @@ export default function StackPanel({ pages, root }: { pages: Record<string, Stac
       sx={{
         position: "relative",
         overflow: "hidden",
-        borderRadius: radius.card,
-        border: "1px solid",
+        borderRadius: bare ? 0 : radius.card,
+        border: bare ? "none" : "1px solid",
         borderColor: "divider",
         bgcolor: "background.paper",
       }}
@@ -279,6 +293,14 @@ export default function StackPanel({ pages, root }: { pages: Record<string, Stac
         >
           {pages[top].title}
         </Typography>
+        {onClose && (
+          <ButtonBase
+            onClick={onClose}
+            sx={{ position: "relative", zIndex: 1, ml: "auto", borderRadius: "10px", py: 0.75, px: 1, fontSize: 14, fontWeight: 600, color: "primary.main" }}
+          >
+            {closeLabel}
+          </ButtonBase>
+        )}
       </Box>
 
       {/* Тело: нижняя страница с параллаксом, верхняя — сверху и тянется пальцем */}

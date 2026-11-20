@@ -20,7 +20,8 @@ import { Close as CloseIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { ChevronRightRounded as ChevronRightRoundedIcon } from "../ui/icons";
 import MoodPad from "../components/MoodPad";
-import BackupPanel from "../components/BackupPanel";
+import { DeleteDialog, ExportDialog, ImportDialog, useSyncText } from "../components/BackupPanel";
+import { Settings as SettingsIcon } from "../ui/icons";
 import StackPanel, { type StackPage } from "../ui/StackPanel";
 import type { BackupData } from "../lib/backup";
 import type { Exercise } from "../lib/types";
@@ -91,6 +92,12 @@ export default function ProfileScreen({
   const [themePref, setThemePref] = useState<ThemePref>(loadThemePref);
   const weightUnit = useGlobalUnit();
   const [restSec, setRestSec] = useState(loadRestSec);
+  // Настройки — отдельная шторка, открывается круглой кнопкой в шапке.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const sync = useSyncText();
 
   function toggleRest(on: boolean) {
     setRestOn(on);
@@ -124,7 +131,33 @@ export default function ProfileScreen({
             { id: "theme", label: t("Тема", "Theme"), detail: themeLabel[themePref], to: "theme" },
             { id: "units", label: t("Единицы веса", "Weight units"), detail: unitLabel(weightUnit), to: "units" },
             { id: "text", label: t("Размер текста", "Text size"), detail: scaleLabel[textScale], to: "text" },
+            { id: "lang", label: t("Язык", "Language"), detail: lang === "ru" ? "Русский" : "English", to: "lang" },
           ],
+        },
+        {
+          title: t("История", "History"),
+          rows: [
+            { id: "export", label: t("Выгрузить историю", "Export history"), onSelect: () => setExportOpen(true) },
+            { id: "import", label: t("Вставить историю", "Import history"), onSelect: () => setImportOpen(true) },
+          ],
+          footer: sync.text,
+        },
+        {
+          rows: [{ id: "delete", label: t("Удалить аккаунт", "Delete account"), tone: "danger", onSelect: () => setDeleteOpen(true) }],
+          footer: t("Все данные с сервера и с этого устройства.", "All data on the server and this device."),
+        },
+      ],
+    },
+    lang: {
+      title: t("Язык", "Language"),
+      sections: [
+        {
+          rows: (["ru", "en"] as const).map((l) => ({
+            id: `lang-${l}`,
+            label: l === "ru" ? "Русский" : "English",
+            selected: lang === l,
+            onSelect: () => onChangeLang(l),
+          })),
         },
       ],
     },
@@ -211,7 +244,13 @@ export default function ProfileScreen({
     <Box sx={{ pb: 10 }}>
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
         <Typography variant="h1">{t("Профиль", "Profile")}</Typography>
-        <LangToggle lang={lang} onChange={onChangeLang} />
+        <IconButton
+          onClick={() => setSettingsOpen(true)}
+          aria-label={t("Настройки", "Settings")}
+          sx={{ width: 40, height: 40, borderRadius: "50%", bgcolor: "action.hover", color: "text.primary" }}
+        >
+          <SettingsIcon sx={{ fontSize: 22 }} />
+        </IconButton>
       </Stack>
 
       {/* Цель — влияет на подбор «Тренером» */}
@@ -317,12 +356,18 @@ export default function ProfileScreen({
         )}
       </Card>
 
-      {/* Настройки — вложенные страницы, как в телефоне (Stack Panel).
-          Заголовок «Настройки» — в шапке самой панели. */}
-      <Box sx={{ mt: 3 }} />
-      <StackPanel root="settings" pages={settingsPages} />
-
-      <BackupPanel data={backupData} allExercises={allExercises} onRestore={onRestore} />
+      {/* Настройки — шторка с вложенными страницами (Stack Panel) */}
+      <Dialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        fullWidth
+        slotProps={{ paper: { sx: { overflow: "hidden" } } }}
+      >
+        <StackPanel root="settings" pages={settingsPages} bare onClose={() => setSettingsOpen(false)} closeLabel={t("Готово", "Done")} />
+      </Dialog>
+      {exportOpen && <ExportDialog data={backupData} allExercises={allExercises} onClose={() => setExportOpen(false)} />}
+      {importOpen && <ImportDialog current={backupData} onRestore={onRestore} onClose={() => setImportOpen(false)} />}
+      {deleteOpen && <DeleteDialog onClose={() => setDeleteOpen(false)} />}
 
       <RecoveryDialog
         entry={checkin}
@@ -338,33 +383,6 @@ export default function ProfileScreen({
         }
       />
 
-    </Box>
-  );
-}
-
-function LangToggle({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
-  return (
-    <Box sx={{ display: "flex", border: "1px solid", borderColor: "divider", borderRadius: 999, overflow: "hidden" }}>
-      {(["ru", "en"] as const).map((l) => (
-        <Box
-          key={l}
-          component="button"
-          onClick={() => onChange(l)}
-          sx={{
-            px: 1.5,
-            minHeight: 32,
-            border: "none",
-            cursor: "pointer",
-            fontFamily: "inherit",
-            fontSize: 12,
-            fontWeight: 700,
-            bgcolor: lang === l ? "primary.main" : "transparent",
-            color: lang === l ? "primary.contrastText" : "text.secondary",
-          }}
-        >
-          {l.toUpperCase()}
-        </Box>
-      ))}
     </Box>
   );
 }

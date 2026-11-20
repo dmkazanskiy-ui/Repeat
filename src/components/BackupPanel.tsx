@@ -155,8 +155,8 @@ export default function BackupPanel({
   );
 }
 
-/** Строка статуса синхронизации между устройствами. */
-function SyncLine() {
+/** Текст и цвет статуса синхронизации — для подписи в настройках. */
+export function useSyncText(): { text: string; color: string } {
   const t = useT();
   const s = useSyncState();
   const time = (ms: number) =>
@@ -180,6 +180,12 @@ function SyncLine() {
   } else {
     text = t("Синхронизация…", "Syncing…");
   }
+  return { text, color };
+}
+
+/** Строка статуса синхронизации между устройствами. */
+function SyncLine() {
+  const { text, color } = useSyncText();
   return (
     <Typography variant="caption" sx={{ display: "block", mb: 1, color }}>
       {text}
@@ -187,7 +193,7 @@ function SyncLine() {
   );
 }
 
-function DeleteDialog({ onClose }: { onClose: () => void }) {
+export function DeleteDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -236,7 +242,7 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ExportDialog({
+export function ExportDialog({
   data,
   allExercises,
   onClose,
@@ -347,7 +353,7 @@ function ExportDialog({
   );
 }
 
-function ImportDialog({
+export function ImportDialog({
   current,
   onRestore,
   onClose,

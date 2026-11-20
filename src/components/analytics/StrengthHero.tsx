@@ -1,8 +1,9 @@
 import { ChartTip } from "../../ui";
+import SpringDropdown from "../../ui/SpringDropdown";
 import { Card } from "../../ui";
 import { massToUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
-import { Box, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { addDays, formatDate, today } from "../../lib/format";
 import { exercisePlateau, metricSeries } from "../../lib/analytics";
@@ -73,7 +74,7 @@ export default function StrengthHero({
   const W = 340;
   const H = 200;
   const padL = 4;
-  const padR = 40; // место под подписи оси справа
+  const padR = 6; // подписи оси — внутри графика, линия идёт до края
   const padT = 12;
   const padB = 24;
   const values = series.map((p) => p.v);
@@ -109,18 +110,18 @@ export default function StrengthHero({
 
   return (
     <Card sx={{ mb: 2 }}>
-      <Box sx={{ display: "flex", gap: 1, overflowX: "auto", mb: 1.5, pb: 0.5 }}>
-        {options.map((o) => (
-          <Chip
-            key={o.id}
-            label={o.name}
-            size="small"
-            color={o.id === ex.id ? "primary" : "default"}
-            variant={o.id === ex.id ? "filled" : "outlined"}
-            onClick={() => setPicked(o.id)}
-            sx={{ height: 32, borderRadius: 999, flexShrink: 0 }}
-          />
-        ))}
+      {/* Выбор упражнения — выпадающий список вместо ленты чипов */}
+      <Box sx={{ mb: 1.75 }}>
+        <SpringDropdown
+          label={t("Упражнение", "Exercise")}
+          value={ex.id}
+          onChange={setPicked}
+          options={options.map((o) => {
+            const pts = metricSeries(o.points, "e1rm");
+            const lastV = pts[pts.length - 1]?.v;
+            return { id: o.id, label: o.name, hint: lastV != null ? `${Math.round(massToUnit(lastV))} ${kg}` : undefined };
+          })}
+        />
       </Box>
 
       <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
@@ -160,7 +161,7 @@ export default function StrengthHero({
           {ticks.map((v, i) => (
             <g key={i}>
               <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke={grid} strokeWidth={1} />
-              <text x={W - padR + 6} y={y(v) + 3.5} fontSize={10} fill={muted}>
+              <text x={W - padR} y={y(v) - 4} fontSize={10} fill={muted} textAnchor="end">
                 {Math.round(v)}
               </text>
             </g>

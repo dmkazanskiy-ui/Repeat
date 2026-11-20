@@ -1112,7 +1112,6 @@ export default function App() {
                         setEditing(true);
                       } },
                       { id: "cardio", label: t("Кардио", "Cardio"), icon: <ActivityIcon icon="run" />, onSelect: () => logWorkout("cardio") },
-                      { id: "recovery", label: t("Восстановление", "Recovery"), icon: <ActivityIcon icon="spa" />, onSelect: () => logWorkout("recovery") },
                       { id: "more", label: t("Ещё", "More"), icon: <AddIcon />, onSelect: () => logWorkout("kind") },
                     ]}
                   />
