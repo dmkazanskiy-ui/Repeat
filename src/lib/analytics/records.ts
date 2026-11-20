@@ -124,3 +124,19 @@ export function newRecordsInPeriod(
         : -1,
   );
 }
+
+/**
+ * Побила ли тренировка рекорд веса или прогноза максимума в каком-то
+ * упражнении, которое уже делали раньше (первый раз — не рекорд, а начало).
+ */
+export function sessionSetsRecord(session: Session, others: Session[]): boolean {
+  const prev = exercisePeaks(others.filter((s) => s.id !== session.id && s.date <= session.date));
+  const cur = exercisePeaks([session]);
+  for (const key of ["weight", "e1rm"] as const) {
+    for (const [id, peak] of cur[key]) {
+      const before = prev[key].get(id)?.value;
+      if (before != null && peak.value > before) return true;
+    }
+  }
+  return false;
+}

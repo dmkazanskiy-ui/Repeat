@@ -1,13 +1,13 @@
+import { IconBadge, ListRow, radius } from "../ui";
+import { CARD_IN } from "../theme";
 import { useMemo, type ReactNode } from "react";
 import { Box, Stack, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import ShuffleRoundedIcon from "@mui/icons-material/ShuffleRounded";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import LibraryBooksRoundedIcon from "@mui/icons-material/LibraryBooksRounded";
-import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import LocalFireDepartmentRoundedIcon from "@mui/icons-material/LocalFireDepartmentRounded";
+import { PlayArrowRounded as PlayArrowRoundedIcon } from "../ui/icons";
+import { ShuffleRounded as ShuffleRoundedIcon } from "../ui/icons";
+import { LibraryBooksRounded as LibraryBooksRoundedIcon } from "../ui/icons";
+import { ReplayRounded as ReplayRoundedIcon } from "../ui/icons";
+import { AddRounded as AddRoundedIcon } from "../ui/icons";
+import { LocalFireDepartmentRounded as LocalFireDepartmentRoundedIcon } from "../ui/icons";
 import SpaRoundedIcon from "@mui/icons-material/SpaRounded";
 import { ActivityIcon } from "../lib/icons";
 import type { IconKey } from "../lib/icons";
@@ -125,27 +125,15 @@ export default function TodayGuide({
             display: "flex",
             alignItems: "center",
             gap: 1.25,
-            p: 1.5,
-            borderRadius: 2,
+            p: 2,
+            borderRadius: radius.card, animation: CARD_IN,
             border: "1px solid",
-            borderColor: alpha(PROGRAM_COLOR, 0.35),
-            backgroundImage: `linear-gradient(100deg, ${alpha(PROGRAM_COLOR, 0.14)}, transparent 72%)`,
+            borderColor: "divider",
           }}
         >
-          <Box
-            sx={{
-              width: 38,
-              height: 38,
-              borderRadius: 2,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              color: PROGRAM_COLOR,
-              backgroundImage: `linear-gradient(135deg, ${alpha(PROGRAM_COLOR, 0.28)}, ${alpha(PROGRAM_COLOR, 0.08)})`,
-            }}
-          >
+          <IconBadge color={PROGRAM_COLOR}>
             <SpaRoundedIcon sx={{ fontSize: 20 }} />
-          </Box>
+          </IconBadge>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
               {t("Сегодня стоит поберечься", "Take it easy today")}
@@ -275,29 +263,16 @@ function HeroAction({
         alignItems: "center",
         gap: 1.5,
         p: 2,
-        borderRadius: 2,
+        borderRadius: radius.card, animation: CARD_IN,
         cursor: "pointer",
         border: "1px solid",
-        borderColor: alpha(color, 0.35),
-        borderLeft: `3px solid ${color}`,
+        borderColor: "divider",
         backgroundColor: "background.paper",
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.16)}, transparent 72%)`,
       }}
     >
-      <Box
-        sx={{
-          width: 52,
-          height: 52,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.3)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color} size={48}>
         <ActivityIcon icon={icon} fontSize="medium" />
-      </Box>
+      </IconBadge>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", color }}>
           <Typography variant="caption" sx={{ fontWeight: 600, color }}>
@@ -336,45 +311,13 @@ function ActionRow({
   onClick: () => void;
 }) {
   return (
-    <Box
-      role="button"
-      tabIndex={0}
+    <ListRow
       onClick={onClick}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1.25,
-        p: 1.25,
-        borderRadius: 2,
-        cursor: "pointer",
-        border: "1px solid",
-        borderColor: "divider",
-      }}
-    >
-      <Box
-        sx={{
-          width: 38,
-          height: 38,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.26)}, ${alpha(color, 0.07)})`,
-        }}
-      >
-        {icon}
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
-          {label}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-          {sub}
-        </Typography>
-      </Box>
-      <ChevronRightIcon sx={{ color: "text.disabled", flexShrink: 0 }} />
-    </Box>
+      chevron
+      icon={<IconBadge color={color}>{icon}</IconBadge>}
+      title={label}
+      subtitle={sub}
+    />
   );
 }
 

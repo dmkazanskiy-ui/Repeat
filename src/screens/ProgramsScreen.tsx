@@ -1,18 +1,18 @@
+import { Card, radius } from "../ui";
 import { useState } from "react";
 import {
   Box,
   Button,
   Chip,
   IconButton,
-  Paper,
   Stack,
   Tab,
   Tabs,
   Typography,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import { Add as AddIcon } from "../ui/icons";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { ChevronRight as ChevronRightIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import type { TrainingProgram } from "../lib/types";
 import { PROGRAM_PRESETS } from "../lib/programLibrary";
@@ -35,7 +35,7 @@ function IconTile() {
       sx={{
         width: 46,
         height: 46,
-        borderRadius: 2,
+        borderRadius: radius.icon,
         flexShrink: 0,
         display: "grid",
         placeItems: "center",
@@ -84,7 +84,7 @@ export default function ProgramsScreen({
         </Typography>
         <Stack spacing={1}>
           {preview.workouts.map((w) => (
-            <Paper key={w.name} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+            <Card key={w.name}>
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
                 <IconTile />
                 <Box sx={{ minWidth: 0 }}>
@@ -97,7 +97,7 @@ export default function ProgramsScreen({
                   </Typography>
                 </Box>
               </Stack>
-            </Paper>
+            </Card>
           ))}
         </Stack>
 
@@ -141,25 +141,21 @@ export default function ProgramsScreen({
       {tab === "mine" && (
         <Stack spacing={1}>
           {/* Карточка создания */}
-          <Paper
-            variant="outlined"
+          <Card
             role="button"
             tabIndex={0}
             onClick={onCreate}
             sx={{
-              p: 1.5,
-              borderRadius: 2,
               cursor: "pointer",
               borderStyle: "dashed",
-              borderColor: "primary.main",
-            }}
+              borderColor: "primary.main" }}
           >
             <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
               <Box
                 sx={{
                   width: 46,
                   height: 46,
-                  borderRadius: 2,
+                  borderRadius: radius.icon,
                   flexShrink: 0,
                   display: "grid",
                   placeItems: "center",
@@ -172,7 +168,7 @@ export default function ProgramsScreen({
                 {t("Создать программу", "Create program")}
               </Typography>
             </Stack>
-          </Paper>
+          </Card>
 
           {mine.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
@@ -182,13 +178,13 @@ export default function ProgramsScreen({
             mine.map((program) => {
               const count = program.workouts.length;
               return (
-                <Paper
+                <Card
                   key={program.id}
-                  variant="outlined"
+                 
                   role="button"
                   tabIndex={0}
                   onClick={() => onOpen(program)}
-                  sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}
+                  sx={{ cursor: "pointer" }}
                 >
                   <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
                     <IconTile />
@@ -202,7 +198,7 @@ export default function ProgramsScreen({
                     </Box>
                     <ChevronRightIcon sx={{ color: "text.disabled" }} />
                   </Stack>
-                </Paper>
+                </Card>
               );
             })
           )}
@@ -215,13 +211,13 @@ export default function ProgramsScreen({
             {t("Готовые программы. Открой, посмотри тренировки и добавь к себе — потом меняй как захочешь.", "Ready-made programs. Open one, review its workouts and add it — then tweak it however you like.")}
           </Typography>
           {PROGRAM_PRESETS.map((preset) => (
-            <Paper
+            <Card
               key={preset.key}
-              variant="outlined"
+             
               role="button"
               tabIndex={0}
               onClick={() => setPreview(preset)}
-              sx={{ p: 1.5, borderRadius: 2, cursor: "pointer" }}
+              sx={{ cursor: "pointer" }}
             >
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
                 <IconTile />
@@ -235,7 +231,7 @@ export default function ProgramsScreen({
                 </Box>
                 <ChevronRightIcon sx={{ color: "text.disabled" }} />
               </Stack>
-            </Paper>
+            </Card>
           ))}
         </Stack>
       )}

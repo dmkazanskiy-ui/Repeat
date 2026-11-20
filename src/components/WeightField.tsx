@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Box, InputAdornment, ListItemIcon, Menu, MenuItem } from "@mui/material";
-import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
-import ArrowDropDownRoundedIcon from "@mui/icons-material/ArrowDropDownRounded";
+import { CheckRounded as CheckRoundedIcon } from "../ui/icons";
+import { ArrowDropDownRounded as ArrowDropDownRoundedIcon } from "../ui/icons";
 import NumberField from "./NumberField";
 import { fromUnit, toUnitOrNull, unitLabel } from "../lib/units";
 import type { WeightUnit } from "../lib/units";

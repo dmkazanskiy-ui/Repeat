@@ -1,14 +1,15 @@
+import { IconBadge } from "../ui";
 import { useEffect, useState } from "react";
-import type { ChangeEvent, MouseEvent, ReactNode } from "react";
+import type { ChangeEvent, MouseEvent } from "react";
 import { Box, Stack, Typography } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
-import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
+import { alpha } from "@mui/material/styles";
+import { AccessTimeRounded as AccessTimeRoundedIcon } from "../ui/icons";
 import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
-import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
-import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import { RepeatRounded as RepeatRoundedIcon } from "../ui/icons";
+import { PlaceOutlined as PlaceOutlinedIcon } from "../ui/icons";
 import SpeedRoundedIcon from "@mui/icons-material/SpeedRounded";
-import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
-import RadioButtonUncheckedRoundedIcon from "@mui/icons-material/RadioButtonUncheckedRounded";
+import { CheckRounded as CheckRoundedIcon } from "../ui/icons";
+import { RadioButtonUncheckedRounded as RadioButtonUncheckedRoundedIcon } from "../ui/icons";
 import SwipeToDelete from "./SwipeToDelete";
 import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
@@ -43,8 +44,6 @@ interface Props {
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onChangeTime: (id: string, time: string | null) => void;
-  /** Текущее время «HH:MM» — рисует горизонтальную линию «сейчас» (только сегодня). */
-  now?: string;
 }
 
 type Status = "planned" | "running" | "done";
@@ -182,7 +181,7 @@ function StatusChip({ status, color }: { status: Status; color: string }) {
           borderRadius: "50%",
           bgcolor: alpha(color, 0.16),
           border: "1px solid",
-          borderColor: alpha(color, 0.45),
+          borderColor: "divider",
           display: "grid",
           placeItems: "center",
           flexShrink: 0,
@@ -202,11 +201,13 @@ function SessionCard({
   session,
   exercises,
   onOpen,
+  onChangeTime,
   nowMs,
 }: {
   session: Session;
   exercises: Exercise[];
   onOpen: (id: string) => void;
+  onChangeTime: (id: string, time: string | null) => void;
   nowMs: number;
 }) {
   const color = typeColor(session.kind);
@@ -225,37 +226,25 @@ function SessionCard({
         display: "flex",
         alignItems: "center",
         gap: 1.5,
-        p: 1.75,
+        p: 2,
         cursor: "pointer",
         // Рамка, скругление и тень — на внешнем контейнере (SwipeToDelete),
         // чтобы красный фон удаления не просвечивал на углах. Здесь только
         // тёмная подложка с лёгким цветным оттенком слева, без яркой заливки.
         backgroundColor: "background.paper",
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.11)}, ${alpha(color, 0.03)} 42%, transparent 78%)`,
       }}
     >
       {/* Цветная плашка-иконка */}
-      <Box
-        sx={{
-          width: 46,
-          height: 46,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color}>
         <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
-      </Box>
+      </IconBadge>
 
       {/* Центр: [тег · статус] · название · описание · метрики */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack
           direction="row"
           spacing={1}
-          sx={{ alignItems: "center", justifyContent: "space-between", mb: 0.5 }}
+          sx={{ alignItems: "center", mb: 0.5 }}
         >
           <Box
             component="span"
@@ -266,7 +255,7 @@ function SessionCard({
               px: 0.9,
               borderRadius: 1,
               border: "1px solid",
-              borderColor: alpha(color, 0.5),
+              borderColor: "divider",
               color,
               fontSize: 11,
               fontWeight: 600,
@@ -274,6 +263,23 @@ function SessionCard({
           >
             {typeLabel}
           </Box>
+          {/* Время тренировки — в карточке; тап открывает нативный пикер */}
+          <Box sx={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 0.4, color: "text.secondary" }}>
+            <AccessTimeRoundedIcon sx={{ fontSize: 14, opacity: 0.75 }} />
+            <Typography variant="caption" sx={{ fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
+              {session.time ?? "—:—"}
+            </Typography>
+            <Box
+              component="input"
+              type="time"
+              value={session.time ?? ""}
+              aria-label={L("Время тренировки", "Workout time")}
+              onClick={(e: MouseEvent) => e.stopPropagation()}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => onChangeTime(session.id, e.target.value || null)}
+              sx={{ position: "absolute", inset: -6, width: "calc(100% + 12px)", opacity: 0, cursor: "pointer", border: "none", p: 0, m: 0 }}
+            />
+          </Box>
+          <Box sx={{ flex: 1 }} />
           {status !== "running" && <StatusChip status={status} color={color} />}
         </Stack>
 
@@ -321,60 +327,8 @@ function SessionCard({
   );
 }
 
-const RAIL = 44; // ширина колонки времени
-const NODE = 16; // ширина колонки точки/линии
-
-/** Строка «сейчас» — горизонтальная пунктирная линия с тегом текущего времени. */
-function NowRow({ now }: { now: string }) {
-  return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
-      <Box sx={{ width: RAIL, display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
-        <Box
-          sx={{
-            px: 0.6,
-            height: 18,
-            display: "grid",
-            placeItems: "center",
-            borderRadius: 1,
-            bgcolor: "primary.main",
-            color: "primary.contrastText",
-            fontSize: 11,
-            fontWeight: 700,
-          }}
-        >
-          {now}
-        </Box>
-      </Box>
-      <Box sx={{ width: NODE, position: "relative", flexShrink: 0 }}>
-        <Box
-          sx={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            bgcolor: "primary.main",
-          }}
-        />
-      </Box>
-      <Box sx={{ flex: 1, borderTop: "1.5px dashed", borderColor: "primary.main", opacity: 0.7 }} />
-    </Stack>
-  );
-}
-
-/** Лента тренировок как вертикальный таймлайн: слева время + точка + линия. */
-export default function SessionTimeline({
-  sessions,
-  exercises,
-  onOpen,
-  onDelete,
-  onChangeTime,
-  now,
-}: Props) {
-  const theme = useTheme();
-  const n = sessions.length;
+/** Лента тренировок: карточки друг под другом, время — внутри карточки. */
+export default function SessionTimeline({ sessions, exercises, onOpen, onDelete, onChangeTime }: Props) {
   // Тикаем раз в секунду, только если есть запущенная тренировка (иначе покой).
   const hasRunning = sessions.some((s) => s.startedAt && !s.endedAt);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -384,95 +338,13 @@ export default function SessionTimeline({
     return () => window.clearInterval(timer);
   }, [hasRunning]);
 
-  // Куда вставить линию «сейчас»: после всех тренировок раньше текущего времени.
-  const nowIndex = now
-    ? sessions.filter((s) => (s.time ?? "00:00") <= now).length
-    : -1;
-
-  const rows: ReactNode[] = [];
-  sessions.forEach((session, i) => {
-    if (i === nowIndex && now) rows.push(<NowRow key="now" now={now} />);
-
-    const color = typeColor(session.kind);
-    const status = statusOf(session);
-    const dotColor = status === "planned" ? theme.palette.text.disabled : color;
-
-    rows.push(
-      <Stack key={session.id} direction="row" spacing={1}>
-        {/* Время — редактируется тапом (нативный пикер) */}
-        <Box sx={{ width: RAIL, flexShrink: 0, position: "relative", mt: "2px" }}>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: "block", textAlign: "right", lineHeight: "18px" }}
-          >
-            {session.time ?? "—:—"}
-          </Typography>
-          <Box
-            component="input"
-            type="time"
-            value={session.time ?? ""}
-            aria-label={L("Время тренировки", "Workout time")}
-            role="button"
-            tabIndex={0}
-            onClick={(e: MouseEvent) => e.stopPropagation()}
-            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-              onChangeTime(session.id, e.target.value || null)
-            }
-            sx={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              opacity: 0,
-              cursor: "pointer",
-              border: "none",
-              p: 0,
-              m: 0,
-            }}
-          />
-        </Box>
-        {/* Точка и линия — по центру своей колонки */}
-        <Box sx={{ width: NODE, position: "relative", flexShrink: 0 }}>
-          {i < n - 1 && (
-            <Box
-              sx={{
-                position: "absolute",
-                left: "50%",
-                transform: "translateX(-50%)",
-                top: 8,
-                bottom: -12,
-                width: "2px",
-                bgcolor: "divider",
-              }}
-            />
-          )}
-          <Box
-            sx={{
-              position: "absolute",
-              left: "50%",
-              top: 3,
-              transform: "translateX(-50%)",
-              width: 12,
-              height: 12,
-              borderRadius: "50%",
-              bgcolor: dotColor,
-              border: "2px solid",
-              borderColor: "background.default",
-              zIndex: 1,
-            }}
-          />
-        </Box>
-        {/* Карточка */}
-        <Box sx={{ flex: 1, minWidth: 0, pb: 1.5 }}>
-          <SwipeToDelete onDelete={() => onDelete(session.id)} accent={alpha(color, 0.25)}>
-            <SessionCard session={session} exercises={exercises} onOpen={onOpen} nowMs={nowMs} />
-          </SwipeToDelete>
-        </Box>
-      </Stack>,
-    );
-  });
-
-  if (now && nowIndex === n) rows.push(<NowRow key="now" now={now} />);
-
-  return <Box>{rows}</Box>;
+  return (
+    <Stack spacing={1.5}>
+      {sessions.map((session) => (
+        <SwipeToDelete key={session.id} onDelete={() => onDelete(session.id)} accent={alpha(typeColor(session.kind), 0.25)}>
+          <SessionCard session={session} exercises={exercises} onOpen={onOpen} onChangeTime={onChangeTime} nowMs={nowMs} />
+        </SwipeToDelete>
+      ))}
+    </Stack>
+  );
 }

@@ -1,16 +1,16 @@
+import { Card, IconBadge } from "../ui";
 import {
   Box,
   Button,
   IconButton,
   MenuItem,
-  Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
+import { createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
 import { useMemo } from "react";
 import NumberField from "../components/NumberField";
 import MoodPad from "../components/MoodPad";
@@ -84,26 +84,15 @@ export default function RecoveryEditor({
       </Stack>
 
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", mb: 3 }}>
-        <Box
-          sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            display: "grid",
-            placeItems: "center",
-            color,
-            backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-            flexShrink: 0,
-          }}
-        >
+        <IconBadge color={color}>
           <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
-        </Box>
+        </IconBadge>
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {RECOVERY_LABELS[data.type]}
         </Typography>
       </Stack>
 
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+      <Card>
         <Stack spacing={2}>
           <TextField
             select
@@ -145,7 +134,7 @@ export default function RecoveryEditor({
                 </Typography>
               ) : (
                 <Typography component="span" variant="caption" color="text.secondary">
-                  {t("— отметь точку", "— mark a point")}
+                  {t("— передвинь ползунки", "— move the sliders")}
                 </Typography>
               )}
             </Typography>
@@ -168,7 +157,7 @@ export default function RecoveryEditor({
             onChange={(event) => patch({ note: event.target.value || null })}
           />
         </Stack>
-      </Paper>
+      </Card>
 
       <Typography
         variant="caption"

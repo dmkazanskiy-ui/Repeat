@@ -1,3 +1,4 @@
+import { Card, IconBadge } from "../ui";
 import { MODE } from "../lib/themeMode";
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
@@ -15,7 +16,6 @@ import {
   ListItemIcon,
   Menu,
   MenuItem,
-  Paper,
   Snackbar,
   Stack,
   TextField,
@@ -23,23 +23,25 @@ import {
 } from "@mui/material";
 import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
 import type { Theme } from "@mui/material/styles";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
-import AddIcon from "@mui/icons-material/Add";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import EditIcon from "@mui/icons-material/Edit";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
+import { Add as AddIcon } from "../ui/icons";
+import { ContentCopy as ContentCopyIcon } from "../ui/icons";
+import { PlayArrow as PlayArrowIcon } from "../ui/icons";
+import { Edit as EditIcon } from "../ui/icons";
 import RestTimer from "../components/RestTimer";
+import { celebrateFinish, celebrateRecord } from "../lib/confetti";
+import { sessionSetsRecord } from "../lib/analytics/records";
 import { haptic } from "../lib/telegram";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
-import StopIcon from "@mui/icons-material/Stop";
-import LinkOffIcon from "@mui/icons-material/LinkOff";
-import LinkIcon from "@mui/icons-material/Link";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import { PlayArrowRounded as PlayArrowRoundedIcon } from "../ui/icons";
+import { PauseRounded as PauseRoundedIcon } from "../ui/icons";
+import { Stop as StopIcon } from "../ui/icons";
+import { LinkOff as LinkOffIcon } from "../ui/icons";
+import { Link as LinkIcon } from "../ui/icons";
+import { SwapHoriz as SwapHorizIcon } from "../ui/icons";
+import { MoreVert as MoreVertIcon } from "../ui/icons";
+import { ArrowUpward as ArrowUpwardIcon } from "../ui/icons";
+import { ArrowDownward as ArrowDownwardIcon } from "../ui/icons";
 import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
@@ -652,6 +654,11 @@ export default function SessionEditor({
         : fillCardioDuration(base);
     onChange(next);
     setFinishing(false);
+    // Первое завершение — короткий залп; побит рекорд — залпы с двух сторон.
+    if (!session.endedAt) {
+      if (next.kind === "strength" && sessionSetsRecord(next, sessions)) celebrateRecord();
+      else celebrateFinish();
+    }
     onExitEditing?.();
   }
 
@@ -795,31 +802,15 @@ export default function SessionEditor({
       </Stack>
 
       {/* Hero-блок тренировки */}
-      <Paper
-        variant="outlined"
+      <Card
         sx={{
-          p: 2,
           mb: 2,
-          borderRadius: 2,
-          borderColor: alpha(color, 0.28),
-          backgroundImage: `linear-gradient(150deg, ${alpha(color, 0.12)}, transparent 60%)`,
-        }}
+          borderColor: "divider" }}
       >
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-          <Box
-            sx={{
-              width: 52,
-              height: 52,
-              borderRadius: 2,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              color,
-              backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-            }}
-          >
+          <IconBadge color={color} size={48}>
             <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
-          </Box>
+          </IconBadge>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <TextField
               fullWidth
@@ -982,7 +973,7 @@ export default function SessionEditor({
             </Button>
           </Stack>
         ) : null}
-      </Paper>
+      </Card>
 
       {/* Тяжесть тренировки — субъективно, питает аналитику нагрузки. */}
       <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
@@ -1036,8 +1027,8 @@ export default function SessionEditor({
         <>
           {/* Поля под вид: у степпера нет дистанции, у велотренажёра есть
               мощность, у ходьбы скорость вместо темпа. Список даёт профиль. */}
-          <Paper variant="outlined" sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
-            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+          <Card sx={{ mb: 2 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1 }}>
               {profile.fields.map(cardioField)}
             </Box>
             {profile.rate && (
@@ -1054,7 +1045,7 @@ export default function SessionEditor({
                 </Typography>
               </Stack>
             )}
-          </Paper>
+          </Card>
 
           {/* Интервалы. Одна строка — это блок, повторённый N раз, поэтому
               «10 × 400 м через 90 с» вводится один раз, а не десять.
@@ -1068,7 +1059,7 @@ export default function SessionEditor({
           {segments.map((segment, index) => {
             const repeat = Math.max(1, segment.repeat || 1);
             return (
-              <Paper key={segment.id} variant="outlined" sx={{ p: 1.5, mb: 1 }}>
+              <Card key={segment.id} sx={{ p: 1.5, mb: 1 }}>
                 <Stack
                   direction="row"
                   sx={{
@@ -1156,7 +1147,7 @@ export default function SessionEditor({
                   {` · ${t("темп", "pace")} `}
                   {formatPace(segment.distanceM, segment.durationSec, session.cardioKind)}
                 </Typography>
-              </Paper>
+              </Card>
             );
           })}
 
@@ -1277,9 +1268,9 @@ export default function SessionEditor({
                     const volume = exerciseVolume(item, !session.endedAt);
                     const isSource = linkingId === item.id;
                     return (
-                      <Paper
+                      <Card
                         key={item.id}
-                        variant="outlined"
+                       
                         sx={{
                           p: 1.5,
                           mb: isSuper ? 1 : 1.5,
@@ -1287,8 +1278,7 @@ export default function SessionEditor({
                           ...(isSource && {
                             borderColor: color,
                             borderWidth: 2,
-                          }),
-                        }}
+                          }) }}
                       >
                         <Stack
                           direction="row"
@@ -1531,7 +1521,7 @@ export default function SessionEditor({
                 >
                   {t("Подход", "Set")}
                 </Button>
-                      </Paper>
+                      </Card>
                     );
                   })}
                 </Box>

@@ -1,3 +1,4 @@
+import { Card, IconBadge, radius } from "../ui";
 import { setGlobalUnit, unitLabel, useGlobalUnit } from "../lib/units";
 import type { WeightUnit } from "../lib/units";
 import { useState } from "react";
@@ -10,7 +11,6 @@ import {
   DialogTitle,
   Divider,
   IconButton,
-  Paper,
   Stack,
   Switch,
   TextField,
@@ -19,11 +19,11 @@ import {
   ToggleButtonGroup,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import AddIcon from "@mui/icons-material/Add";
-import CloseIcon from "@mui/icons-material/Close";
+import { Add as AddIcon } from "../ui/icons";
+import { Close as CloseIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
+import { ChevronRightRounded as ChevronRightRoundedIcon } from "../ui/icons";
+import { TimerOutlined as TimerOutlinedIcon } from "../ui/icons";
 import MoodPad from "../components/MoodPad";
 import BackupPanel from "../components/BackupPanel";
 import type { BackupData } from "../lib/backup";
@@ -126,10 +126,10 @@ export default function ProfileScreen({
       </Stack>
 
       {/* Цель — влияет на подбор «Тренером» */}
-      <Typography variant="h2" sx={{ mb: 1 }}>
+      <Typography variant="h2" sx={{ mb: 1.5 }}>
         {t("Моя цель", "My goal")}
       </Typography>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, mb: 3 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1, mb: 3 }}>
         {FOCUS_GOALS.map((g) => {
           const active = focusGoal === g.goal;
           return (
@@ -142,31 +142,18 @@ export default function ProfileScreen({
                 display: "flex",
                 alignItems: "center",
                 gap: 1.25,
-                p: 1.25,
-                borderRadius: 2,
+                p: 1.5,
+                borderRadius: radius.tile,
                 cursor: "pointer",
-                border: "1px solid",
-                borderColor: active ? alpha(g.color, 0.5) : "divider",
-                backgroundImage: active
-                  ? `linear-gradient(100deg, ${alpha(g.color, 0.12)}, transparent 72%)`
-                  : "none",
+                bgcolor: active ? "action.selected" : "action.hover",
+                boxShadow: active ? `inset 0 0 0 1.5px ${alpha(g.color, 0.6)}` : "none",
+                transition: "background-color .25s, box-shadow .25s",
               }}
             >
-              <Box
-                sx={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 2,
-                  flexShrink: 0,
-                  display: "grid",
-                  placeItems: "center",
-                  color: g.color,
-                  backgroundImage: `linear-gradient(135deg, ${alpha(g.color, 0.28)}, ${alpha(g.color, 0.08)})`,
-                }}
-              >
+              <IconBadge color={g.color}>
                 <ActivityIcon icon={g.icon} fontSize="small" />
-              </Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+              </IconBadge>
+              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.25, minWidth: 0, hyphens: "auto", overflowWrap: "anywhere" }}>
                 {lang === "en" ? GOAL_EN[g.goal] : g.label}
               </Typography>
             </Box>
@@ -175,38 +162,21 @@ export default function ProfileScreen({
       </Box>
 
       {/* Программа */}
-      <Paper
-        variant="outlined"
+      <Card
         role="button"
         tabIndex={0}
         onClick={onOpenPrograms}
         sx={{
-          p: 1.5,
           mb: 3,
-          borderRadius: 2,
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           gap: 1.5,
-          borderColor: alpha(PROGRAM_AMBER, 0.25),
-          borderLeft: `3px solid ${PROGRAM_AMBER}`,
-          backgroundImage: `linear-gradient(100deg, ${alpha(PROGRAM_AMBER, 0.1)}, transparent 72%)`,
-        }}
+          borderColor: "divider" }}
       >
-        <Box
-          sx={{
-            width: 42,
-            height: 42,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color: PROGRAM_AMBER,
-            backgroundImage: `linear-gradient(135deg, ${alpha(PROGRAM_AMBER, 0.28)}, ${alpha(PROGRAM_AMBER, 0.08)})`,
-          }}
-        >
+        <IconBadge color={PROGRAM_AMBER}>
           <FitnessCenterIcon fontSize="small" />
-        </Box>
+        </IconBadge>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
             {t("Программа", "Program")}
@@ -218,25 +188,19 @@ export default function ProfileScreen({
           </Typography>
         </Box>
         <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
-      </Paper>
+      </Card>
 
       {/* Самочувствие */}
-      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("Самочувствие", "How you feel")}
       </Typography>
-      <Paper
-        variant="outlined"
+      <Card
         role="button"
         tabIndex={0}
         onClick={() => setCheckin(todayCheckin ?? newRecoveryEntry(today()))}
         sx={{
-          p: 2,
-          borderRadius: 2,
           cursor: "pointer",
-          borderColor: alpha(RECOVERY_BLUE, 0.25),
-          borderLeft: `3px solid ${RECOVERY_BLUE}`,
-          backgroundImage: `linear-gradient(100deg, ${alpha(RECOVERY_BLUE, 0.1)}, transparent 72%)`,
-        }}
+          borderColor: "divider" }}
       >
         {todayCheckin && recoveryAverage(todayCheckin) != null ? (
           <>
@@ -262,28 +226,17 @@ export default function ProfileScreen({
             </Typography>
           </Stack>
         )}
-      </Paper>
+      </Card>
 
       {/* Настройки — пока только таймер отдыха между подходами */}
-      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("Настройки", "Settings")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+      <Card>
         <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-          <Box
-            sx={{
-              width: 34,
-              height: 34,
-              borderRadius: 2,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              color: ink("#a78bfa"),
-              backgroundImage: `linear-gradient(135deg, ${alpha(ink("#a78bfa"), 0.28)}, ${alpha(ink("#a78bfa"), 0.08)})`,
-            }}
-          >
+          <IconBadge color={ink("#a78bfa")}>
             <TimerOutlinedIcon fontSize="small" />
-          </Box>
+          </IconBadge>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {t("Таймер отдыха", "Rest timer")}
@@ -407,7 +360,7 @@ export default function ProfileScreen({
             ))}
           </ToggleButtonGroup>
         </Stack>
-      </Paper>
+      </Card>
 
       <BackupPanel data={backupData} allExercises={allExercises} onRestore={onRestore} />
 
@@ -493,7 +446,7 @@ function RecoveryDialog({
           sx={{ mb: 2, mt: 1 }}
         />
         <Typography variant="body2" color="text.secondary">
-          {t("Отметь точку: где ты сейчас по энергии и настроению.", "Mark the point: your energy and mood right now.")}
+          {t("Где ты сейчас по энергии и настроению?", "Where are you on energy and mood right now?")}
         </Typography>
         <MoodPad
           value={draft.mood ?? null}
@@ -501,6 +454,8 @@ function RecoveryDialog({
           yLabels={yLabels}
           xLabels={xLabels}
           color={ink("#4ade80")}
+          yTitle={t("Энергия", "Energy")}
+          xTitle={t("Настроение", "Mood")}
         />
       </DialogContent>
       <DialogActions sx={{ justifyContent: "space-between", px: 3, pb: 2 }}>

@@ -1,3 +1,4 @@
+import { Card, radius } from "../ui";
 import { useState } from "react";
 import {
   Box,
@@ -5,15 +6,14 @@ import {
   Chip,
   FormControlLabel,
   IconButton,
-  Paper,
   Stack,
   Switch,
   Typography,
 } from "@mui/material";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import EditIcon from "@mui/icons-material/Edit";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { Edit as EditIcon } from "../ui/icons";
+import { PlayArrow as PlayArrowIcon } from "../ui/icons";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { exerciseName } from "../lib/types";
 import type { Exercise, TrainingProgram } from "../lib/types";
@@ -88,25 +88,22 @@ export default function ProgramDetail({
             .slice(0, 3)
             .join(" · ");
           return (
-            <Paper
+            <Card
               key={workout.id}
-              variant="outlined"
+             
               role="button"
               tabIndex={0}
               onClick={() => onStart(program, index, deload)}
               sx={{
-                p: 1.5,
-                borderRadius: 2,
                 cursor: "pointer",
-                borderColor: isNext ? "primary.main" : undefined,
-              }}
+                borderColor: isNext ? "primary.main" : undefined }}
             >
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
                 <Box
                   sx={{
                     width: 42,
                     height: 42,
-                    borderRadius: 2,
+                    borderRadius: radius.icon,
                     flexShrink: 0,
                     display: "grid",
                     placeItems: "center",
@@ -133,14 +130,14 @@ export default function ProgramDetail({
                 </Box>
                 <PlayArrowIcon fontSize="small" sx={{ color: "primary.main" }} />
               </Stack>
-            </Paper>
+            </Card>
           );
         })}
       </Stack>
 
       {/* Волна недель: тип недели считается по календарю, но его можно поправить. */}
       {wave ? (
-        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mt: 2 }}>
+        <Card sx={{ mt: 2 }}>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, flex: 1 }}>
               {t("Волна недель", "Week wave")}
@@ -172,7 +169,7 @@ export default function ProgramDetail({
               : ""}
             {t("Не та неделя? Нажми нужную.", "Wrong week? Tap the right one.")}
           </Typography>
-        </Paper>
+        </Card>
       ) : (
         <>
           <FormControlLabel

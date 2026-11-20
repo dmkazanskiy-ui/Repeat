@@ -1,3 +1,4 @@
+import { Card, radius } from "../ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
@@ -7,15 +8,14 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  Paper,
   Stack,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
-import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { PhotoCamera as PhotoCameraIcon } from "../ui/icons";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
+import { FavoriteBorderRounded as FavoriteBorderRoundedIcon } from "../ui/icons";
 import Lightbox from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import Counter from "yet-another-react-lightbox/plugins/counter";
@@ -206,18 +206,18 @@ export default function PhotosScreen({
       />
 
       {photos.length === 0 ? (
-        <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, textAlign: "center" }}>
+        <Card sx={{ textAlign: "center" }}>
           <Box
             sx={{
               width: 52,
               height: 52,
               mx: "auto",
               mb: 1.5,
-              borderRadius: 2,
+              borderRadius: radius.icon,
               display: "grid",
               placeItems: "center",
               color: "primary.main",
-              backgroundImage: `linear-gradient(135deg, ${alpha("#4ade80", 0.28)}, ${alpha("#4ade80", 0.08)})`,
+              bgcolor: alpha("#4ade80", 0.14),
             }}
           >
             <PhotoCameraIcon />
@@ -234,7 +234,7 @@ export default function PhotosScreen({
           <Button variant="contained" startIcon={<PhotoCameraIcon />} onClick={() => fileRef.current?.click()}>
             {t("Добавить первое фото", "Add your first photo")}
           </Button>
-        </Paper>
+        </Card>
       ) : (
         <>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
@@ -280,7 +280,7 @@ export default function PhotosScreen({
               >
                 {month.title} · {month.items.length}
               </Typography>
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0.5 }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.5 }}>
                 {month.items.map((photo) => (
                   <Box
                     key={photo.id}
@@ -291,7 +291,7 @@ export default function PhotosScreen({
                       aspectRatio: "3 / 4",
                       p: 0,
                       border: "none",
-                      borderRadius: 2,
+                      borderRadius: radius.tile,
                       overflow: "hidden",
                       cursor: "pointer",
                       bgcolor: "background.paper",

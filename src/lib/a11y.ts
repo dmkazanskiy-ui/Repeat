@@ -34,6 +34,8 @@ export function applyTextScale(scale: TextScale): void {
   // zoom масштабирует и текст, и зоны нажатия — интерфейс растёт целиком,
   // без поломки вёрстки (WebKit поддерживает zoom).
   document.documentElement.style.setProperty("zoom", scale === 100 ? "" : `${scale}%`);
+  // На самом крупном размере подписи таб-бара не влезают — остаются иконки.
+  document.documentElement.dataset.textScale = String(scale);
   try {
     localStorage.setItem(KEY, String(scale));
   } catch {

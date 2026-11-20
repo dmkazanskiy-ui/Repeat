@@ -1,9 +1,10 @@
+import { Card, IconBadge } from "../../ui";
 import { unitLabel } from "../../lib/units";
-import { Box, Collapse, Paper, Stack, Typography } from "@mui/material";
+import { Box, Collapse, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
-import TrendingFlatRounded from "@mui/icons-material/TrendingFlatRounded";
-import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
+import { ExpandMoreRounded } from "../../ui/icons";
+import { TrendingFlatRounded } from "../../ui/icons";
+import { ArrowForwardRounded } from "../../ui/icons";
 import WeightRepsChart from "./WeightRepsChart";
 import type { WeightRepsPoint } from "./WeightRepsChart";
 import { formatDate, formatWeight } from "../../lib/format";
@@ -34,20 +35,9 @@ export default function PlateauCard({
   return (
     <Box sx={{ mb: 3 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
-        <Box
-          sx={{
-            width: 34,
-            height: 34,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color: PLATEAU_COLOR,
-            backgroundImage: `linear-gradient(135deg, ${alpha(PLATEAU_COLOR, 0.28)}, ${alpha(PLATEAU_COLOR, 0.08)})`,
-          }}
-        >
+        <IconBadge color={PLATEAU_COLOR}>
           <TrendingFlatRounded fontSize="small" />
-        </Box>
+        </IconBadge>
         <Typography variant="h2" sx={{ flex: 1 }}>
           {t("Плато", "Plateaus")}
         </Typography>
@@ -68,20 +58,15 @@ export default function PlateauCard({
             }));
 
           return (
-            <Paper
+            <Card
               key={d.id}
-              variant="outlined"
+             
               role="button"
               tabIndex={0}
               onClick={() => onToggle(d.id)}
               sx={{
-                p: 1.5,
-                borderRadius: 2,
                 cursor: "pointer",
-                borderColor: alpha(PLATEAU_COLOR, 0.35),
-                borderLeft: `3px solid ${PLATEAU_COLOR}`,
-                backgroundImage: `linear-gradient(100deg, ${alpha(PLATEAU_COLOR, 0.1)}, transparent 72%)`,
-              }}
+                borderColor: "divider" }}
             >
               <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -166,7 +151,7 @@ export default function PlateauCard({
                   </Stack>
                 </Box>
               </Collapse>
-            </Paper>
+            </Card>
           );
         })}
       </Stack>

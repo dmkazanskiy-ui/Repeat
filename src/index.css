@@ -5,6 +5,24 @@ body,
   height: 100%;
 }
 
+/* Blur Fade (Magic UI) для карточек: CARD_IN в theme.ts. Соседние карточки
+   идут лесенкой по 40 мс — задержка берётся из номера среди соседей. */
+@keyframes rp-blur-fade {
+  from { opacity: 0; filter: blur(6px); transform: translateY(6px); }
+  to { opacity: 1; filter: none; transform: none; }
+}
+* { --rp-d: 0ms; }
+*:nth-child(2) { --rp-d: 40ms; }
+*:nth-child(3) { --rp-d: 80ms; }
+*:nth-child(4) { --rp-d: 120ms; }
+*:nth-child(5) { --rp-d: 160ms; }
+*:nth-child(6) { --rp-d: 200ms; }
+*:nth-child(7) { --rp-d: 240ms; }
+*:nth-child(n+8) { --rp-d: 280ms; }
+
+/* Крупный текст (Профиль → Размер текста, 130%): подписи таб-бара не влезают. */
+html[data-text-scale="130"] .rp-tab-label { display: none; }
+
 /* «Уменьшение движения» в настройках iPhone: переходы и анимации — мгновенно
    (смена фаз HIIT, раскрытия, свайпы). Смысл ими не передаётся. */
 @media (prefers-reduced-motion: reduce) {

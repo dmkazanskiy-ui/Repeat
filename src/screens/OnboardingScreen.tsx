@@ -1,13 +1,15 @@
+import { IconBadge, radius } from "../ui";
+import { CARD_IN } from "../theme";
 import { useState } from "react";
 import { Box, Button, Checkbox, Link, Stack, Typography, useTheme } from "@mui/material";
 import { L } from "../lib/i18n";
 import { alpha } from "@mui/material/styles";
-import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
-import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
+import { CheckRounded as CheckRoundedIcon } from "../ui/icons";
+import { AccessTimeRounded as AccessTimeRoundedIcon } from "../ui/icons";
 import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
-import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
-import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
-import RadioButtonUncheckedRoundedIcon from "@mui/icons-material/RadioButtonUncheckedRounded";
+import { RepeatRounded as RepeatRoundedIcon } from "../ui/icons";
+import { CheckCircleRounded as CheckCircleRoundedIcon } from "../ui/icons";
+import { RadioButtonUncheckedRounded as RadioButtonUncheckedRoundedIcon } from "../ui/icons";
 import { ActivityIcon } from "../lib/icons";
 import { areaPath, smoothPath } from "../lib/chart";
 import type { Pt } from "../lib/chart";
@@ -54,9 +56,9 @@ function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (v: b
         gap: 0.5,
         width: "100%",
         maxWidth: 420,
-        p: 1,
+        p: 1.5,
         pr: 1.5,
-        borderRadius: 2,
+        borderRadius: radius.tile,
         border: "1px solid",
         borderColor: checked ? "primary.main" : "divider",
         textAlign: "left",
@@ -91,30 +93,18 @@ function SampleCard() {
         display: "flex",
         alignItems: "center",
         gap: 1.5,
-        p: 1.75,
-        borderRadius: 2,
+        p: 2,
+        borderRadius: radius.card, animation: CARD_IN,
         border: "1px solid",
-        borderColor: alpha(color, 0.5),
+        borderColor: "divider",
         backgroundColor: "background.paper",
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.11)}, transparent 78%)`,
         width: "100%",
         maxWidth: 320,
       }}
     >
-      <Box
-        sx={{
-          width: 46,
-          height: 46,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color}>
         <ActivityIcon icon="gym" fontSize="medium" />
-      </Box>
+      </IconBadge>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box
           component="span"
@@ -125,7 +115,7 @@ function SampleCard() {
             mb: 0.5,
             borderRadius: 1,
             border: "1px solid",
-            borderColor: alpha(color, 0.5),
+            borderColor: "divider",
             color,
             fontSize: 11,
             fontWeight: 600,
@@ -159,7 +149,7 @@ function SampleCard() {
           borderRadius: "50%",
           bgcolor: alpha(color, 0.16),
           border: "1px solid",
-          borderColor: alpha(color, 0.45),
+          borderColor: "divider",
           display: "grid",
           placeItems: "center",
         }}
@@ -288,8 +278,8 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone, consen
                       display: "flex",
                       alignItems: "center",
                       gap: 1.5,
-                      p: 1.5,
-                      borderRadius: 2,
+                      p: 2,
+                      borderRadius: radius.card, animation: CARD_IN,
                       cursor: "pointer",
                       textAlign: "left",
                       border: "1px solid",
@@ -301,12 +291,12 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone, consen
                       sx={{
                         width: 42,
                         height: 42,
-                        borderRadius: 2,
+                        borderRadius: radius.icon,
                         flexShrink: 0,
                         display: "grid",
                         placeItems: "center",
                         color: active ? "primary.main" : g.color,
-                        backgroundImage: `linear-gradient(135deg, ${alpha(g.color, 0.28)}, ${alpha(g.color, 0.08)})`,
+                        bgcolor: alpha(g.color, 0.14),
                       }}
                     >
                       <ActivityIcon icon={g.icon} />

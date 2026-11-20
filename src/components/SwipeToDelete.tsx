@@ -1,6 +1,8 @@
+import { radius } from "../ui";
+import { CARD_IN } from "../theme";
 import { useRef, useState } from "react";
 import { Box, Typography } from "@mui/material";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
 import { useT } from "../lib/i18n";
 
 interface Props {
@@ -91,7 +93,7 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
       sx={{
         position: "relative",
         overflow: "hidden",
-        borderRadius: 2,
+        borderRadius: radius.card, animation: CARD_IN,
         // Единый оутлайн и скругление живут снаружи (на этом контейнере), а не
         // на карточке: рамка рисуется поверх края и перекрывает угловой шов,
         // поэтому красный фон удаления больше не просвечивает на углах.

@@ -1,6 +1,7 @@
+import { Card } from "../../ui";
 import { massToUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
-import { Box, Chip, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Box, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { addDays, formatDate, today } from "../../lib/format";
 import { exercisePlateau, metricSeries } from "../../lib/analytics";
@@ -102,7 +103,7 @@ export default function StrengthHero({
   const grid = theme.palette.divider;
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+    <Card sx={{ mb: 2 }}>
       <Box sx={{ display: "flex", gap: 1, overflowX: "auto", mb: 1.5, pb: 0.5 }}>
         {options.map((o) => (
           <Chip
@@ -112,7 +113,7 @@ export default function StrengthHero({
             color={o.id === ex.id ? "primary" : "default"}
             variant={o.id === ex.id ? "filled" : "outlined"}
             onClick={() => setPicked(o.id)}
-            sx={{ height: 32, borderRadius: 2, flexShrink: 0 }}
+            sx={{ height: 32, borderRadius: 999, flexShrink: 0 }}
           />
         ))}
       </Box>
@@ -213,6 +214,6 @@ export default function StrengthHero({
           </ToggleButton>
         ))}
       </ToggleButtonGroup>
-    </Paper>
+    </Card>
   );
 }

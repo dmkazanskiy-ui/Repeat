@@ -1,3 +1,5 @@
+import { IconBadge, ListRow, radius } from "../ui";
+import { Card } from "../ui";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -9,21 +11,18 @@ import {
   DialogTitle,
   IconButton,
   LinearProgress,
-  Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import ContentPasteIcon from "@mui/icons-material/ContentPaste";
+import { ContentPaste as ContentPasteIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
-import RadioButtonUncheckedRoundedIcon from "@mui/icons-material/RadioButtonUncheckedRounded";
-import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { PlayArrowRounded as PlayArrowRoundedIcon } from "../ui/icons";
+import { CheckCircleRounded as CheckCircleRoundedIcon } from "../ui/icons";
+import { RadioButtonUncheckedRounded as RadioButtonUncheckedRoundedIcon } from "../ui/icons";
+import { ScheduleRounded as ScheduleRoundedIcon } from "../ui/icons";
+import { AddRounded as AddRoundedIcon } from "../ui/icons";
 import { ActivityIcon, ICON_KEYS } from "../lib/icons";
 import type { IconKey } from "../lib/icons";
 import { TYPE_COLOR } from "../lib/activityColors";
@@ -149,48 +148,17 @@ function TypeCard({
   onClick: () => void;
 }) {
   return (
-    <Box
-      role="button"
-      tabIndex={0}
+    <ListRow
       onClick={onClick}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1.5,
-        p: 1.5,
-        borderRadius: 2,
-        cursor: "pointer",
-        border: "1px solid",
-        borderColor: alpha(color, 0.25),
-        borderLeft: `3px solid ${alpha(color, 0.7)}`,
-        backgroundColor: "background.paper",
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 70%)`,
-      }}
-    >
-      <Box
-        sx={{
-          width: 46,
-          height: 46,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
-        <ActivityIcon icon={icon} fontSize="medium" />
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
-          {label}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-          {hint}
-        </Typography>
-      </Box>
-      <ChevronRightIcon sx={{ color: "text.disabled" }} />
-    </Box>
+      chevron
+      icon={
+        <IconBadge color={color}>
+          <ActivityIcon icon={icon} fontSize="medium" />
+        </IconBadge>
+      }
+      title={label}
+      subtitle={hint}
+    />
   );
 }
 
@@ -220,27 +188,16 @@ function SelectCard({
         alignItems: "center",
         gap: 1.5,
         p: 1.5,
-        borderRadius: 2,
+        borderRadius: radius.tile,
         cursor: "pointer",
         border: "1px solid",
         borderColor: selected ? "primary.main" : "divider",
         bgcolor: selected ? "rgba(74,222,128,0.06)" : "transparent",
       }}
     >
-      <Box
-        sx={{
-          width: 42,
-          height: 42,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color}>
         {icon}
-      </Box>
+      </IconBadge>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
           {label}
@@ -387,7 +344,7 @@ export default function NewSessionDialog({
             )}
 
             {/* Блок «Подсказка тренера» — умный подбор тренировки */}
-            <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 2, mt: 1 }}>
+            <Card sx={{ mt: 1 }}>
               <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "primary.main", mb: 0.5 }}>
                 <Typography variant="subtitle2">{t("Подсказка тренера", "Coach suggestion")}</Typography>
               </Stack>
@@ -405,7 +362,7 @@ export default function NewSessionDialog({
               >
                 {t("Подобрать", "Suggest")}
               </Button>
-            </Paper>
+            </Card>
           </Stack>
         )}
 
@@ -502,7 +459,7 @@ export default function NewSessionDialog({
               {t("Подобрана под твою цель и доступное время", "Tailored to your goal and available time")}
             </Typography>
 
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+            <Card>
               <Typography variant="caption" color="text.secondary">
                 {t("Фокус тренировки", "Workout focus")}
               </Typography>
@@ -529,16 +486,16 @@ export default function NewSessionDialog({
                   />
                 ))}
               </Stack>
-            </Paper>
+            </Card>
 
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+            <Card>
               <Typography variant="caption" color="text.secondary">
                 {t("Почему эта тренировка", "Why this workout")}
               </Typography>
               <Typography variant="body2" sx={{ mt: 0.5 }}>
                 {suggestion.reason}
               </Typography>
-            </Paper>
+            </Card>
 
             {suggestion.exercises.length > 0 ? (
               <Box>
@@ -547,14 +504,14 @@ export default function NewSessionDialog({
                 </Typography>
                 <Stack spacing={0.75}>
                   {suggestion.exercises.map((ex, i) => (
-                    <Paper key={i} variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
+                    <Card key={i} sx={{ p: 1.5, borderRadius: radius.tile }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {ex.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {ex.sets} × {ex.repMin}–{ex.repMax} · {t("отдых", "rest")} {ex.restSec} {t("с", "s")}
                       </Typography>
-                    </Paper>
+                    </Card>
                   ))}
                 </Stack>
               </Box>
@@ -598,7 +555,7 @@ export default function NewSessionDialog({
               <Typography variant="caption" color="text.secondary">
                 {t("Иконка", "Icon")}
               </Typography>
-              <Box sx={{ mt: 1, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 0.5 }}>
+              <Box sx={{ mt: 1, display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 0.5 }}>
                 {ICON_KEYS.map((key) => (
                   <Box
                     key={key}
@@ -785,27 +742,16 @@ export default function NewSessionDialog({
                       display: "flex",
                       alignItems: "center",
                       gap: 1.25,
-                      p: 1.25,
-                      borderRadius: 2,
+                      p: 1.5,
+                      borderRadius: radius.tile,
                       cursor: "pointer",
                       border: "1px solid",
                       borderColor: isNext ? "primary.main" : "divider",
                     }}
                   >
-                    <Box
-                      sx={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 2,
-                        flexShrink: 0,
-                        display: "grid",
-                        placeItems: "center",
-                        color: ink("#f59e0b"),
-                        backgroundImage: `linear-gradient(135deg, ${alpha(ink("#f59e0b"), 0.28)}, ${alpha(ink("#f59e0b"), 0.08)})`,
-                      }}
-                    >
+                    <IconBadge color={ink("#f59e0b")}>
                       <FitnessCenterIcon fontSize="small" />
-                    </Box>
+                    </IconBadge>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
@@ -867,7 +813,7 @@ function renderGrid(
   addTile?: { label: string; onClick: () => void },
 ) {
   return (
-    <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
+    <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1 }}>
       {items.map((item) => (
         <Box
           key={item.label}
@@ -883,28 +829,16 @@ function renderGrid(
             gap: 1,
             p: 1.5,
             minHeight: 96,
-            borderRadius: 2,
+            borderRadius: radius.tile,
             cursor: "pointer",
             border: "1px solid",
-            borderColor: alpha(color, 0.25),
+            borderColor: "divider",
             backgroundColor: "background.paper",
-            backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.1)}, transparent 72%)`,
           }}
         >
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 2,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              color,
-              backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-            }}
-          >
+          <IconBadge color={color}>
             <ActivityIcon icon={item.icon} />
-          </Box>
+          </IconBadge>
           <Typography
             variant="subtitle2"
             sx={{ fontWeight: 600, lineHeight: 1.25, mt: "auto" }}
@@ -927,7 +861,7 @@ function renderGrid(
             gap: 0.5,
             p: 1.5,
             minHeight: 96,
-            borderRadius: 2,
+            borderRadius: radius.tile,
             cursor: "pointer",
             border: "1px dashed",
             borderColor: "divider",

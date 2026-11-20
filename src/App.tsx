@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
   Container,
   CssBaseline,
-  IconButton,
   Snackbar,
-  Typography,
 } from "@mui/material";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import HistoryIcon from "@mui/icons-material/History";
-import InsightsIcon from "@mui/icons-material/Insights";
-import PersonIcon from "@mui/icons-material/Person";
-import AddIcon from "@mui/icons-material/Add";
+import { CalendarMonth as CalendarMonthIcon } from "./ui/icons";
+import { History as HistoryIcon } from "./ui/icons";
+import { Insights as InsightsIcon } from "./ui/icons";
+import { Person as PersonIcon } from "./ui/icons";
+import { Add as AddIcon } from "./ui/icons";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
+import RubberTabBar from "./components/RubberTabBar";
 import { L, LangContext, loadLang, saveLang, setCurrentLang } from "./lib/i18n";
 import { autoFinishStale, fixDurationOutliers } from "./lib/staleSessions";
 import { runSync, takeResetNotice } from "./lib/sync";
@@ -97,6 +96,7 @@ import type {
 } from "./lib/types";
 
 type Tab = "calendar" | "history" | "stats" | "profile";
+const TABS: Tab[] = ["calendar", "history", "stats", "profile"];
 
 const EXERCISE_UNITS_KEY = "exercise_units";
 
@@ -1079,52 +1079,17 @@ export default function App() {
               px: 1.5,
             }}
           >
-            <NavItem
-              active={tab === "calendar"}
-              label={t("Календарь", "Calendar")}
-              onClick={() => setTab("calendar")}
-            >
-              <CalendarMonthIcon />
-            </NavItem>
-            <NavItem
-              active={tab === "history"}
-              label={t("История", "History")}
-              onClick={() => setTab("history")}
-            >
-              <HistoryIcon />
-            </NavItem>
-
-            <IconButton
-              onClick={logWorkout}
-              aria-label={t("Добавить тренировку", "Add workout")}
-              sx={{
-                flex: "0 0 auto",
-                mx: 0.5,
-                width: 50,
-                height: 50,
-                bgcolor: "primary.main",
-                color: "primary.contrastText",
-                boxShadow: "0 6px 18px rgba(74,222,128,0.4)",
-                "&:hover": { bgcolor: "primary.main" },
-              }}
-            >
-              <AddIcon />
-            </IconButton>
-
-            <NavItem
-              active={tab === "stats"}
-              label={t("Аналитика", "Analytics")}
-              onClick={() => setTab("stats")}
-            >
-              <InsightsIcon />
-            </NavItem>
-            <NavItem
-              active={tab === "profile"}
-              label={t("Профиль", "Profile")}
-              onClick={() => setTab("profile")}
-            >
-              <PersonIcon />
-            </NavItem>
+            <RubberTabBar
+              items={[
+                { key: "calendar", label: t("Календарь", "Calendar"), icon: <CalendarMonthIcon /> },
+                { key: "history", label: t("История", "History"), icon: <HistoryIcon /> },
+                { key: "stats", label: t("Аналитика", "Analytics"), icon: <InsightsIcon /> },
+                { key: "profile", label: t("Профиль", "Profile"), icon: <PersonIcon /> },
+              ]}
+              active={TABS.indexOf(tab)}
+              onChange={(i) => setTab(TABS[i])}
+              action={{ label: t("Добавить тренировку", "Add workout"), icon: <AddIcon />, onClick: logWorkout }}
+            />
           </Box>
         </Box>
       )}
@@ -1133,41 +1098,3 @@ export default function App() {
   );
 }
 
-function NavItem({
-  active,
-  label,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Box
-      component="button"
-      onClick={onClick}
-      aria-label={label}
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 0.25,
-        py: 0.75,
-        border: "none",
-        bgcolor: "transparent",
-        cursor: "pointer",
-        fontFamily: "inherit",
-        color: active ? "primary.main" : "text.secondary",
-      }}
-    >
-      {children}
-      <Typography variant="caption" sx={{ fontSize: 11, lineHeight: 1 }}>
-        {label}
-      </Typography>
-    </Box>
-  );
-}

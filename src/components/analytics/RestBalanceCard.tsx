@@ -1,6 +1,7 @@
-import { Box, Paper, Stack, Typography } from "@mui/material";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import { Card, radius } from "../../ui";
+import { Box, Stack, Typography } from "@mui/material";
+import { WarningAmber as WarningAmberIcon } from "../../ui/icons";
+import { InfoOutlined as InfoOutlinedIcon } from "../../ui/icons";
 import { L, useT } from "../../lib/i18n";
 import type { RestBalance } from "../../lib/analytics";
 
@@ -37,10 +38,9 @@ export default function RestBalanceCard({ balance }: { balance: RestBalance }) {
       : w?.severity === "attention"
         ? "warning.main"
         : "text.secondary";
-  const soft = w?.severity === "high" ? "warning.main" : "divider";
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+    <Card>
       <Stack direction="row" spacing={1} sx={{ mb: w ? 1.5 : 0 }}>
         <Counter
           value={`${balance.heavyDaysInRow}`}
@@ -55,9 +55,7 @@ export default function RestBalanceCard({ balance }: { balance: RestBalance }) {
           sx={{
             mt: 1,
             p: 1.5,
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: soft,
+            borderRadius: radius.tile,
             bgcolor: w.severity === "high" ? "rgba(237, 162, 59, 0.08)" : "action.hover",
           }}
         >
@@ -85,6 +83,6 @@ export default function RestBalanceCard({ balance }: { balance: RestBalance }) {
           </Stack>
         </Box>
       )}
-    </Paper>
+    </Card>
   );
 }

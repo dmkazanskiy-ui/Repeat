@@ -1,3 +1,4 @@
+import { Card, Tile } from "../ui";
 import { fromUnit, toUnitOrNull, unitFor, unitLabel } from "../lib/units";
 import type { ExerciseUnits } from "../lib/units";
 import { useMemo, useState } from "react";
@@ -9,19 +10,18 @@ import {
   ListItemIcon,
   Menu,
   MenuItem,
-  Paper,
   Stack,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import AddIcon from "@mui/icons-material/Add";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { Add as AddIcon } from "../ui/icons";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
+import { ArrowUpward as ArrowUpwardIcon } from "../ui/icons";
+import { ArrowDownward as ArrowDownwardIcon } from "../ui/icons";
+import { MoreVert as MoreVertIcon } from "../ui/icons";
+import { SwapHoriz as SwapHorizIcon } from "../ui/icons";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import WavesIcon from "@mui/icons-material/Waves";
 import ExercisePickerDialog from "../components/ExercisePickerDialog";
@@ -82,7 +82,7 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
       sx={{
         mt: 1,
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
         gap: 1,
       }}
     >
@@ -276,7 +276,7 @@ export default function ProgramEditor({
       />
 
       {/* Волна недель: подходы, повторы и ориентир по весу для каждого типа */}
-      <Paper variant="outlined" sx={{ p: 1.5, mb: 3, borderRadius: 2 }}>
+      <Card sx={{ mb: 3 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
@@ -311,9 +311,8 @@ export default function ProgramEditor({
             </Typography>
             <Stack spacing={1}>
               {wave.weeks.map((type, index) => (
-                <Box
+                <Tile
                   key={type.id}
-                  sx={{ p: 1.25, borderRadius: 2, bgcolor: "action.hover" }}
                 >
                   <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                     <TextField
@@ -373,7 +372,7 @@ export default function ProgramEditor({
                       onChange={(v) => patchWeek(index, { repMax: v })}
                     />
                   </FieldGrid>
-                </Box>
+                </Tile>
               ))}
             </Stack>
             <Button size="small" startIcon={<AddIcon />} onClick={addWeek} sx={{ mt: 1 }}>
@@ -388,7 +387,7 @@ export default function ProgramEditor({
             )}
           </Typography>
         )}
-      </Paper>
+      </Card>
 
       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
         {t("Тренировки", "Workouts")}
@@ -397,7 +396,7 @@ export default function ProgramEditor({
       {workouts.map((workout, wi) => {
         const planned = exercisesOf(workout);
         return (
-          <Paper key={workout.id} variant="outlined" sx={{ p: 1.5, mb: 1.5, borderRadius: 2 }}>
+          <Card key={workout.id} sx={{ mb: 1.5 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <TextField
                 variant="standard"
@@ -437,9 +436,8 @@ export default function ProgramEditor({
                   // отсутствие. Что именно отдано волне, говорит подпись.
                   const setsFromWave = Boolean(wave) && !pe.waveExempt;
                   return (
-                    <Box
+                    <Tile
                       key={pe.id}
-                      sx={{ p: 1.25, borderRadius: 2, bgcolor: "action.hover" }}
                     >
                       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                         <Typography
@@ -522,7 +520,7 @@ export default function ProgramEditor({
                           />
                         )}
                       </FieldGrid>
-                    </Box>
+                    </Tile>
                   );
                 })}
               </Stack>
@@ -536,7 +534,7 @@ export default function ProgramEditor({
             >
               {t("Упражнение", "Exercise")}
             </Button>
-          </Paper>
+          </Card>
         );
       })}
 

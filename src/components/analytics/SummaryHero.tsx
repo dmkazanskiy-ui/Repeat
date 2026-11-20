@@ -1,13 +1,15 @@
+import { Card, IconBadge, radius } from "../../ui";
+import { CARD_IN } from "../../theme";
+import NumberTicker from "../NumberTicker";
 import { useState, type ReactNode } from "react";
-import { Box, Collapse, Divider, Paper, Stack, Typography, useTheme } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
-import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
-import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
-import MonitorHeartOutlinedIcon from "@mui/icons-material/MonitorHeartOutlined";
+import { Box, Collapse, Divider, Stack, Typography, useTheme } from "@mui/material";
+import { ExpandMoreRounded as ExpandMoreRoundedIcon } from "../../ui/icons";
+import { TrendingUpRounded as TrendingUpRoundedIcon } from "../../ui/icons";
+import { TrendingDownRounded as TrendingDownRoundedIcon } from "../../ui/icons";
+import { MonitorHeartOutlined as MonitorHeartOutlinedIcon } from "../../ui/icons";
 import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
-import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
-import ShowChartRoundedIcon from "@mui/icons-material/ShowChartRounded";
+import { EmojiEventsOutlined as EmojiEventsOutlinedIcon } from "../../ui/icons";
+import { ShowChartRounded as ShowChartRoundedIcon } from "../../ui/icons";
 import SelfImprovementRoundedIcon from "@mui/icons-material/SelfImprovementRounded";
 import SpaOutlinedIcon from "@mui/icons-material/SpaOutlined";
 import { smoothPath } from "../../lib/chart";
@@ -33,6 +35,8 @@ export interface HeroData {
   workoutsText: string;
   daysText: string;
   volumeText: string;
+  /** Если задано — крупное число докручивается (Number Ticker). */
+  volumeTick?: { value: number; format: (v: number) => string };
   /** Подпись над крупным числом объёма (по умолчанию «Общий тоннаж»). */
   volumeLabel?: string;
   dailyVolume: number[];
@@ -81,13 +85,14 @@ function HeroBars({
         const recovery = recoveryDays[i] && v <= 0;
         const isHi = highlightIndex === i;
         // Режим итога дня: выбранный день зелёный, прошлые серо-прозрачные.
-        let color = recovery ? RECOVERY_COLOR : green;
-        let opacity = 1;
-        if (highlightMode && !isHi) {
-          color = gray;
-          opacity = 0.4;
+        // Как в «Обзоре»: столбики нейтральные, зелёный — один (выбранный или лучший).
+        const lead = highlightMode ? isHi : i === present.indexOf(max);
+        let color = recovery ? RECOVERY_COLOR : gray;
+        let opacity = recovery ? 1 : 0.35;
+        if (lead) {
+          color = green;
+          opacity = 1;
         }
-        if (isHi) color = green;
         // У восстановления и у пустого выбранного дня — невысокий, но заметный бар.
         const heightPct = v <= 0 && (recovery || isHi) ? 22 : Math.max(5, (v / max) * 100);
         return (
@@ -97,8 +102,8 @@ function HeroBars({
               flex: 1,
               height: `${heightPct}%`,
               opacity,
-              borderRadius: "3px 3px 0 0",
-              background: `linear-gradient(to top, ${alpha(color, 0.25)}, ${color})`,
+              borderRadius: "5px",
+              bgcolor: color,
             }}
           />
         );
@@ -151,30 +156,17 @@ function InsightCard({ icon, label, insight }: { icon: ReactNode; label: string;
         display: "flex",
         alignItems: "center",
         gap: 1.5,
-        p: 1.5,
-        borderRadius: 2,
+        p: 2,
+        borderRadius: radius.card, animation: CARD_IN,
         border: "1px solid",
-        borderColor: alpha(color, 0.25),
-        borderLeft: `3px solid ${color}`,
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 72%)`,
+        borderColor: "divider",
         minWidth: 0,
         overflow: "hidden",
       }}
     >
-      <Box
-        sx={{
-          width: 42,
-          height: 42,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color}>
         {icon}
-      </Box>
+      </IconBadge>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
           {label}
@@ -226,7 +218,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
   );
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+    <Card sx={{ mb: 2 }}>
       <Stack direction="row" sx={{ alignItems: "flex-start", mb: 1.5 }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flex: 1, color: "primary.main" }}>
           <Typography variant="subtitle2">{hero.title}</Typography>
@@ -276,7 +268,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
             {hero.volumeLabel ?? t("Общий тоннаж", "Total tonnage")}
           </Typography>
           <Typography sx={{ fontSize: 23, fontWeight: 800, lineHeight: 1.1 }}>
-            {hero.volumeText}
+            {hero.volumeTick ? <NumberTicker value={hero.volumeTick.value} format={hero.volumeTick.format} /> : hero.volumeText}
           </Typography>
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
@@ -297,7 +289,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
               justifyContent: "space-between",
               px: 1.5,
               py: 1,
-              borderRadius: 2,
+              borderRadius: radius.tile,
               bgcolor: "action.hover",
               border: "none",
               cursor: "pointer",
@@ -326,6 +318,6 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
           </Collapse>
         </>
       )}
-    </Paper>
+    </Card>
   );
 }

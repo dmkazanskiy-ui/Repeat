@@ -1,13 +1,15 @@
+import { radius } from "../ui";
+import { CARD_IN } from "../theme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import SkipNextRoundedIcon from "@mui/icons-material/SkipNextRounded";
-import StopRoundedIcon from "@mui/icons-material/StopRounded";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { RemoveRounded as RemoveRoundedIcon } from "../ui/icons";
+import { AddRounded as AddRoundedIcon } from "../ui/icons";
+import { PauseRounded as PauseRoundedIcon } from "../ui/icons";
+import { PlayArrowRounded as PlayArrowRoundedIcon } from "../ui/icons";
+import { SkipNextRounded as SkipNextRoundedIcon } from "../ui/icons";
+import { StopRounded as StopRoundedIcon } from "../ui/icons";
 import { TYPE_COLOR } from "../lib/activityColors";
 import { L, useT } from "../lib/i18n";
 import {
@@ -155,7 +157,7 @@ function ConfigView({ cfg, color, onBack, onPatch, onStart, onPreset, t }: {
         })}
       </Stack>
 
-      <Box sx={{ borderRadius: 2, border: 1, borderColor: "divider", px: 2, py: 1, mb: 2 }}>
+      <Box sx={{ borderRadius: radius.card, animation: CARD_IN, border: 1, borderColor: "divider", px: 2, py: 1, mb: 2 }}>
         <Stepper label={t("Работа", "Work")} value={cfg.workSec} unit={t("сек", "sec")} onDelta={(d) => onPatch({ workSec: cfg.workSec + d })} />
         <Stepper label={t("Отдых", "Rest")} value={cfg.restSec} unit={t("сек", "sec")} onDelta={(d) => onPatch({ restSec: cfg.restSec + d })} />
         <Stepper label={t("Раунды", "Rounds")} value={cfg.rounds} onDelta={(d) => onPatch({ rounds: cfg.rounds + d })} big={1} />

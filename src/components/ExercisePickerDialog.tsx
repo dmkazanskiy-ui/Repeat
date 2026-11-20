@@ -16,8 +16,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
-import CloseIcon from "@mui/icons-material/Close";
+import { Search as SearchIcon } from "../ui/icons";
+import { Close as CloseIcon } from "../ui/icons";
 import { MUSCLE_GROUPS, MUSCLE_LABELS } from "../lib/catalog";
 import { cleanName, exerciseName, MIN_NAME_LENGTH } from "../lib/types";
 import { useT } from "../lib/i18n";

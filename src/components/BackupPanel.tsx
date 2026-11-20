@@ -1,3 +1,4 @@
+import { Card, IconBadge, radius } from "../ui";
 import { useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -7,17 +8,15 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Paper,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
-import ContentPasteRoundedIcon from "@mui/icons-material/ContentPasteRounded";
-import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
+import { IosShareRounded as IosShareRoundedIcon } from "../ui/icons";
+import { ContentPasteRounded as ContentPasteRoundedIcon } from "../ui/icons";
+import { ChevronRightRounded as ChevronRightRoundedIcon } from "../ui/icons";
+import { DeleteForeverRounded as DeleteForeverRoundedIcon } from "../ui/icons";
 import {
   PERIOD_LABELS,
   buildExport,
@@ -75,20 +74,9 @@ function Row({
         cursor: "pointer",
       }}
     >
-      <Box
-        sx={{
-          width: 36,
-          height: 36,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color}>
         {icon}
-      </Box>
+      </IconBadge>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {title}
@@ -123,11 +111,11 @@ export default function BackupPanel({
 
   return (
     <>
-      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("История", "History")}
       </Typography>
       <SyncLine />
-      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+      <Card>
         <Stack spacing={1}>
           <Row
             color={ink("#4ade80")}
@@ -144,9 +132,9 @@ export default function BackupPanel({
             onClick={() => setImportOpen(true)}
           />
         </Stack>
-      </Paper>
+      </Card>
 
-      <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mt: 1.5 }}>
+      <Card sx={{ mt: 1.5 }}>
         <Row
           color={ink("#f87171")}
           icon={<DeleteForeverRoundedIcon fontSize="small" />}
@@ -154,7 +142,7 @@ export default function BackupPanel({
           sub={t("Все данные с сервера и с этого устройства", "All data on the server and this device")}
           onClick={() => setDeleteOpen(true)}
         />
-      </Paper>
+      </Card>
 
       {deleteOpen && <DeleteDialog onClose={() => setDeleteOpen(false)} />}
       {exportOpen && (
@@ -335,8 +323,8 @@ function ExportDialog({
                 mt: 1,
                 width: "100%",
                 height: 160,
-                p: 1,
-                borderRadius: 2,
+                p: 1.5,
+                borderRadius: radius.tile,
                 border: "1px solid",
                 borderColor: "divider",
                 bgcolor: "background.default",
@@ -435,8 +423,8 @@ function ImportDialog({
               sx={{
                 width: "100%",
                 height: 120,
-                p: 1,
-                borderRadius: 2,
+                p: 1.5,
+                borderRadius: radius.tile,
                 border: "1px solid",
                 borderColor: "divider",
                 bgcolor: "background.default",

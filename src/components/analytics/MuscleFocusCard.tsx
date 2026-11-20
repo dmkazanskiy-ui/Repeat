@@ -1,11 +1,12 @@
-import { Box, Paper, Stack, Typography } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { Card, IconBadge } from "../../ui";
+import { Box, Stack, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import BalanceRoundedIcon from "@mui/icons-material/BalanceRounded";
-import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
-import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
-import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
-import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
-import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
+import { SwapHorizRounded as SwapHorizRoundedIcon } from "../../ui/icons";
+import { EventBusyRounded as EventBusyRoundedIcon } from "../../ui/icons";
+import { ScheduleRounded as ScheduleRoundedIcon } from "../../ui/icons";
+import { RepeatRounded as RepeatRoundedIcon } from "../../ui/icons";
+import { BarChartRounded as BarChartRoundedIcon } from "../../ui/icons";
 import { useT } from "../../lib/i18n";
 import type { FocusItem, MuscleFocus } from "../../lib/analytics";
 import type { Muscle } from "../../lib/analytics";
@@ -42,43 +43,27 @@ export default function MuscleFocusCard({
 
   if (!focus.hasData) {
     return (
-      <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 2, mb: 2 }}>
+      <Card sx={{ mb: 2 }}>
         <Typography variant="body2" color="text.secondary">
           {t(
             "Занеси хотя бы четыре силовые за месяц — появится разбор баланса.",
             "Log at least four strength sessions in a month to get a balance read.",
           )}
         </Typography>
-      </Paper>
+      </Card>
     );
   }
 
   return (
-    <Paper
-      variant="outlined"
+    <Card
       sx={{
-        p: 1.75,
         mb: 2,
-        borderRadius: 2,
-        borderColor: alpha(color, 0.3),
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 72%)`,
-      }}
+        borderColor: "divider" }}
     >
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", mb: focus.items.length ? 1.5 : 0.5 }}>
-        <Box
-          sx={{
-            width: 34,
-            height: 34,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color,
-            backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-          }}
-        >
+        <IconBadge color={color}>
           <BalanceRoundedIcon fontSize="small" />
-        </Box>
+        </IconBadge>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
             {focus.headline}
@@ -122,6 +107,6 @@ export default function MuscleFocusCard({
           {focus.okLabel}
         </Typography>
       )}
-    </Paper>
+    </Card>
   );
 }

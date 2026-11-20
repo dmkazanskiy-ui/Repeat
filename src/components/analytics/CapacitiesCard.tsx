@@ -1,5 +1,5 @@
-import { Box, Paper, Stack, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Card, Tile } from "../../ui";
+import { Box, Stack, Typography } from "@mui/material";
 import { ActivityIcon } from "../../lib/icons";
 import type { IconKey } from "../../lib/icons";
 import { smoothPath } from "../../lib/chart";
@@ -83,14 +83,14 @@ export default function CapacitiesCard({ items }: { items: CapacityProgress[] })
   const summary = capacitySummary(items);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+    <Card>
       <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", mb: 2 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.4 }}>
           {summary}
         </Typography>
       </Stack>
 
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 1 }}>
         {items.map((c) => {
           const cColor = COLOR[c.key];
           const active = c.hasData && c.direction !== "none";
@@ -99,19 +99,13 @@ export default function CapacitiesCard({ items }: { items: CapacityProgress[] })
             c.direction === "up" ? cColor : active ? "text.primary" : "text.disabled";
           const sparkColor = active ? cColor : "rgba(148,163,179,0.5)";
           return (
-            <Box
+            <Tile
               key={c.key}
               sx={{
-                p: 1.25,
-                borderRadius: 2,
-                border: "1px solid",
-                borderColor: alpha(cColor, 0.25),
-                backgroundImage: `linear-gradient(135deg, ${alpha(cColor, 0.1)}, transparent 75%)`,
                 display: "flex",
                 flexDirection: "column",
                 gap: 0.75,
-                minWidth: 0,
-              }}
+                minWidth: 0 }}
             >
               <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", minWidth: 0 }}>
                 <Box sx={{ color: cColor, display: "flex" }}>
@@ -135,10 +129,10 @@ export default function CapacitiesCard({ items }: { items: CapacityProgress[] })
                   {t("предварительно", "preliminary")}
                 </Typography>
               )}
-            </Box>
+            </Tile>
           );
         })}
       </Box>
-    </Paper>
+    </Card>
   );
 }

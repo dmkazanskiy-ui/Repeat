@@ -1,8 +1,9 @@
-import { Box, Paper, Stack, Typography } from "@mui/material";
+import { Card, IconBadge, Tile } from "../../ui";
+import { Box, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
-import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
-import TrendingFlatRoundedIcon from "@mui/icons-material/TrendingFlatRounded";
+import { TrendingUpRounded as TrendingUpRoundedIcon } from "../../ui/icons";
+import { TrendingDownRounded as TrendingDownRoundedIcon } from "../../ui/icons";
+import { TrendingFlatRounded as TrendingFlatRoundedIcon } from "../../ui/icons";
 import { ActivityIcon } from "../../lib/icons";
 import { FOCUS_GOALS } from "../../lib/workoutBuilder";
 import { useT } from "../../lib/i18n";
@@ -44,7 +45,7 @@ export default function GoalLensCard({
   const toneColor = TONE_COLOR[verdict.tone];
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2 }}>
+    <Card sx={{ mb: 2 }}>
       {/* Селектор цели */}
       <Box sx={{ display: "flex", gap: 0.75, overflowX: "auto", pb: 1, mx: -0.5, px: 0.5 }}>
         {FOCUS_GOALS.map((g) => {
@@ -77,20 +78,9 @@ export default function GoalLensCard({
       </Box>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mt: 1 }}>
-        <Box
-          sx={{
-            width: 46,
-            height: 46,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color,
-            backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-          }}
-        >
+        <IconBadge color={color}>
           <ActivityIcon icon={meta.icon} fontSize="medium" />
-        </Box>
+        </IconBadge>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
             {t("Как идёшь к цели", "Progress toward")} «{meta.label.toLowerCase()}»
@@ -107,9 +97,9 @@ export default function GoalLensCard({
 
       <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
         {verdict.metrics.map((m) => (
-          <Box
+          <Tile
             key={m.label}
-            sx={{ flex: 1, minWidth: 0, p: 1.25, borderRadius: 2, bgcolor: "action.hover" }}
+            sx={{ flex: 1, minWidth: 0 }}
           >
             <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
               {m.label}
@@ -120,9 +110,9 @@ export default function GoalLensCard({
               </Typography>
               <DirIcon dir={m.dir} color={toneColor} />
             </Stack>
-          </Box>
+          </Tile>
         ))}
       </Stack>
-    </Paper>
+    </Card>
   );
 }

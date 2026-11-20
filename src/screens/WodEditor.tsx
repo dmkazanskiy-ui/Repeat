@@ -1,3 +1,4 @@
+import { Card, IconBadge } from "../ui";
 import { useMemo } from "react";
 import {
   Box,
@@ -5,16 +6,15 @@ import {
   Chip,
   Divider,
   IconButton,
-  Paper,
   Stack,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
 import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
-import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
+import { EmojiEventsOutlined as EmojiEventsOutlinedIcon } from "../ui/icons";
 import NumberField from "../components/NumberField";
 import MoodPad from "../components/MoodPad";
 import { ActivityIcon } from "../lib/icons";
@@ -113,20 +113,9 @@ export default function WodEditor({
         </Stack>
 
         <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", mb: 2 }}>
-          <Box
-            sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              display: "grid",
-              placeItems: "center",
-              color,
-              backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-              flexShrink: 0,
-            }}
-          >
+          <IconBadge color={color}>
             <ActivityIcon icon={preset?.icon ?? "bolt"} fontSize="medium" />
-          </Box>
+          </IconBadge>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {preset ? (
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -150,7 +139,7 @@ export default function WodEditor({
           </Box>
         </Stack>
 
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+        <Card>
           <Stack spacing={2}>
             <TextField
               fullWidth
@@ -253,7 +242,7 @@ export default function WodEditor({
                   </Typography>
                 ) : (
                   <Typography component="span" variant="caption" color="text.secondary">
-                    {t("— отметь точку", "— mark a point")}
+                    {t("— передвинь ползунки", "— move the sliders")}
                   </Typography>
                 )}
               </Typography>
@@ -276,7 +265,7 @@ export default function WodEditor({
               onChange={(event) => onChange({ ...session, notes: event.target.value || null })}
             />
           </Stack>
-        </Paper>
+        </Card>
 
         {/* Прошлые попытки этого же задания — то, ради чего каталог и нужен. */}
         {history.length > 0 && (
@@ -294,7 +283,7 @@ export default function WodEditor({
                 />
               )}
             </Stack>
-            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+            <Card>
               <Stack spacing={0.75}>
                 {[...history].reverse().slice(0, 8).map((attempt) => (
                   <Stack
@@ -317,7 +306,7 @@ export default function WodEditor({
                   </Stack>
                 ))}
               </Stack>
-            </Paper>
+            </Card>
           </Box>
         )}
 

@@ -1,3 +1,4 @@
+import { Card, Tile } from "../ui";
 import { useMemo, useState } from "react";
 import {
   Box,
@@ -8,20 +9,19 @@ import {
   DialogTitle,
   Divider,
   IconButton,
-  Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
-import CloseIcon from "@mui/icons-material/Close";
+import { Add as AddIcon } from "../ui/icons";
+import { Close as CloseIcon } from "../ui/icons";
 import NumberField from "./NumberField";
-import MiniChart from "./MiniChart";
+import StatCard from "./StatCard";
 import { newBodyEntry } from "../lib/store";
-import { formatDate, today } from "../lib/format";
+import { addDays, formatDate, today } from "../lib/format";
 import { BODY_METRICS } from "../lib/types";
 import type { BodyEntry } from "../lib/types";
-import { useLang, useT } from "../lib/i18n";
+import { L, useLang, useT } from "../lib/i18n";
 
 interface Props {
   bodyEntries: BodyEntry[];
@@ -40,6 +40,14 @@ const METRIC_EN: Record<string, string> = {
   thigh: "Thigh",
   neck: "Neck",
 };
+
+const WEIGHT_RANGES = [
+  { key: "1m", get label() { return L("Месяц", "Month"); } },
+  { key: "3m", get label() { return L("3 мес", "3 mo"); } },
+  { key: "1y", get label() { return L("Год", "Year"); } },
+  { key: "all", get label() { return L("Всё", "All"); } },
+];
+const WEIGHT_RANGES_DAYS: Record<string, number | null> = { "1m": 30, "3m": 90, "1y": 365, all: null };
 
 function sortByDate<T extends { date: string }>(items: T[], desc = false): T[] {
   return [...items].sort((a, b) =>
@@ -62,10 +70,12 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
     .filter((e) => e.weightKg != null)
     .map((e) => ({ label: formatDate(e.date), value: e.weightKg as number }));
 
-  const currentWeight = weightPoints.at(-1)?.value ?? null;
-  const prevWeight = weightPoints.at(-2)?.value ?? null;
-  const weightDelta =
-    currentWeight != null && prevWeight != null ? currentWeight - prevWeight : null;
+  const [range, setRange] = useState("all");
+  const days = WEIGHT_RANGES_DAYS[range];
+  const cutoff = days ? addDays(today(), -days) : "0000-00-00";
+  const rangeWeights = asc
+    .filter((e) => e.weightKg != null && e.date >= cutoff)
+    .map((e) => ({ label: formatDate(e.date), value: e.weightKg as number }));
 
   function latest(key: keyof BodyEntry): number | null {
     for (const e of sortByDate(bodyEntries, true)) {
@@ -88,39 +98,31 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
   return (
     <Box>
       {/* Вес + замеры одним блоком */}
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ flex: 1 }}>
-            {t("Вес", "Weight")}
-          </Typography>
-          {currentWeight != null && (
-            <>
-              <Typography sx={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>
-                {String(currentWeight).replace(".", ",")} {t("кг", "kg")}
-              </Typography>
-              {weightDelta != null && weightDelta !== 0 && (
-                <Typography
-                  variant="caption"
-                  sx={{ color: weightDelta < 0 ? "primary.main" : "text.secondary", fontWeight: 700 }}
-                >
-                  {weightDelta > 0 ? "+" : ""}
-                  {String(Number(weightDelta.toFixed(1))).replace(".", ",")}
-                </Typography>
-              )}
-            </>
-          )}
-        </Stack>
+      <Card>
         {weightPoints.length > 0 ? (
-          <Box sx={{ mt: 1 }}>
-            <MiniChart
-              points={weightPoints}
-              format={(v) => String(Number(v.toFixed(1))).replace(".", ",")}
-            />
-          </Box>
+          <StatCard
+            label={t("Вес", "Weight")}
+            value={rangeWeights.length ? rangeWeights[rangeWeights.length - 1].value : null}
+            format={(v) => `${v.toFixed(1).replace(".", t(",", "."))} ${t("кг", "kg")}`}
+            delta={rangeWeights.length >= 2 ? rangeWeights[rangeWeights.length - 1].value - rangeWeights[0].value : null}
+            deltaSuffix={` ${t("кг", "kg")}`}
+            upIsGood={false}
+            values={rangeWeights.map((p) => p.value)}
+            firstLabel={rangeWeights[0]?.label}
+            lastLabel={rangeWeights[rangeWeights.length - 1]?.label}
+            ranges={WEIGHT_RANGES}
+            range={range}
+            onRange={setRange}
+          />
         ) : (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-            {t("Добавь замер — появится график веса.", "Add a measurement to see your weight chart.")}
-          </Typography>
+          <>
+            <Typography variant="subtitle2" color="text.secondary">
+              {t("Вес", "Weight")}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+              {t("Добавь замер — появится график веса.", "Add a measurement to see your weight chart.")}
+            </Typography>
+          </>
         )}
 
         <Divider sx={{ my: 2 }} />
@@ -128,18 +130,18 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
           {t("Замеры", "Measurements")}
         </Typography>
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 1 }}>
           {BODY_METRICS.filter((m) => m.key !== "weightKg").map((m) => {
             const value = latest(m.key);
             return (
-              <Box key={m.key} sx={{ p: 1.25, borderRadius: 2, bgcolor: "action.hover", textAlign: "center" }}>
+              <Tile key={m.key} sx={{ textAlign: "center" }}>
                 <Typography sx={{ fontSize: 18, fontWeight: 800 }}>
                   {value != null ? String(value).replace(".", t(",", ".")) : "—"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
                   {metricLabel(m.key, m.label)}
                 </Typography>
-              </Box>
+              </Tile>
             );
           })}
         </Box>
@@ -153,19 +155,19 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
         >
           {t("Добавить замер", "Add measurement")}
         </Button>
-      </Paper>
+      </Card>
 
       {/* История замеров */}
       {bodyEntries.length > 0 && (
         <Stack spacing={1} sx={{ mt: 1.5 }}>
           {sortByDate(bodyEntries, true).map((entry) => (
-            <Paper
+            <Card
               key={entry.id}
-              variant="outlined"
+             
               role="button"
               tabIndex={0}
               onClick={() => setEditing(entry)}
-              sx={{ p: 1.5, borderRadius: 2, cursor: "pointer", display: "flex", alignItems: "center" }}
+              sx={{ cursor: "pointer", display: "flex", alignItems: "center" }}
             >
               <Typography variant="body2" sx={{ flex: 1 }}>
                 {formatDate(entry.date)}
@@ -175,7 +177,7 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
                   ? `${String(entry.weightKg).replace(".", ",")} ${t("кг", "kg")}`
                   : t("замер", "measurement")}
               </Typography>
-            </Paper>
+            </Card>
           ))}
         </Stack>
       )}
@@ -233,7 +235,7 @@ function MeasurementDialog({
           onChange={(e) => setDraft({ ...draft, date: e.target.value })}
           sx={{ mb: 2, mt: 1 }}
         />
-        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1.5 }}>
           {BODY_METRICS.map((m) => (
             <NumberField
               key={m.key}

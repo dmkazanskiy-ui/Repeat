@@ -1,11 +1,13 @@
+import { radius } from "../ui";
+import { CARD_IN } from "../theme";
 import { useMemo, useState } from "react";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import { formatVolume } from "../lib/format";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import AddIcon from "@mui/icons-material/Add";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
+import { ChevronRight as ChevronRightIcon } from "../ui/icons";
+import { Add as AddIcon } from "../ui/icons";
+import { ExpandMore as ExpandMoreIcon } from "../ui/icons";
+import { ExpandLess as ExpandLessIcon } from "../ui/icons";
 import SessionTimeline from "../components/SessionTimeline";
 import TodayGuide from "../components/TodayGuide";
 import {
@@ -15,7 +17,6 @@ import {
   formatDateFull,
   monthGrid,
   monthTitle,
-  nowTime,
   parseDateKey,
   today,
   toDateKey,
@@ -57,10 +58,13 @@ function buildDayHero(
 
   let volumeText = "—";
   let volumeLabel = t("Тоннаж дня", "Day tonnage");
+  let volumeTick: { value: number; format: (v: number) => string } | undefined;
   if (sum.tonnage > 0) {
     volumeText = formatVolume(sum.tonnage);
+    volumeTick = { value: sum.tonnage, format: (v) => formatVolume(v) };
   } else if (sum.durationSec >= 60) {
     volumeText = `${Math.round(sum.durationSec / 60)} ${t("мин", "min")}`;
+    volumeTick = { value: Math.round(sum.durationSec / 60), format: (v) => `${Math.round(v)} ${t("мин", "min")}` };
     volumeLabel = t("Активное время", "Active time");
   }
 
@@ -76,6 +80,7 @@ function buildDayHero(
     workoutsText: sum.shortHeadline,
     daysText: parts.join(" · "),
     volumeText,
+    volumeTick,
     volumeLabel,
     dailyVolume: bars,
     recoveryDays: rec,
@@ -189,7 +194,7 @@ export default function CalendarScreen({
         </IconButton>
       </Stack>
 
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", mb: 0.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", mb: 0.5 }}>
         {weekdaysShort().map((day) => (
           <Typography
             key={day}
@@ -202,7 +207,7 @@ export default function CalendarScreen({
         ))}
       </Box>
 
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 0.5 }}>
         {grid.map((key) => {
           const date = parseDateKey(key);
           const isSelected = key === selected;
@@ -221,7 +226,7 @@ export default function CalendarScreen({
                 aspectRatio: "1",
                 border: isToday ? "1px solid" : "1px solid transparent",
                 borderColor: isToday ? "primary.main" : "transparent",
-                borderRadius: 2,
+                borderRadius: "50%",
                 bgcolor: isSelected ? "primary.main" : "transparent",
                 color: isSelected
                   ? "primary.contrastText"
@@ -288,7 +293,7 @@ export default function CalendarScreen({
             mb: 1.5,
             px: 1.5,
             py: 1,
-            borderRadius: 2,
+            borderRadius: radius.card, animation: CARD_IN,
             border: "1px solid",
             borderColor: "divider",
             bgcolor: "transparent",
@@ -341,7 +346,6 @@ export default function CalendarScreen({
           onOpen={onOpen}
           onDelete={onDelete}
           onChangeTime={onChangeTime}
-          now={selected === todayKey ? nowTime() : undefined}
         />
       )}
 

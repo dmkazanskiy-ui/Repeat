@@ -1,15 +1,16 @@
+import { Card, IconBadge } from "../ui";
 import { globalUnit, unitFor, unitLabel } from "../lib/units";
 import type { ExerciseUnits, WeightUnit } from "../lib/units";
-import { Box, Button, Chip, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
-import { alpha, createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
+import { Box, Button, Chip, Collapse, IconButton, Stack, Typography } from "@mui/material";
+import { createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
 import { useMemo, useState } from "react";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import { ArrowBack as ArrowBackIcon } from "../ui/icons";
+import { ExpandMoreRounded as ExpandMoreRoundedIcon } from "../ui/icons";
 import MoodPad from "../components/MoodPad";
 import BodyMap from "../components/analytics/BodyMap";
 import { sessionMuscleLoads } from "../lib/analytics";
-import EditIcon from "@mui/icons-material/Edit";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { Edit as EditIcon } from "../ui/icons";
+import { ContentCopy as ContentCopyIcon } from "../ui/icons";
 import { ActivityIcon } from "../lib/icons";
 import {
   formatDateFull,
@@ -121,20 +122,9 @@ export default function SessionView({
       </Stack>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 2 }}>
-        <Box
-          sx={{
-            width: 52,
-            height: 52,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color,
-            backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-          }}
-        >
+        <IconBadge color={color} size={48}>
           <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
-        </Box>
+        </IconBadge>
         <Box>
           <Typography variant="h1">{sessionTitle(session)}</Typography>
           {(duration != null || sessionAvgHr(session) != null) && (
@@ -153,7 +143,7 @@ export default function SessionView({
 
       {/* Самочувствие после — точка на 2D-карте (оси под контекст). У
           восстановления «Как зашло» живёт в своём редакторе. */}
-      <Paper variant="outlined" sx={{ borderRadius: 2, mb: 2, overflow: "hidden" }}>
+      <Card sx={{ p: 0, mb: 2, overflow: "hidden" }}>
         <Box
           component="button"
           onClick={() => setMoodOpen((v) => !v)}
@@ -173,7 +163,7 @@ export default function SessionView({
           <Box sx={{ flex: 1, minWidth: 0, textAlign: "left" }}>
             <Typography variant="subtitle2">{t("Как ты после?", "How do you feel?")}</Typography>
             <Typography variant="caption" color="text.secondary">
-              {session.mood ? moodReading(moodCtx, session.mood) : t("отметь точку на карте", "mark a point on the map")}
+              {session.mood ? moodReading(moodCtx, session.mood) : t("отметь самочувствие", "rate how you feel")}
             </Typography>
           </Box>
           {session.mood && (
@@ -192,7 +182,7 @@ export default function SessionView({
             color={color}
           />
         </Collapse>
-      </Paper>
+      </Card>
 
       {session.kind === "strength" && session.exercises.length > 0 && (
         <>
@@ -229,7 +219,7 @@ export default function SessionView({
                   const exercise = exercises.find((e) => e.id === item.exerciseId);
                   const volume = exerciseVolume(item);
                   return (
-                    <Paper key={item.id} variant="outlined" sx={{ p: 1.5, mb: isSuper ? 1 : 1.5 }}>
+                    <Card key={item.id} sx={{ p: 1.5, mb: isSuper ? 1 : 1.5 }}>
                       <Stack direction="row" sx={{ mb: 0.5, alignItems: "baseline" }}>
                         <Typography variant="subtitle2" sx={{ flex: 1 }}>
                           {exerciseName(exercise)}
@@ -249,7 +239,7 @@ export default function SessionView({
                           ? ` ${unitLabel(unitFor(item.exerciseId, exerciseUnits))}`
                           : ""}
                       </Typography>
-                    </Paper>
+                    </Card>
                   );
                 })}
               </Box>
@@ -268,7 +258,7 @@ export default function SessionView({
       )}
 
       {session.kind === "cardio" && session.cardio && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Card sx={{ mb: 2 }}>
           {/* Крупно — то, что важно этому виду: у степпера дистанции нет,
               у ходьбы вместо темпа скорость. */}
           <Stack direction="row" spacing={3} sx={{ flexWrap: "wrap", rowGap: 1.5 }}>
@@ -301,15 +291,15 @@ export default function SessionView({
               {cardioExtras.join(" · ")}
             </Typography>
           )}
-        </Paper>
+        </Card>
       )}
 
       {session.notes && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Card sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
             {session.notes}
           </Typography>
-        </Paper>
+        </Card>
       )}
 
       <Button

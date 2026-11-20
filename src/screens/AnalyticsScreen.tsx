@@ -1,3 +1,6 @@
+import { IconBadge, Tile, radius } from "../ui";
+import { Card } from "../ui";
+import { CARD_IN } from "../theme";
 import { fmtWeightRound, unitLabel } from "../lib/units";
 import { useMemo, useRef, useState } from "react";
 import {
@@ -7,7 +10,6 @@ import {
   Collapse,
   Divider,
   IconButton,
-  Paper,
   Stack,
   Tab,
   Tabs,
@@ -17,25 +19,23 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
-import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import PriorityHighRounded from "@mui/icons-material/PriorityHighRounded";
-import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
-import MetricChart from "../components/analytics/MetricChart";
+import { TrendingUpRounded as TrendingUpRoundedIcon } from "../ui/icons";
+import { EmojiEventsOutlined as EmojiEventsOutlinedIcon } from "../ui/icons";
+import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
+import { ChevronRight as ChevronRightIcon } from "../ui/icons";
+import { ExpandMore as ExpandMoreIcon } from "../ui/icons";
+import { PriorityHighRounded } from "../ui/icons";
+import { SwapHorizRounded as SwapHorizRoundedIcon } from "../ui/icons";
+import NumberTicker from "../components/NumberTicker";
+import OverviewCard from "../components/analytics/OverviewCard";
 import StrengthProgress from "../components/analytics/StrengthProgress";
 import { RulerMeter, ScoreRing, WeekDots } from "../components/analytics/Meters";
 import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
-import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
-import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
+import { ScheduleOutlined as ScheduleOutlinedIcon } from "../ui/icons";
 import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
-import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
-import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
-import LocalFireDepartmentOutlinedIcon from "@mui/icons-material/LocalFireDepartmentOutlined";
-import RepeatRoundedIcon from "@mui/icons-material/RepeatRounded";
-import LoopRoundedIcon from "@mui/icons-material/LoopRounded";
+import { PlaceOutlined as PlaceOutlinedIcon } from "../ui/icons";
+import { ListAltOutlined as ListAltOutlinedIcon } from "../ui/icons";
+import { RepeatRounded as RepeatRoundedIcon } from "../ui/icons";
 import RadarChart from "../components/analytics/RadarChart";
 import BodyMap from "../components/analytics/BodyMap";
 import MuscleFocusCard from "../components/analytics/MuscleFocusCard";
@@ -88,14 +88,8 @@ import type {
   MuscleLoad,
   WorkoutComparison,
 } from "../lib/analytics";
-import type { MetricComparison, MetricKey, PersonalRecord } from "../lib/analytics";
+import type { MetricKey, PersonalRecord } from "../lib/analytics";
 import type { PeriodMode } from "../lib/analytics";
-import {
-  CHART_METRICS,
-  KPI_METRICS,
-  METRIC_META,
-  formatPercent,
-} from "../lib/metricMeta";
 import { L, useLang, useT } from "../lib/i18n";
 import {
   weekdaysShort,
@@ -436,6 +430,7 @@ export default function AnalyticsScreen({
       workoutsText: `${wk} ${lang === "ru" ? ruPlural(wk, "тренировка", "тренировки", "тренировок") : wk === 1 ? "workout" : "workouts"}`,
       daysText: `${L("в", "across")} ${days} ${lang === "ru" ? ruPlural(days, "тренировочном дне", "тренировочных днях", "тренировочных днях") : days === 1 ? "training day" : "training days"}`,
       volumeText: formatVolume(summary.volume),
+      volumeTick: summary.volume > 0 ? { value: summary.volume, format: (v: number) => formatVolume(v) } : undefined,
       dailyVolume,
       recoveryDays: heroRecoveryDays,
       cardio: {
@@ -507,25 +502,12 @@ export default function AnalyticsScreen({
       ? monthTitle(parseDateKey(anchor))
       : `${formatDate(period.startDate)} — ${formatDate(period.endDate)}`;
 
-  const chartPoints = series(sessions, period, metric);
-  // Предыдущий период той же длины и агрегации — для серой линии сравнения.
-  const prevPoints = series(
-    sessions,
-    {
-      startDate: period.comparison.startDate,
-      endDate: period.comparison.endDate,
-      aggregation: period.aggregation,
-      comparison: period.comparison,
-    },
-    metric,
-  );
   const avgPerDay = averagePerActiveDay(
     sessions,
     period.startDate,
     period.endDate,
     metric,
   );
-  const metricTotal = summary[metric];
 
   if (sessions.length === 0) {
     return (
@@ -626,22 +608,17 @@ export default function AnalyticsScreen({
 
       {/* Плато — маленький алерт под первым дашбордом, разбор живёт в «Прогрессе» */}
       {plateaus.length > 0 && (
-        <Paper
-          variant="outlined"
+        <Card
           role="button"
           tabIndex={0}
           onClick={openPlateaus}
           sx={{
             mb: 2,
-            p: 1.25,
-            borderRadius: 2,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             gap: 1.25,
-            borderColor: alpha(PLATEAU_COLOR, 0.4),
-            backgroundImage: `linear-gradient(100deg, ${alpha(PLATEAU_COLOR, 0.12)}, transparent 72%)`,
-          }}
+            borderColor: "divider" }}
         >
           <Box
             sx={{
@@ -671,7 +648,7 @@ export default function AnalyticsScreen({
             </Typography>
           </Box>
           <ChevronRightIcon fontSize="small" sx={{ color: "text.secondary" }} />
-        </Paper>
+        </Card>
       )}
 
       {/* Разделы — отвечают на 4 вопроса, чтобы не вываливать всё простынёй */}
@@ -695,53 +672,16 @@ export default function AnalyticsScreen({
 
       {view === "volume" && (
         <>
-      {/* Главный интерактивный график */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 1.5, borderRadius: 2 }}>
-        <Box
-          sx={{ display: "flex", gap: 1, overflowX: "auto", mb: 1, pb: 0.5 }}
-        >
-          {CHART_METRICS.map((m) => (
-            <Chip
-              key={m}
-              label={METRIC_META[m].label}
-              size="small"
-              onClick={() => setMetric(m)}
-              color={metric === m ? "primary" : "default"}
-              variant={metric === m ? "filled" : "outlined"}
-              sx={{ height: 32, borderRadius: 2, flexShrink: 0 }}
-            />
-          ))}
-        </Box>
-        <Typography variant="h2">{METRIC_META[metric].format(metricTotal)}</Typography>
-        <Typography variant="caption" color="text.secondary">
-          {t("В среднем", "Avg")} {METRIC_META[metric].format(avgPerDay)} {t("за активный день", "per active day")}
-        </Typography>
-        <MetricChart
-          points={chartPoints}
-          previous={prevPoints}
-          average={avgPerDay}
-          format={METRIC_META[metric].format}
-          labelOf={labelOf}
-        />
-      </Paper>
-
-      {/* KPI: одна панель цифр, 2 колонки на тонких линиях — без спарклайнов.
-          Главный график выше — он визуальный центр раздела. */}
-      <Paper
-        variant="outlined"
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          borderRadius: 2,
-          overflow: "hidden",
-          "& > *": { borderBottom: "1px solid", borderColor: "divider" },
-          "& > *:nth-of-type(odd)": { borderRight: "1px solid", borderRightColor: "divider" },
-        }}
-      >
-        {KPI_METRICS.map((m) => (
-          <KpiCard key={m} metric={m} comparison={compareMetric(sessions, period, m)} />
-        ))}
-      </Paper>
+      <OverviewCard
+        sessions={sessions}
+        period={period}
+        metric={metric}
+        onMetric={setMetric}
+        title={t("Обзор", "Overview")}
+        rangeLabel={rangeLabel}
+        labelOf={labelOf}
+        avgPerDay={avgPerDay}
+      />
 
       {/* Распределение активности */}
       {dist.length > 0 && (
@@ -768,7 +708,7 @@ export default function AnalyticsScreen({
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("Регулярность", "Consistency")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, mb: 1.5, borderRadius: 2 }}>
+      <Card sx={{ mb: 1.5 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
           <Typography variant="subtitle2" sx={{ flex: 1 }}>
             {t("Эта неделя", "This week")}
@@ -778,13 +718,13 @@ export default function AnalyticsScreen({
           </Typography>
         </Stack>
         <WeekDots active={weekActive} labels={weekdaysShort()} todayIndex={todayIdx} />
-      </Paper>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
-        <StatTile value={`${cons.activeDays}`} label={t("Активных дней", "Active days")} />
-        <StatTile value={cons.perWeek.toFixed(1).replace(".", L(",", "."))} label={t("Тренировок в неделю", "Workouts / week")} />
-        <StatTile value={`${cons.longestStreak}`} label={t("Лучшая серия", "Best streak")} />
-        <StatTile value={`${Math.round(cons.activeWeekRatio * 100)}%`} label={t("Активных недель", "Active weeks")} />
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1, mt: 2 }}>
+        <StatTile value={cons.activeDays} label={t("Активных дней", "Active days")} />
+        <StatTile value={cons.perWeek} format={(v) => v.toFixed(1).replace(".", L(",", "."))} label={t("Тренировок в неделю", "Workouts / week")} />
+        <StatTile value={cons.longestStreak} label={t("Лучшая серия", "Best streak")} />
+        <StatTile value={cons.activeWeekRatio * 100} format={(v) => `${Math.round(v)}%`} label={t("Активных недель", "Active weeks")} />
       </Box>
+      </Card>
 
       {/* Календарная heatmap активности */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
@@ -820,7 +760,7 @@ export default function AnalyticsScreen({
       <CapacitiesCard items={capacities} />
 
       {/* Прогресс силы — дашборд без проваливания в каждое упражнение */}
-      <Typography variant="h2" sx={{ mt: 4, mb: 1.5 }}>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("Прогресс силы", "Strength progress")}
       </Typography>
       {trained.length === 0 ? (
@@ -829,8 +769,8 @@ export default function AnalyticsScreen({
         </Typography>
       ) : (
         <>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1 }}>
+          <Card>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 1 }}>
               <StatusCount value={strengthSummary.up} label={t("растут", "rising")} tone="up" />
               <StatusCount value={strengthSummary.flat} label={t("стабильны", "steady")} tone="flat" />
               <StatusCount value={strengthSummary.down} label={t("снижаются", "falling")} tone="flat" />
@@ -858,7 +798,7 @@ export default function AnalyticsScreen({
                 </Box>
               </>
             )}
-          </Paper>
+          </Card>
           <Button
             fullWidth
             onClick={() => setStrengthOpen((v) => !v)}
@@ -976,9 +916,9 @@ export default function AnalyticsScreen({
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
             {t("Эквивалентные подходы с учётом вторичной нагрузки. Классификация упражнений предварительная.", "Equivalent sets counting secondary load. Exercise classification is preliminary.")}
           </Typography>
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 1.5 }}>
+          <Card sx={{ mb: 1.5 }}>
             <BodyMap loads={muscles} highlight={focusMuscle} />
-          </Paper>
+          </Card>
           {/* Сводка сразу под картой: сначала картина, потом вывод из неё. */}
           <MuscleFocusCard focus={focus} onPick={setFocusMuscle} />
           <Stack spacing={1.25}>
@@ -1011,16 +951,16 @@ export default function AnalyticsScreen({
       {view === "recovery" && (
         <>
       {/* Баланс отдыха — тяжёлые дни подряд, отдых, предупреждение */}
-      <Typography variant="h2" sx={{ mb: 1 }}>
+      <Typography variant="h2" sx={{ mb: 1.5 }}>
         {t("Баланс отдыха", "Rest balance")}
       </Typography>
       <RestBalanceCard balance={rest} />
 
       {/* Персональная нагрузка недели */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("Нагрузка недели", "Weekly load")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+      <Card>
         <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
           <Typography variant="h2" sx={{ fontWeight: 700, flex: 1 }}>
             {load.currentSets} <Typography component="span" variant="body2" color="text.secondary">{t("рабочих подходов", "working sets")}</Typography>
@@ -1082,13 +1022,13 @@ export default function AnalyticsScreen({
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
           {t("Оценка по подходам. Данных о пульсе и RPE нет — предварительная.", "Estimated from sets. No heart-rate or RPE data — preliminary.")}
         </Typography>
-      </Paper>
+      </Card>
 
       {/* Готовность к нагрузке */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1 }}>
+      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
         {t("Готовность", "Readiness")}
       </Typography>
-      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+      <Card>
         <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
           {ready.hasSignal ? (
             <ScoreRing
@@ -1123,7 +1063,7 @@ export default function AnalyticsScreen({
             )}
           </Box>
         </Stack>
-      </Paper>
+      </Card>
         </>
       )}
 
@@ -1156,54 +1096,6 @@ function addMonthAnchor(anchor: string, delta: number): string {
 }
 
 /** Моно-иконка метрики (белая/приглушённая) — цвет только у графика и %. */
-const KPI_ICON: Record<MetricKey, typeof FitnessCenterOutlinedIcon> = {
-  workouts: FitnessCenterOutlinedIcon,
-  activeDays: CalendarMonthOutlinedIcon,
-  duration: ScheduleOutlinedIcon,
-  volume: MonitorWeightOutlinedIcon,
-  distance: PlaceOutlinedIcon,
-  exercises: ListAltOutlinedIcon,
-  sets: RepeatRoundedIcon,
-  reps: LoopRoundedIcon,
-  calories: LocalFireDepartmentOutlinedIcon,
-};
-
-function KpiCard({
-  metric,
-  comparison,
-}: {
-  metric: MetricKey;
-  comparison: MetricComparison;
-}) {
-  const t = useT();
-  const meta = METRIC_META[metric];
-  const Icon = KPI_ICON[metric];
-  const { trend, absolute, percent, current } = comparison;
-  // Снижение не красим красным — только зелёный акцент на росте.
-  const deltaColor = trend === "up" ? "primary.main" : "text.secondary";
-  const sign = absolute > 0 ? "+" : absolute < 0 ? "−" : "";
-  const empty = !current;
-  const flat = !empty && (percent == null || Math.round(percent) === 0) && absolute === 0;
-
-  return (
-    <Box sx={{ py: 1.5, px: 2, minWidth: 0 }}>
-      <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", color: "text.secondary", mb: 0.5 }}>
-        <Icon sx={{ fontSize: 16 }} />
-        <Typography variant="caption" noWrap>{meta.label}</Typography>
-      </Stack>
-      <Typography
-        noWrap
-        sx={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, fontVariantNumeric: "tabular-nums", color: empty ? "text.disabled" : "text.primary" }}
-      >
-        {meta.format(current)}
-      </Typography>
-      <Typography variant="caption" noWrap sx={{ display: "block", mt: 0.25, fontWeight: 600, color: flat || empty ? "text.secondary" : deltaColor }}>
-        {empty ? "\u00a0" : flat ? t("без изменений", "no change") : `${formatPercent(percent)} · ${sign}${meta.format(Math.abs(absolute))}`}
-      </Typography>
-    </Box>
-  );
-}
-
 function DistributionBar({
   slice,
 }: {
@@ -1342,15 +1234,9 @@ function WodRow({ summary }: { summary: WodSummary }) {
   const t = useT();
   const color = TYPE_COLOR.wod;
   return (
-    <Paper
-      variant="outlined"
+    <Card
       sx={{
-        p: 1.5,
-        borderRadius: 2,
-        borderColor: alpha(color, 0.3),
-        borderLeft: `3px solid ${color}`,
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 72%)`,
-      }}
+        borderColor: "divider" }}
     >
       <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1377,7 +1263,7 @@ function WodRow({ summary }: { summary: WodSummary }) {
           </Typography>
         </Box>
       </Stack>
-    </Paper>
+    </Card>
   );
 }
 
@@ -1387,28 +1273,15 @@ function ProgramCompareCard({ c }: { c: WorkoutComparison }) {
     <Box
       sx={{
         p: 2,
-        borderRadius: 2,
+        borderRadius: radius.card, animation: CARD_IN,
         border: "1px solid",
-        borderColor: alpha(PROGRAM_COLOR, 0.25),
-        borderLeft: `3px solid ${PROGRAM_COLOR}`,
-        backgroundImage: `linear-gradient(100deg, ${alpha(PROGRAM_COLOR, 0.1)}, transparent 72%)`,
+        borderColor: "divider",
       }}
     >
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 1.5 }}>
-        <Box
-          sx={{
-            width: 42,
-            height: 42,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color: PROGRAM_COLOR,
-            backgroundImage: `linear-gradient(135deg, ${alpha(PROGRAM_COLOR, 0.28)}, ${alpha(PROGRAM_COLOR, 0.08)})`,
-          }}
-        >
+        <IconBadge color={PROGRAM_COLOR}>
           <RepeatRoundedIcon fontSize="small" />
-        </Box>
+        </IconBadge>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
             {c.workoutName}
@@ -1552,28 +1425,15 @@ function RecordRow({ record }: { record: PersonalRecord }) {
       sx={{
         display: "flex",
         gap: 1.5,
-        p: 1.75,
-        borderRadius: 2,
+        p: 2,
+        borderRadius: radius.card, animation: CARD_IN,
         border: "1px solid",
-        borderColor: alpha(color, 0.25),
-        borderLeft: `3px solid ${color}`,
-        backgroundImage: `linear-gradient(100deg, ${alpha(color, 0.1)}, transparent 72%)`,
+        borderColor: "divider",
       }}
     >
-      <Box
-        sx={{
-          width: 42,
-          height: 42,
-          borderRadius: 2,
-          flexShrink: 0,
-          display: "grid",
-          placeItems: "center",
-          color,
-          backgroundImage: `linear-gradient(135deg, ${alpha(color, 0.28)}, ${alpha(color, 0.08)})`,
-        }}
-      >
+      <IconBadge color={color}>
         <Icon fontSize="small" />
-      </Box>
+      </IconBadge>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, minWidth: 0 }} noWrap>
@@ -1631,21 +1491,11 @@ function StatusCount({
 }) {
   // Акцент только у растущих (зелёный) и плато (янтарь); остальное нейтрально.
   const accent = tone === "up" ? ink("#4ade80") : tone === "warn" ? ink("#f59e0b") : null;
-  const tinted = accent != null && value > 0;
   const color = value === 0 ? "text.disabled" : (accent ?? "text.primary");
   return (
-    <Box
+    <Tile
       sx={{
-        p: 1.25,
-        borderRadius: 2,
-        textAlign: "center",
-        border: "1px solid",
-        borderColor: tinted ? alpha(accent, 0.25) : "divider",
-        backgroundImage: tinted
-          ? `linear-gradient(135deg, ${alpha(accent, 0.1)}, transparent 75%)`
-          : "none",
-        bgcolor: tinted ? "transparent" : "action.hover",
-      }}
+        textAlign: "center" }}
     >
       <Typography sx={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1.15 }}>
         {value}
@@ -1653,19 +1503,20 @@ function StatusCount({
       <Typography variant="caption" color="text.secondary">
         {label}
       </Typography>
-    </Box>
+    </Tile>
   );
 }
 
-function StatTile({ value, label }: { value: string; label: string }) {
+function StatTile({
+  value,
+  label,
+  format = (v: number) => String(Math.round(v)),
+}: {
+  value: number;
+  label: string;
+  format?: (v: number) => string;
+}) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-      <Typography variant="h1" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
-        {value}
-      </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
-    </Paper>
+    <Tile label={label} value={<NumberTicker value={value} format={format} />} />
   );
 }

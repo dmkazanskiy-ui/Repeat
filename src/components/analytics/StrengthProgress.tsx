@@ -1,3 +1,5 @@
+import { IconBadge, Tile, radius } from "../../ui";
+import { CARD_IN } from "../../theme";
 import { massToUnit, toUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
 import {
@@ -10,9 +12,9 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { ExpandMore as ExpandMoreIcon } from "../../ui/icons";
 import FitnessCenterOutlinedIcon from "@mui/icons-material/FitnessCenterOutlined";
-import MiniChart from "../MiniChart";
+import StatCard from "../StatCard";
 import WeightRepsChart from "./WeightRepsChart";
 import { addDays, formatDate, formatVolume, formatWeight, today } from "../../lib/format";
 import { exercisePlateau, metricDelta, metricSeries, metricTrend, metricValue } from "../../lib/analytics";
@@ -86,7 +88,19 @@ function ExerciseRow({
   const weightPoints = inRange
     .filter((p) => p.weight != null)
     .map((p) => ({ label: formatDate(p.date), weight: toUnit(p.weight as number), reps: p.reps ?? 0 }));
-  const chartPoints = metricSeries(inRange, metric).map((s) => ({ label: formatDate(s.date), value: s.v }));
+
+  // Для карточки: значения диапазона (вес — в кг, перевод в формате).
+  const rangeSeries =
+    metric === "weight"
+      ? inRange.filter((p) => p.weight != null).map((p) => ({ date: p.date, v: p.weight as number }))
+      : metricSeries(inRange, metric).map((x) => ({ date: x.date, v: x.v }));
+  const rangeValues = rangeSeries.map((x) => x.v);
+  const rangeLabels = rangeSeries.map((x) => formatDate(x.date));
+  const rangeLast = rangeValues.length ? rangeValues[rangeValues.length - 1] : null;
+  const rangeDelta =
+    rangeValues.length >= 2 && rangeValues[0] > 0
+      ? ((rangeValues[rangeValues.length - 1] - rangeValues[0]) / rangeValues[0]) * 100
+      : null;
 
   // Текущее значение метрики — последняя точка с данными.
   const latest = [...ex.points].reverse().map((p) => metricValue(p, metric)).find((v) => v != null) ?? null;
@@ -109,27 +123,16 @@ function ExerciseRow({
       : "";
 
   return (
-    <Box sx={{ borderRadius: 2, overflow: "hidden", border: "1px solid", borderColor: alpha(PURPLE, 0.22) }}>
+    <Box sx={{ borderRadius: radius.card, animation: CARD_IN, overflow: "hidden", border: "1px solid", borderColor: alpha(PURPLE, 0.22) }}>
       <Box
         role="button"
         tabIndex={0}
         onClick={() => setOpen((v) => !v)}
         sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1.25, cursor: "pointer" }}
       >
-        <Box
-          sx={{
-            width: 40,
-            height: 40,
-            borderRadius: 2,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            color: PURPLE,
-            backgroundImage: `linear-gradient(135deg, ${alpha(PURPLE, 0.28)}, ${alpha(PURPLE, 0.08)})`,
-          }}
-        >
+        <IconBadge color={PURPLE}>
           <FitnessCenterOutlinedIcon fontSize="small" />
-        </Box>
+        </IconBadge>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
             {ex.name}
@@ -165,41 +168,31 @@ function ExerciseRow({
 
       <Collapse in={open} unmountOnExit>
         <Box sx={{ px: 1.5, pb: 1.5 }}>
-          <ToggleButtonGroup
-            value={range}
-            exclusive
-            size="small"
-            fullWidth
-            onChange={(_, v) => v && setRange(v)}
-            sx={{ mb: 1.5 }}
-          >
-            {RANGES.map((r) => (
-              <ToggleButton key={r.key} value={r.key} sx={{ fontSize: 12, py: 0.5, minHeight: 36 }}>
-                {r.label}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+          <StatCard
+            label={metric === "volume" ? t("Тоннаж за неделю", "Weekly tonnage") : metricLabel}
+            value={rangeLast}
+            format={(v) => fmtMetric(metric, v, kg)}
+            delta={rangeDelta}
+            values={rangeValues}
+            firstLabel={rangeLabels[0]}
+            lastLabel={rangeLabels[rangeLabels.length - 1]}
+            ranges={RANGES}
+            range={range}
+            onRange={setRange}
+            custom={
+              metric === "weight" ? (
+                weightPoints.length > 0 ? (
+                  <WeightRepsChart points={weightPoints} />
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                    {t("В этом диапазоне нет данных.", "No data in this range.")}
+                  </Typography>
+                )
+              ) : undefined
+            }
+          />
 
-          {metric === "weight" ? (
-            weightPoints.length > 0 ? (
-              <WeightRepsChart points={weightPoints} />
-            ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                {t("В этом диапазоне нет данных.", "No data in this range.")}
-              </Typography>
-            )
-          ) : chartPoints.length > 0 ? (
-            <MiniChart
-              points={chartPoints}
-              format={metric === "volume" ? (v) => formatVolume(v) : (v) => `${Math.round(massToUnit(v))}`}
-            />
-          ) : (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-              {t("В этом диапазоне нет данных.", "No data in this range.")}
-            </Typography>
-          )}
-
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, mt: 1.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1, mt: 1.5 }}>
             <Metric label={t("Лучший вес", "Best weight")} value={`${formatWeight(ex.bestWeight)} ${kg}`} />
             <Metric label={t("Лучшие повторы", "Best reps")} value={`${ex.bestReps}`} />
             <Metric label={t("Лучший тоннаж", "Best tonnage")} value={formatVolume(ex.bestVolume)} />
@@ -218,14 +211,14 @@ function ExerciseRow({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: "action.hover" }}>
+    <Tile>
       <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
         {label}
       </Typography>
       <Typography variant="body2" sx={{ fontWeight: 600 }}>
         {value}
       </Typography>
-    </Box>
+    </Tile>
   );
 }
 
