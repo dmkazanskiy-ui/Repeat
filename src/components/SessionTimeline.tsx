@@ -1,16 +1,8 @@
-import { IconBadge } from "../ui";
 import { useEffect, useState } from "react";
-import type { ChangeEvent, MouseEvent } from "react";
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Stack } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { AccessTimeRounded as AccessTimeRoundedIcon } from "../ui/icons";
-import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
-import { RepeatRounded as RepeatRoundedIcon } from "../ui/icons";
-import { PlaceOutlined as PlaceOutlinedIcon } from "../ui/icons";
-import SpeedRoundedIcon from "@mui/icons-material/SpeedRounded";
-import { CheckRounded as CheckRoundedIcon } from "../ui/icons";
-import { RadioButtonUncheckedRounded as RadioButtonUncheckedRoundedIcon } from "../ui/icons";
 import SwipeToDelete from "./SwipeToDelete";
+import WorkoutTicket, { type TicketField } from "./WorkoutTicket";
 import { ActivityIcon } from "../lib/icons";
 import { typeColor } from "../lib/activityColors";
 import { formatWodResult, sessionAttempt, wodScheme } from "../lib/analytics";
@@ -26,7 +18,8 @@ import {
   liveElapsedSec,
   recoveryDurationSec,
   sessionDurationSec,
-  sessionSetCount,
+  countedSession,
+  sessionAvgHr,
   sessionVolume,
 } from "../lib/types";
 import type { Exercise, Session } from "../lib/types";
@@ -91,52 +84,6 @@ function description(session: Session, exercises: Exercise[]): string {
   return "";
 }
 
-type MetricKey = "time" | "volume" | "sets" | "distance" | "pace";
-interface Metric {
-  key: MetricKey;
-  text: string;
-}
-
-/** Метрики строкой: время идёт первым во всех карточках, дальше — специфика вида. */
-function metricsOf(session: Session): Metric[] {
-  const items: Metric[] = [];
-  const dur =
-    session.kind === "recovery"
-      ? recoveryDurationSec(session)
-      : sessionDurationSec(session);
-  const minDur = session.kind === "strength" ? 60 : 1;
-  if (dur && dur >= minDur) items.push({ key: "time", text: formatDuration(dur) });
-
-  if (session.kind === "strength") {
-    const vol = sessionVolume(session);
-    if (vol > 0) items.push({ key: "volume", text: formatVolume(vol) });
-    const sets = sessionSetCount(session);
-    if (sets > 0) items.push({ key: "sets", text: `${sets} ${L("подх.", "sets")}` });
-  } else if (session.kind === "cardio" && session.cardio) {
-    const dist = formatDistance(session.cardio.distanceM, session.cardioKind);
-    if (dist !== "—") items.push({ key: "distance", text: dist });
-    const pace = formatPace(session.cardio.distanceM, session.cardio.durationSec, session.cardioKind);
-    if (pace !== "—") items.push({ key: "pace", text: pace });
-  }
-  return items;
-}
-
-function MetricIcon({ metric }: { metric: MetricKey }) {
-  const sx = { fontSize: 14, opacity: 0.75 };
-  switch (metric) {
-    case "time":
-      return <AccessTimeRoundedIcon sx={sx} />;
-    case "volume":
-      return <MonitorWeightOutlinedIcon sx={sx} />;
-    case "sets":
-      return <RepeatRoundedIcon sx={sx} />;
-    case "distance":
-      return <PlaceOutlinedIcon sx={sx} />;
-    case "pace":
-      return <SpeedRoundedIcon sx={sx} />;
-  }
-}
-
 /** «MM:SS» или «H:MM:SS» — для тикающего таймера в карточке. */
 function elapsedText(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -147,54 +94,51 @@ function elapsedText(sec: number): string {
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/** Большое кольцо с тикающим таймером — только для «в процессе». Учитывает паузы. */
-function RunningRing({ session, color, nowMs }: { session: Session; color: string; nowMs: number }) {
-  return (
-    <Box
-      sx={{
-        width: 46,
-        height: 46,
-        borderRadius: "50%",
-        border: "2px solid",
-        borderColor: color,
-        display: "grid",
-        placeItems: "center",
-        flexShrink: 0,
-        boxShadow: `0 0 12px ${alpha(color, 0.35)}`,
-      }}
-    >
-      <Typography sx={{ fontSize: 11, fontWeight: 700, color, lineHeight: 1 }}>
-        {elapsedText(liveElapsedSec(session, nowMs))}
-      </Typography>
-    </Box>
-  );
+/** ISO → «ЧЧ:ММ» по местному времени. */
+function hhmm(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-/** Компактный статус размером с тег — в правом углу ряда с тегом. */
-function StatusChip({ status, color }: { status: Status; color: string }) {
-  if (status === "done") {
-    return (
-      <Box
-        sx={{
-          width: 20,
-          height: 20,
-          borderRadius: "50%",
-          bgcolor: alpha(color, 0.16),
-          border: "1px solid",
-          borderColor: "divider",
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
-        }}
-      >
-        <CheckRoundedIcon sx={{ color, fontSize: 14 }} />
-      </Box>
-    );
+/** «ЧЧ:ММ» + секунды → «ЧЧ:ММ». */
+function addClock(time: string, sec: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = (h * 60 + m + Math.round(sec / 60)) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/** Показатели билета по виду тренировки — только те, что есть. */
+function ticketFields(session: Session): TicketField[] {
+  const out: TicketField[] = [];
+  const push = (label: string, value: string | null | undefined) => {
+    if (value && value !== "—") out.push({ label, value });
+  };
+  if (session.kind === "strength") {
+    const c = countedSession(session);
+    const vol = sessionVolume(session);
+    const sets = c.exercises.reduce((n, e) => n + e.sets.filter((x) => !x.warmup).length, 0);
+    const reps = c.exercises.reduce((n, e) => n + e.sets.reduce((r, x) => r + (x.warmup ? 0 : (x.reps ?? 0)), 0), 0);
+    push(L("Тоннаж", "Tonnage"), vol > 0 ? formatVolume(vol) : null);
+    push(L("Подходы", "Sets"), sets ? String(sets) : null);
+    push(L("Повторы", "Reps"), reps ? String(reps) : null);
+    push(L("Упражн.", "Exerc."), c.exercises.length ? String(c.exercises.length) : null);
+  } else if (session.kind === "cardio" && session.cardio) {
+    push(L("Дистанция", "Distance"), formatDistance(session.cardio.distanceM, session.cardioKind));
+    push(L("Темп", "Pace"), formatPace(session.cardio.distanceM, session.cardio.durationSec, session.cardioKind));
+    const hr = sessionAvgHr(session);
+    push(L("Пульс", "HR"), hr ? String(hr) : null);
+    const kcal = session.calories ?? session.caloriesEst ?? null;
+    push(L("Ккал", "kcal"), kcal ? String(Math.round(kcal)) : null);
+  } else if (session.kind === "wod") {
+    push(L("Результат", "Result"), formatWodResult(sessionAttempt(session)));
+  } else {
+    const hr = sessionAvgHr(session);
+    push(L("Пульс", "HR"), hr ? String(hr) : null);
+    const kcal = session.calories ?? session.caloriesEst ?? null;
+    push(L("Ккал", "kcal"), kcal ? String(Math.round(kcal)) : null);
   }
-  // planned
-  return (
-    <RadioButtonUncheckedRoundedIcon sx={{ color: "text.disabled", fontSize: 18, flexShrink: 0 }} />
-  );
+  return out.slice(0, 4);
 }
 
 function SessionCard({
@@ -212,117 +156,44 @@ function SessionCard({
 }) {
   const color = typeColor(session.kind);
   const status = statusOf(session);
-  const title = sessionTitle(session);
-  const desc = description(session, exercises);
-  const metrics = metricsOf(session);
-  const typeLabel = SESSION_LABELS[session.kind];
+  const running = status === "running";
+  const dur = running
+    ? liveElapsedSec(session, nowMs)
+    : session.kind === "recovery"
+      ? recoveryDurationSec(session)
+      : sessionDurationSec(session);
+  const start = session.time ?? hhmm(session.startedAt) ?? null;
+  // Конец = начало + длительность, чтобы «маршрут» и длительность не спорили
+  // (у кардио длительность часто введена руками, а «Завершить» нажато позже).
+  const end = running ? null : start && dur ? addClock(start, dur) : hhmm(session.endedAt);
 
   return (
-    <Box
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(session.id)}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1.5,
-        p: 2,
-        cursor: "pointer",
-        // Рамка, скругление и тень — на внешнем контейнере (SwipeToDelete),
-        // чтобы красный фон удаления не просвечивал на углах. Здесь только
-        // тёмная подложка с лёгким цветным оттенком слева, без яркой заливки.
-        backgroundColor: "background.paper",
-      }}
-    >
-      {/* Цветная плашка-иконка */}
-      <IconBadge color={color}>
-        <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
-      </IconBadge>
-
-      {/* Центр: [тег · статус] · название · описание · метрики */}
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{ alignItems: "center", mb: 0.5 }}
-        >
-          <Box
-            component="span"
-            sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 20,
-              px: 0.9,
-              borderRadius: 1,
-              border: "1px solid",
-              borderColor: "divider",
-              color,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            {typeLabel}
-          </Box>
-          {/* Время тренировки — в карточке; тап открывает нативный пикер */}
-          <Box sx={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 0.4, color: "text.secondary" }}>
-            <AccessTimeRoundedIcon sx={{ fontSize: 14, opacity: 0.75 }} />
-            <Typography variant="caption" sx={{ fontSize: 11.5, fontVariantNumeric: "tabular-nums" }}>
-              {session.time ?? "—:—"}
-            </Typography>
-            <Box
-              component="input"
-              type="time"
-              value={session.time ?? ""}
-              aria-label={L("Время тренировки", "Workout time")}
-              onClick={(e: MouseEvent) => e.stopPropagation()}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => onChangeTime(session.id, e.target.value || null)}
-              sx={{ position: "absolute", inset: -6, width: "calc(100% + 12px)", opacity: 0, cursor: "pointer", border: "none", p: 0, m: 0 }}
-            />
-          </Box>
-          <Box sx={{ flex: 1 }} />
-          {status !== "running" && <StatusChip status={status} color={color} />}
-        </Stack>
-
-        <Typography variant="subtitle2" sx={{ lineHeight: 1.3, fontWeight: 600 }} noWrap>
-          {title}
-        </Typography>
-        {desc && (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {desc}
-          </Typography>
-        )}
-        {metrics.length > 0 && (
-          <Stack direction="row" spacing={1.5} sx={{ mt: 0.75, flexWrap: "wrap", rowGap: 0.5 }}>
-            {metrics.map((m) => (
-              <Stack
-                key={m.key}
-                direction="row"
-                spacing={0.4}
-                sx={{ alignItems: "center", color: "text.secondary" }}
-              >
-                <MetricIcon metric={m.key} />
-                <Typography variant="caption" sx={{ fontSize: 11.5 }}>
-                  {m.text}
-                </Typography>
-              </Stack>
-            ))}
-          </Stack>
-        )}
-      </Box>
-
-      {/* Исключение — «в процессе»: большое кольцо с таймером справа */}
-      {status === "running" && session.startedAt && (
-        <RunningRing session={session} color={color} nowMs={nowMs} />
-      )}
+    <Box role="button" tabIndex={0} onClick={() => onOpen(session.id)} sx={{ cursor: "pointer" }}>
+      <WorkoutTicket
+        icon={<ActivityIcon icon={activityIcon(session)} />}
+        color={color}
+        kind={SESSION_LABELS[session.kind]}
+        title={sessionTitle(session)}
+        status={
+          running
+            ? { label: L("Идёт", "Live"), tone: "running" }
+            : status === "planned"
+              ? { label: L("План", "Planned"), tone: "planned" }
+              : session.autoEnded
+                ? { label: L("Оценено", "Estimated"), tone: "estimated" }
+                : { label: L("Готово", "Done"), tone: "done" }
+        }
+        from={{ big: start ?? "—:—", small: L("начало", "start") }}
+        to={{ big: running ? elapsedText(dur ?? 0) : (end ?? "—"), small: running ? L("идёт", "elapsed") : L("конец", "end") }}
+        middle={
+          // Общее время тренировки — между началом и концом у всех видов.
+          running ? L("идёт", "live") : !dur ? L("без времени", "no time") : dur < 60 ? L("< 1 мин", "< 1 min") : formatDuration(dur)
+        }
+        fields={ticketFields(session)}
+        note={description(session, exercises) || undefined}
+        timeValue={session.time ?? null}
+        onTimeChange={(t) => onChangeTime(session.id, t)}
+      />
     </Box>
   );
 }

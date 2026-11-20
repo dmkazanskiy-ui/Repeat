@@ -1,7 +1,6 @@
 import { motion, tr } from "../ui";
 import { Card, IconBadge, radius } from "../ui";
 import { setGlobalUnit, unitLabel, useGlobalUnit } from "../lib/units";
-import type { WeightUnit } from "../lib/units";
 import { useState } from "react";
 import {
   Box,
@@ -10,23 +9,19 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   Stack,
-  Switch,
   TextField,
   Typography,
-  ToggleButton,
-  ToggleButtonGroup,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { Add as AddIcon } from "../ui/icons";
 import { Close as CloseIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { ChevronRightRounded as ChevronRightRoundedIcon } from "../ui/icons";
-import { TimerOutlined as TimerOutlinedIcon } from "../ui/icons";
 import MoodPad from "../components/MoodPad";
 import BackupPanel from "../components/BackupPanel";
+import StackPanel, { type StackPage } from "../ui/StackPanel";
 import type { BackupData } from "../lib/backup";
 import type { Exercise } from "../lib/types";
 import { newRecoveryEntry } from "../lib/store";
@@ -36,7 +31,6 @@ import { ActivityIcon } from "../lib/icons";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import {
-  clampRestSec,
   loadRestEnabled,
   loadRestSec,
   saveRestEnabled,
@@ -103,11 +97,6 @@ export default function ProfileScreen({
     saveRestEnabled(on);
   }
 
-  function changeRestSec(delta: number) {
-    const next = clampRestSec(restSec + delta);
-    setRestSec(next);
-    saveRestSec(next);
-  }
 
   const todayCheckin = recovery.find((e) => e.date === today()) ?? null;
 
@@ -118,6 +107,105 @@ export default function ProfileScreen({
     );
     setCheckin(null);
   }
+
+  const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  const themeLabel = { auto: t("Авто", "Auto"), light: t("Светлая", "Light"), dark: t("Тёмная", "Dark") };
+  const scaleLabel: Record<TextScale, string> = { 100: t("Обычный", "Default"), 115: t("Крупный", "Large"), 130: t("Очень крупный", "Extra large") };
+  const restChoices = [45, 60, 90, 120, 150, 180, 240];
+  if (!restChoices.includes(restSec)) restChoices.push(restSec);
+  restChoices.sort((x, y) => x - y);
+  const settingsPages: Record<string, StackPage> = {
+    settings: {
+      title: t("Настройки", "Settings"),
+      sections: [
+        {
+          rows: [
+            { id: "rest", label: t("Таймер отдыха", "Rest timer"), detail: restOn ? clock(restSec) : t("выкл.", "off"), to: "rest" },
+            { id: "theme", label: t("Тема", "Theme"), detail: themeLabel[themePref], to: "theme" },
+            { id: "units", label: t("Единицы веса", "Weight units"), detail: unitLabel(weightUnit), to: "units" },
+            { id: "text", label: t("Размер текста", "Text size"), detail: scaleLabel[textScale], to: "text" },
+          ],
+        },
+      ],
+    },
+    rest: {
+      title: t("Таймер отдыха", "Rest timer"),
+      sections: [
+        {
+          rows: [{ id: "rest-on", label: t("Показывать таймер", "Show timer"), checked: restOn, onSelect: () => toggleRest(!restOn) }],
+          footer: t("Появляется, когда отмечаешь подход выполненным.", "Shows up when you tick a set as done."),
+        },
+        ...(restOn
+          ? [
+              {
+                title: t("Отдых по умолчанию", "Default rest"),
+                rows: restChoices.map((sec) => ({
+                  id: `rest-${sec}`,
+                  label: clock(sec),
+                  selected: sec === restSec,
+                  onSelect: () => {
+                    setRestSec(sec);
+                    saveRestSec(sec);
+                  },
+                })),
+                footer: t("Во время тренировки время можно поправить кнопками −15 и +15 с.", "During a workout adjust it with −15 and +15 s."),
+              },
+            ]
+          : []),
+      ],
+    },
+    theme: {
+      title: t("Тема", "Theme"),
+      sections: [
+        {
+          rows: (["auto", "light", "dark"] as const).map((v) => ({
+            id: `theme-${v}`,
+            label: themeLabel[v],
+            selected: themePref === v,
+            onSelect: () => {
+              if (v === themePref) return;
+              setThemePref(v);
+              saveThemePref(v);
+              if (resolveMode(v) !== MODE) window.location.reload();
+            },
+          })),
+          footer: t("«Авто» — как в Telegram. Смена темы перезапускает приложение.", "Auto follows Telegram. Changing the theme restarts the app."),
+        },
+      ],
+    },
+    units: {
+      title: t("Единицы веса", "Weight units"),
+      sections: [
+        {
+          rows: (["kg", "lb"] as const).map((v) => ({
+            id: `unit-${v}`,
+            label: v === "kg" ? t("Килограммы", "Kilograms") : t("Фунты", "Pounds"),
+            detail: unitLabel(v),
+            selected: weightUnit === v,
+            onSelect: () => setGlobalUnit(v),
+          })),
+          footer: t("У отдельного упражнения можно выбрать свою единицу прямо в поле веса.", "An exercise can have its own unit — pick it in the weight field."),
+        },
+      ],
+    },
+    text: {
+      title: t("Размер текста", "Text size"),
+      sections: [
+        {
+          rows: ([100, 115, 130] as const).map((v) => ({
+            id: `text-${v}`,
+            label: scaleLabel[v],
+            selected: textScale === v,
+            onSelect: () => {
+              setTextScale(v);
+              applyTextScale(v);
+            },
+          })),
+          footer: t("Telegram не берёт системный размер шрифта, поэтому он настраивается здесь.", "Telegram ignores the system font size, so set it here."),
+        },
+      ],
+    },
+  };
 
   return (
     <Box sx={{ pb: 10 }}>
@@ -229,139 +317,10 @@ export default function ProfileScreen({
         )}
       </Card>
 
-      {/* Настройки — пока только таймер отдыха между подходами */}
-      <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
-        {t("Настройки", "Settings")}
-      </Typography>
-      <Card>
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-          <IconBadge color={ink("#a78bfa")}>
-            <TimerOutlinedIcon fontSize="small" />
-          </IconBadge>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {t("Таймер отдыха", "Rest timer")}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {t(
-                "Появляется, когда отмечаешь подход выполненным",
-                "Shows up when you tick a set as done",
-              )}
-            </Typography>
-          </Box>
-          <Switch
-            checked={restOn}
-            onChange={(event) => toggleRest(event.target.checked)}
-            slotProps={{ input: { "aria-label": t("Таймер отдыха", "Rest timer") } }}
-          />
-        </Stack>
-        {restOn && (
-          <>
-            <Divider sx={{ my: 1.5 }} />
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-                {t("Отдых по умолчанию", "Default rest")}
-              </Typography>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => changeRestSec(-15)}
-                sx={{ minWidth: 44, minHeight: 36, px: 1, fontWeight: 700 }}
-              >
-                −15
-              </Button>
-              <Typography
-                sx={{ fontWeight: 800, minWidth: 56, textAlign: "center", fontVariantNumeric: "tabular-nums" }}
-              >
-                {`${Math.floor(restSec / 60)}:${String(restSec % 60).padStart(2, "0")}`}
-              </Typography>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => changeRestSec(15)}
-                sx={{ minWidth: 44, minHeight: 36, px: 1, fontWeight: 700 }}
-              >
-                +15
-              </Button>
-            </Stack>
-          </>
-        )}
-        <Divider sx={{ my: 1.5 }} />
-        {/* Тема: «Авто» — как в Telegram/системе. Смена перезапускает приложение. */}
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-            {t("Тема", "Theme")}
-          </Typography>
-          <ToggleButtonGroup
-            value={themePref}
-            exclusive
-            size="small"
-            onChange={(_, v: ThemePref | null) => {
-              if (v == null || v === themePref) return;
-              setThemePref(v);
-              saveThemePref(v);
-              if (resolveMode(v) !== MODE) window.location.reload();
-            }}
-            aria-label={t("Тема", "Theme")}
-          >
-            {(["auto", "light", "dark"] as const).map((v) => (
-              <ToggleButton key={v} value={v} sx={{ minHeight: 36, px: 1.25, textTransform: "none", fontSize: 13 }}>
-                {{ auto: t("Авто", "Auto"), light: t("Светлая", "Light"), dark: t("Тёмная", "Dark") }[v]}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        </Stack>
-        {/* Единицы веса: в данных всегда кг, это только показ и ввод. У упражнения
-            может быть своя единица — выбирается прямо в поле веса подхода. */}
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-            {t("Единицы веса", "Weight units")}
-          </Typography>
-          <ToggleButtonGroup
-            value={weightUnit}
-            exclusive
-            size="small"
-            onChange={(_, v: WeightUnit | null) => {
-              if (v) setGlobalUnit(v);
-            }}
-            aria-label={t("Единицы веса", "Weight units")}
-          >
-            {(["kg", "lb"] as const).map((v) => (
-              <ToggleButton key={v} value={v} sx={{ minWidth: 44, minHeight: 36, px: 1.25, textTransform: "none", fontSize: 13 }}>
-                {unitLabel(v)}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        </Stack>
-        {/* Размер интерфейса: Telegram не берёт системный размер шрифта iPhone. */}
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-          <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-            {t("Размер текста", "Text size")}
-          </Typography>
-          <ToggleButtonGroup
-            value={textScale}
-            exclusive
-            size="small"
-            onChange={(_, v: TextScale | null) => {
-              if (v == null) return;
-              setTextScale(v);
-              applyTextScale(v);
-            }}
-            aria-label={t("Размер текста", "Text size")}
-          >
-            {([100, 115, 130] as const).map((v, i) => (
-              <ToggleButton
-                key={v}
-                value={v}
-                aria-label={[t("Обычный", "Default"), t("Крупный", "Large"), t("Очень крупный", "Extra large")][i]}
-                sx={{ minWidth: 44, minHeight: 36, textTransform: "none", fontSize: [13, 15, 17][i], fontWeight: 700 }}
-              >
-                {t("А", "A")}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        </Stack>
-      </Card>
+      {/* Настройки — вложенные страницы, как в телефоне (Stack Panel).
+          Заголовок «Настройки» — в шапке самой панели. */}
+      <Box sx={{ mt: 3 }} />
+      <StackPanel root="settings" pages={settingsPages} />
 
       <BackupPanel data={backupData} allExercises={allExercises} onRestore={onRestore} />
 

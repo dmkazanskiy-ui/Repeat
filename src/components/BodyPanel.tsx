@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import { Add as AddIcon } from "../ui/icons";
 import { Close as CloseIcon } from "../ui/icons";
-import NumberField from "./NumberField";
+import Scrubber from "../ui/Scrubber";
 import StatCard from "./StatCard";
 import { newBodyEntry } from "../lib/store";
 import { addDays, formatDate, today } from "../lib/format";
@@ -39,6 +39,17 @@ const METRIC_EN: Record<string, string> = {
   biceps: "Biceps",
   thigh: "Thigh",
   neck: "Neck",
+};
+
+/** Шкалы ползунков: от 0 до усреднённого максимума, больше которого не бывает. */
+const RANGE: Record<string, { max: number; step: number; start: number }> = {
+  weightKg: { max: 200, step: 0.1, start: 75 },
+  chest: { max: 200, step: 0.5, start: 95 },
+  waist: { max: 200, step: 0.5, start: 80 },
+  hips: { max: 200, step: 0.5, start: 95 },
+  biceps: { max: 100, step: 0.5, start: 32 },
+  thigh: { max: 100, step: 0.5, start: 55 },
+  neck: { max: 100, step: 0.5, start: 38 },
 };
 
 const WEIGHT_RANGES = [
@@ -186,6 +197,7 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
 
       <MeasurementDialog
         entry={editing}
+        hints={Object.fromEntries(BODY_METRICS.map((m) => [m.key, latest(m.key)]))}
         onClose={() => setEditing(null)}
         onSave={saveEntry}
         onDelete={
@@ -203,11 +215,13 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
 
 function MeasurementDialog({
   entry,
+  hints,
   onClose,
   onSave,
   onDelete,
 }: {
   entry: BodyEntry | null;
+  hints: Partial<Record<string, number | null>>;
   onClose: () => void;
   onSave: (entry: BodyEntry) => void;
   onDelete?: () => void;
@@ -236,16 +250,30 @@ function MeasurementDialog({
           onChange={(e) => setDraft({ ...draft, date: e.target.value })}
           sx={{ mb: 2, mt: 1 }}
         />
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1.5 }}>
-          {BODY_METRICS.map((m) => (
-            <NumberField
-              key={m.key}
-              label={`${lang === "en" ? (METRIC_EN[m.key] ?? m.label) : m.label}, ${m.unit === "кг" ? t("кг", "kg") : t("см", "cm")}`}
-              value={draft[m.key] as number | null}
-              onChange={(value) => setDraft({ ...draft, [m.key]: value })}
-            />
-          ))}
+        {/* Ползунки вместо полей: тянуть быстрее, чем набирать. Пустое поле
+            по тапу берёт прошлый замер; палец вниз от полосы — точнее. */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {BODY_METRICS.map((m) => {
+            const r = RANGE[m.key];
+            return (
+              <Scrubber
+                key={m.key}
+                label={lang === "en" ? (METRIC_EN[m.key] ?? m.label) : m.label}
+                unit={m.unit === "кг" ? t("кг", "kg") : t("см", "cm")}
+                value={draft[m.key] as number | null}
+                hint={hints[m.key] ?? null}
+                min={0}
+                max={r.max}
+                step={r.step}
+                start={r.start}
+                onChange={(value) => setDraft({ ...draft, [m.key]: value })}
+              />
+            );
+          })}
         </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+          {t("Тяни влево-вправо. Отведи палец вниз — шаг станет мельче.", "Drag left or right. Move your finger down for finer steps.")}
+        </Typography>
         <TextField
           label={t("Заметка", "Note")}
           fullWidth

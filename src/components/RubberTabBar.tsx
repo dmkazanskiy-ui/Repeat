@@ -13,7 +13,7 @@ interface Props {
   active: number;
   onChange: (index: number) => void;
   /** Круглая кнопка действия между вкладками (например, «+ тренировка»). */
-  action?: { label: string; icon: ReactNode; onClick: () => void };
+  action?: { label: string; icon: ReactNode; onClick: () => void; /** Своя кнопка вместо круглой «+». */ node?: ReactNode };
   /** Перед какой вкладкой стоит кнопка действия. */
   actionAt?: number;
 }
@@ -227,7 +227,7 @@ export default function RubberTabBar({ items, active, onChange, action, actionAt
       <Fragment key={it.key}>
         {action && i === actionAt && (
           layer === "base" ? (
-            <IconButton
+            action.node ?? <IconButton
               onClick={() => !st.current.suppressClick && action.onClick()}
               aria-label={action.label}
               sx={{

@@ -95,7 +95,7 @@ interface Props {
   exercises: Exercise[];
   focusGoal: FocusGoal | null;
   /** С какого шага открыть при появлении: обычный выбор или сразу мастер «Тренер». */
-  initialStep?: "kind" | "goal";
+  initialStep?: Step;
 }
 
 /** Карточки типов активности — цвет по типу, как у карточек тренировок. */
@@ -120,7 +120,7 @@ const KIND_CARDS: Array<{
 const CARDIO_KEYS = (Object.keys(CARDIO_LABELS) as CardioKind[]).filter((k) => k !== "hiit");
 const MOBILITY_KEYS = Object.keys(MOBILITY_LABELS) as MobilityKind[];
 
-type Step =
+export type Step =
   | "kind"
   | "program"
   | "cardio"

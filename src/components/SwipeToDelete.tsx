@@ -28,7 +28,7 @@ const AXIS_LOCK = 10;
  * Жест уступает вертикальной прокрутке: пока палец не ушёл по горизонтали
  * дальше, чем по вертикали, карточка не двигается.
  */
-export default function SwipeToDelete({ children, onDelete, accent }: Props) {
+export default function SwipeToDelete({ children, onDelete }: Props) {
   const t = useT();
   const [offset, setOffset] = useState(0);
   const [animating, setAnimating] = useState(false);
@@ -108,12 +108,7 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
         position: "relative",
         overflow: "hidden",
         borderRadius: radius.card, animation: CARD_IN,
-        // Единый оутлайн и скругление живут снаружи (на этом контейнере), а не
-        // на карточке: рамка рисуется поверх края и перекрывает угловой шов,
-        // поэтому красный фон удаления больше не просвечивает на углах.
-        border: "1px solid",
-        borderColor: accent ?? "divider",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+        // Рамку рисует сама карточка (билет с вырезами), здесь только обрезка.
       }}
     >
       {/* Красный фон — на весь фрейм за карточкой, чтобы при свайпе не было
@@ -133,8 +128,10 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
           display: "flex",
           justifyContent: "flex-end",
           cursor: "pointer",
-          // Пока панель закрыта, она не должна перехватывать нажатия.
+          // Пока панель закрыта, она не должна перехватывать нажатия и не
+          // должна просвечивать через вырезы билета.
           pointerEvents: open ? "auto" : "none",
+          opacity: offset < 0 ? 1 : 0,
         }}
       >
         <Box

@@ -29,6 +29,7 @@ import { ExpandMore as ExpandMoreIcon } from "../ui/icons";
 import { PriorityHighRounded } from "../ui/icons";
 import { SwapHorizRounded as SwapHorizRoundedIcon } from "../ui/icons";
 import NumberTicker from "../components/NumberTicker";
+import PeriodMeter, { type MeterRow } from "../components/analytics/PeriodMeter";
 import OverviewCard from "../components/analytics/OverviewCard";
 import StrengthProgress from "../components/analytics/StrengthProgress";
 import { RulerMeter, ScoreRing, WeekDots } from "../components/analytics/Meters";
@@ -45,10 +46,10 @@ import CapacitiesCard from "../components/analytics/CapacitiesCard";
 import GoalLensCard from "../components/analytics/GoalLensCard";
 import PlateauCard, { PLATEAU_COLOR } from "../components/analytics/PlateauCard";
 import BodyPanel from "../components/BodyPanel";
-import { TYPE_COLOR } from "../lib/activityColors";
+import { TYPE_COLOR, typeColor } from "../lib/activityColors";
+import { recoveryDurationSec, sessionDurationSec, sessionSetCount, sessionVolume } from "../lib/types";
 import type { FocusGoal } from "../lib/workoutBuilder";
 import RestBalanceCard from "../components/analytics/RestBalanceCard";
-import SummaryHero from "../components/analytics/SummaryHero";
 import StrengthHero from "../components/analytics/StrengthHero";
 import type { HeroData } from "../components/analytics/SummaryHero";
 import {
@@ -428,6 +429,76 @@ export default function AnalyticsScreen({
     };
   }, [sessions, allSessions, period, records]);
 
+  // Строки «Итогов» по видам: доля в полосе — число тренировок, раскрытие — подробности.
+  const meterRows: MeterRow[] = useMemo(() => {
+    const inP = (d: string) => d >= period.startDate && d <= period.endDate;
+    const of = (kind: string, list = sessions) => list.filter((x) => x.kind === kind && inP(x.date));
+    const dur = (list: typeof sessions, rec = false) =>
+      list.reduce((a, x) => a + ((rec ? recoveryDurationSec(x) : sessionDurationSec(x)) ?? 0), 0);
+    const count = (n: number) => String(n);
+    const strength = of("strength");
+    const cardio = of("cardio");
+    const mobility = of("mobility");
+    const recovery = of("recovery", allSessions);
+    const vol = strength.reduce((a, x) => a + sessionVolume(x), 0);
+    const sets = strength.reduce((a, x) => a + sessionSetCount(x), 0);
+    const dist = cardio.reduce((a, x) => a + (x.cardio?.distanceM ?? 0), 0);
+    const km = (m: number) => `${(m / 1000).toFixed(1).replace(".", L(",", "."))} ${L("км", "km")}`;
+    const time = (sec: number) => (sec >= 60 ? formatDuration(sec) : "—");
+    return [
+      {
+        id: "strength",
+        label: L("Силовые", "Strength"),
+        color: typeColor("strength"),
+        share: strength.length,
+        value: strength.length ? `${strength.length} · ${formatVolume(vol)}` : "—",
+        details: [
+          { label: L("Тоннаж", "Tonnage"), value: vol ? formatVolume(vol) : "—" },
+          { label: L("Подходы", "Sets"), value: sets ? count(sets) : "—" },
+          { label: L("Лучший e1RM", "Best e1RM"), value: bestInPeriod ? fmtWeightRound(bestInPeriod.value) : "—" },
+          { label: L("Рекорды", "Records"), value: count(records.length) },
+          { label: L("Растут в силе", "Gaining"), value: strengthSummary.up ? `${strengthSummary.up} ${L("упр.", "ex.")}` : "—" },
+          { label: L("Время", "Time"), value: time(dur(strength)) },
+        ],
+      },
+      {
+        id: "cardio",
+        label: L("Кардио", "Cardio"),
+        color: typeColor("cardio"),
+        share: cardio.length,
+        value: cardio.length ? `${cardio.length} · ${dist ? km(dist) : time(dur(cardio))}` : "—",
+        details: [
+          { label: L("Тренировок", "Workouts"), value: count(cardio.length) },
+          { label: L("Дистанция", "Distance"), value: dist ? km(dist) : "—" },
+          { label: L("Время", "Time"), value: time(dur(cardio)) },
+        ],
+      },
+      {
+        id: "mobility",
+        label: L("Мобилити", "Mobility"),
+        color: typeColor("mobility"),
+        share: mobility.length,
+        value: mobility.length ? `${mobility.length} · ${time(dur(mobility))}` : "—",
+        details: [
+          { label: L("Сессий", "Sessions"), value: count(mobility.length) },
+          { label: L("Время", "Time"), value: time(dur(mobility)) },
+        ],
+      },
+      {
+        id: "recovery",
+        label: L("Восстановление", "Recovery"),
+        color: typeColor("recovery"),
+        share: recovery.length,
+        value: recovery.length ? `${recovery.length} · ${time(dur(recovery, true))}` : "—",
+        details: [
+          { label: L("Процедур", "Sessions"), value: count(recovery.length) },
+          { label: L("Время", "Time"), value: time(dur(recovery, true)) },
+        ],
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, allSessions, period, records, bestInPeriod, strengthSummary, lang]);
+
   // Данные карточки-фокуса «Итоги».
   const hero: HeroData = useMemo(() => {
     const volCompare = compareMetric(sessions, period, "volume");
@@ -626,7 +697,16 @@ export default function AnalyticsScreen({
       </Typography>
 
       {/* Итоги периода — карточка-фокус с крупными числами и инсайтами 2×2 */}
-      <SummaryHero hero={hero} />
+      {/* Итоги периода: коротко — итог и полоса по видам, по тапу — подробности */}
+      <PeriodMeter
+        title={hero.title}
+        changePercent={hero.changePercent}
+        changeLabel={hero.changeLabel}
+        total={summary.workouts}
+        totalWord={(n) => (lang === "ru" ? ruPlural(n, "тренировка", "тренировки", "тренировок") : n === 1 ? "workout" : "workouts")}
+        sub={hero.daysText}
+        rows={meterRows}
+      />
 
       {/* Плато — маленький алерт под первым дашбордом, разбор живёт в «Прогрессе» */}
       {plateaus.length > 0 && plateaus.map((p) => p.id).sort().join("|") !== dismissedSig && (
@@ -857,7 +937,7 @@ export default function AnalyticsScreen({
       )}
 
       {/* Рекорды — свежие сверху, остальные под дропдауном */}
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 4, mb: 1.5 }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 3, mb: 1.5 }}>
         <EmojiEventsOutlinedIcon sx={{ color: ink("#f59e0b"), fontSize: 22 }} />
         <Typography variant="h2">{t("Рекорды", "Records")}</Typography>
         {records.length > 0 && (
@@ -918,7 +998,7 @@ export default function AnalyticsScreen({
 
       {/* Задания: HYROX и кроссфит-бенчмарки — одно и то же задание во времени */}
       {wods.length > 0 && (
-        <Box sx={{ mt: 4 }}>
+        <Box sx={{ mt: 3 }}>
           <Typography variant="h2" sx={{ mb: 1.5 }}>
             {t("Задания и WOD", "Workouts & WODs")}
           </Typography>

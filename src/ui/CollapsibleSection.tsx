@@ -46,7 +46,7 @@ export default function CollapsibleSection({
     });
   };
   return (
-    <Box component="section" sx={{ mt: space.section }}>
+    <Box component="section" sx={{ mt: space.section, mb: space.section }}>
       <ButtonBase
         onClick={toggle}
         aria-expanded={open}

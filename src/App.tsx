@@ -79,6 +79,10 @@ import RecoveryEditor from "./screens/RecoveryEditor";
 import WodEditor from "./screens/WodEditor";
 import SessionView from "./screens/SessionView";
 import NewSessionDialog from "./components/NewSessionDialog";
+import type { Step as NewSessionStep } from "./components/NewSessionDialog";
+import GooMenu from "./components/GooMenu";
+import { ActivityIcon } from "./lib/icons";
+import { LibraryBooksRounded } from "./ui/icons";
 import type { CreateOptions } from "./components/NewSessionDialog";
 import type { ProgramPreset } from "./lib/programLibrary";
 import type { FocusGoal, WorkoutSuggestion } from "./lib/workoutBuilder";
@@ -147,7 +151,7 @@ export default function App() {
   const [creating, setCreating] = useState(false);
   // С какого шага открыть лист «Новая тренировка»: обычный выбор или сразу
   // мастер «Тренер» (из проактивного «Сегодня»).
-  const [dialogStart, setDialogStart] = useState<"kind" | "goal">("kind");
+  const [dialogStart, setDialogStart] = useState<NewSessionStep>("kind");
   const [undo, setUndo] = useState<Session | null>(null);
   const [clipboard, setClipboard] = useState<Session | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -704,10 +708,10 @@ export default function App() {
   }, [openId, sessions, commit]);
 
   // Центральный «+» — быстрый лог: сегодняшний день, лист «новая тренировка».
-  const logWorkout = useCallback(() => {
+  const logWorkout = useCallback((step: NewSessionStep = "kind") => {
     setSelected(today());
     setTab("calendar");
-    setDialogStart("kind");
+    setDialogStart(step);
     setCreating(true);
   }, []);
 
@@ -1088,7 +1092,32 @@ export default function App() {
               ]}
               active={TABS.indexOf(tab)}
               onChange={(i) => setTab(TABS[i])}
-              action={{ label: t("Добавить тренировку", "Add workout"), icon: <AddIcon />, onClick: logWorkout }}
+              action={{
+                label: t("Добавить тренировку", "Add workout"),
+                icon: <AddIcon />,
+                onClick: () => logWorkout(),
+                // «+» выливает пузыри-действия (Goo Menu): частые старты в один тап.
+                node: (
+                  <GooMenu
+                    label={t("Добавить тренировку", "Add workout")}
+                    actions={[
+                      { id: "program", label: t("Программа", "Program"), icon: <LibraryBooksRounded />, onSelect: () => logWorkout("program") },
+                      { id: "strength", label: t("Силовая", "Strength"), icon: <ActivityIcon icon="gym" />, onSelect: () => {
+                        // Силовая на сегодня — сразу в редактор.
+                        const session = newSession(today(), "strength", {});
+                        commit([...sessions, session]);
+                        setSelected(today());
+                        setTab("calendar");
+                        setOpenId(session.id);
+                        setEditing(true);
+                      } },
+                      { id: "cardio", label: t("Кардио", "Cardio"), icon: <ActivityIcon icon="run" />, onSelect: () => logWorkout("cardio") },
+                      { id: "recovery", label: t("Восстановление", "Recovery"), icon: <ActivityIcon icon="spa" />, onSelect: () => logWorkout("recovery") },
+                      { id: "more", label: t("Ещё", "More"), icon: <AddIcon />, onSelect: () => logWorkout("kind") },
+                    ]}
+                  />
+                ),
+              }}
             />
           </Box>
         </Box>
