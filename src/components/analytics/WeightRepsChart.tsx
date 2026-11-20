@@ -1,4 +1,6 @@
-import { useId } from "react";
+import { useId, useState } from "react";
+import { ChartTip } from "../../ui";
+import { unitLabel } from "../../lib/units";
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
 import { areaPath, smoothPath } from "../../lib/chart";
@@ -21,6 +23,10 @@ export default function WeightRepsChart({ points, height = 150 }: { points: Weig
   const theme = useTheme();
   const t = useT();
   const gid = useId().replace(/:/g, "");
+  // Тап по точке — подсказка «вес × повторы» и дата.
+  const sig = points.map((p) => `${p.label}${p.weight}`).join(",");
+  const [tipState, setTipState] = useState<{ sig: string; i: number } | null>(null);
+  const tip = tipState?.sig === sig ? tipState.i : null;
 
   if (points.length === 0) {
     return (
@@ -60,6 +66,15 @@ export default function WeightRepsChart({ points, height = 150 }: { points: Weig
 
   return (
     <Box sx={{ width: "100%" }}>
+      <Box sx={{ position: "relative" }}>
+      {tip != null && (
+        <ChartTip
+          x={(x(tip) / W) * 100}
+          top={`${((y(points[tip].weight) - radius(points[tip].reps)) / H) * 100}%`}
+          value={`${String(Math.round(points[tip].weight * 10) / 10).replace(".", ",")} ${unitLabel()} × ${points[tip].reps}`}
+          label={points[tip].label}
+        />
+      )}
       <Box component="svg" viewBox={`0 0 ${W} ${H}`} sx={{ width: "100%", display: "block", overflow: "visible" }}>
         <defs>
           <linearGradient id={`wr-${gid}`} x1="0" y1="0" x2="0" y2="1">
@@ -77,13 +92,25 @@ export default function WeightRepsChart({ points, height = 150 }: { points: Weig
             r={radius(p.reps)}
             fill={green}
             stroke={theme.palette.background.paper}
-            strokeWidth={1.5}
+            strokeWidth={tip === i ? 3 : 1.5}
+          />
+        ))}
+        {points.map((p, i) => (
+          <circle
+            key={`hit-${i}`}
+            cx={x(i)}
+            cy={y(p.weight)}
+            r={14}
+            fill="transparent"
+            style={{ cursor: "pointer" }}
+            onClick={() => setTipState(tip === i ? null : { sig, i })}
           />
         ))}
         {/* Подпись максимума: вес × повторы этого подхода. */}
         <text x={x(maxIdx)} y={y(max) - radius(points[maxIdx].reps) - 4} fill={theme.palette.text.primary} fontSize={11} textAnchor="middle">
           {Math.round(max)}×{points[maxIdx].reps}
         </text>
+      </Box>
       </Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mt: 0.5 }}>
         <Typography variant="caption" color="text.secondary">

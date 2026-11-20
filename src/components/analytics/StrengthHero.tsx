@@ -1,3 +1,4 @@
+import { ChartTip } from "../../ui";
 import { Card } from "../../ui";
 import { massToUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
@@ -40,6 +41,8 @@ export default function StrengthHero({
   const theme = useTheme();
   const [picked, setPicked] = useState<string | null>(null);
   const [range, setRange] = useState("3m");
+  // Точка, на которую нажали: подсказка с цифрой. Сбрасывается при смене упражнения/диапазона.
+  const [tipState, setTipState] = useState<{ sig: string; i: number } | null>(null);
 
   // Упражнения с хотя бы двумя точками e1RM — иначе линию не построить.
   // Стартовое упражнение (плато) — первым в ленте, чтобы выбранный чип был на виду.
@@ -85,6 +88,8 @@ export default function StrengthHero({
     t1 === t0 ? (padL + W - padR) / 2 : padL + ((Date.parse(date) - t0) / (t1 - t0)) * (W - padL - padR);
   const y = (v: number) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
   const pts: Pt[] = series.map((p) => [x(p.date), y(p.v)]);
+  const tipSig = `${ex.id}|${range}`;
+  const tip = tipState?.sig === tipSig && tipState.i < pts.length ? tipState.i : null;
 
   // Полоса плато: последние N недель без прироста (по недельным пикам).
   // Рисуем, только если линия в этом окне и правда стоит (разброс ≤ 2.5%),
@@ -142,7 +147,16 @@ export default function StrengthHero({
       )}
 
       {series.length >= 2 ? (
-        <Box component="svg" viewBox={`0 0 ${W} ${H}`} sx={{ width: "100%", display: "block", mt: 2 }}>
+        <Box sx={{ position: "relative", mt: 2 }}>
+        {tip != null && (
+          <ChartTip
+            x={(pts[tip][0] / W) * 100}
+            top={`${(pts[tip][1] / H) * 100}%`}
+            value={`${Math.round(series[tip].v)} ${kg}`}
+            label={formatDate(series[tip].date)}
+          />
+        )}
+        <Box component="svg" viewBox={`0 0 ${W} ${H}`} sx={{ width: "100%", display: "block" }}>
           {ticks.map((v, i) => (
             <g key={i}>
               <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke={grid} strokeWidth={1} />
@@ -185,7 +199,19 @@ export default function StrengthHero({
             strokeLinejoin="round"
           />
           {pts.map(([px, py], i) => (
-            <circle key={i} cx={px} cy={py} r={i === pts.length - 1 ? 4 : 2} fill={i === pts.length - 1 ? accent : theme.palette.background.paper} stroke={accent} strokeWidth={1.5} />
+            <circle key={i} cx={px} cy={py} r={tip === i ? 5 : i === pts.length - 1 ? 4 : 2} fill={tip === i || i === pts.length - 1 ? accent : theme.palette.background.paper} stroke={accent} strokeWidth={1.5} />
+          ))}
+          {/* Зоны нажатия крупнее самих точек — по пальцу */}
+          {pts.map(([px, py], i) => (
+            <circle
+              key={`hit-${i}`}
+              cx={px}
+              cy={py}
+              r={14}
+              fill="transparent"
+              style={{ cursor: "pointer" }}
+              onClick={() => setTipState(tip === i ? null : { sig: tipSig, i })}
+            />
           ))}
           <text x={padL} y={H - 6} fontSize={10} fill={muted}>
             {formatDate(series[0].date)}
@@ -193,6 +219,7 @@ export default function StrengthHero({
           <text x={W - padR} y={H - 6} fontSize={10} fill={muted} textAnchor="end">
             {formatDate(series[series.length - 1].date)}
           </text>
+        </Box>
         </Box>
       ) : (
         <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>

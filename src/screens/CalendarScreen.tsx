@@ -2,7 +2,7 @@ import { radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useMemo, useState } from "react";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
-import { formatVolume } from "../lib/format";
+import { formatDate, formatVolume } from "../lib/format";
 import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
 import { ChevronRight as ChevronRightIcon } from "../ui/icons";
 import { Add as AddIcon } from "../ui/icons";
@@ -44,13 +44,28 @@ function buildDayHero(
   const week = weekGrid(selected);
   const bars: number[] = [];
   const rec: boolean[] = [];
+  const tips: { value: string; label: string }[] = [];
   for (const key of week) {
     const day = sessionsOn(allSessions, key);
     let mag = 0;
+    let vol = 0;
+    let sec = 0;
     for (const s of day) {
-      if (s.kind === "strength") mag += sessionVolume(s);
-      else if (s.kind === "cardio" || s.kind === "mobility") mag += sessionDurationSec(s) ?? 0;
+      if (s.kind === "strength") {
+        const v = sessionVolume(s);
+        mag += v;
+        vol += v;
+      } else if (s.kind === "cardio" || s.kind === "mobility") {
+        const d = sessionDurationSec(s) ?? 0;
+        mag += d;
+        sec += d;
+      }
     }
+    const parts: string[] = [];
+    if (vol > 0) parts.push(formatVolume(vol));
+    if (sec >= 60) parts.push(`${Math.round(sec / 60)} ${t("мин", "min")}`);
+    if (!parts.length && day.some((s) => s.kind === "recovery")) parts.push(t("восстановление", "recovery"));
+    tips.push({ value: parts.join(" · ") || t("отдых", "rest"), label: formatDate(key) });
     bars.push(mag);
     rec.push(mag <= 0 && day.some((s) => s.kind === "recovery"));
   }
@@ -83,6 +98,7 @@ function buildDayHero(
     volumeTick,
     volumeLabel,
     dailyVolume: bars,
+    barTips: tips,
     recoveryDays: rec,
     highlightIndex,
   };

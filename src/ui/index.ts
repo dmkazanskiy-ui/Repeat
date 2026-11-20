@@ -6,3 +6,5 @@ export { default as Section } from "./Section";
 export { default as IconBadge } from "./IconBadge";
 export { default as ListRow } from "./ListRow";
 export * from "./tokens";
+export { default as ChartTip } from "./ChartTip";
+export { default as CollapsibleSection } from "./CollapsibleSection";

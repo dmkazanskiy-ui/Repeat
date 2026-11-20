@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { Box, IconButton, Typography } from "@mui/material";
+import { Box, IconButton } from "@mui/material";
 import { DOCK, clamp, spring, springLoop, tune } from "../lib/spring";
 
 export interface TabItem {
@@ -19,8 +19,8 @@ interface Props {
 }
 
 const BAR_H = 64;
-const PILL_H = 52;
-const PILL_MAX_W = 88;
+const PILL_H = 44;
+const PILL_MAX_W = 60;
 
 /**
  * Таб-бар с «резиновой» пилюлей (по мотивам Rubber Dock). У пилюли два края —
@@ -289,9 +289,6 @@ export default function RubberTabBar({ items, active, onChange, action, actionAt
             sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0.25, maxWidth: "100%", px: 0.5 }}
           >
             {it.icon}
-            <Typography component="span" className="rp-tab-label" noWrap sx={{ fontSize: 11, lineHeight: 1, fontWeight: 600, maxWidth: "100%" }}>
-              {it.label}
-            </Typography>
           </Box>
         </Box>
       </Fragment>

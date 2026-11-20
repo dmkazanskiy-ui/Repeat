@@ -16,9 +16,6 @@ html.rp-intro { --rp-card-in: rp-card-in 250ms cubic-bezier(0.23, 1, 0.32, 1) va
 *:nth-child(2) { --rp-d: 40ms; }
 *:nth-child(n+3) { --rp-d: 80ms; }
 
-/* Крупный текст (Профиль → Размер текста, 130%): подписи таб-бара не влезают. */
-html[data-text-scale="130"] .rp-tab-label { display: none; }
-
 /* «Уменьшение движения»: убираем сдвиги и масштаб, но оставляем плавную
    смену цвета и прозрачности — это обратная связь, а не движение. */
 @media (prefers-reduced-motion: reduce) {

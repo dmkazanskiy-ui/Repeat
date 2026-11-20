@@ -1,9 +1,10 @@
 import { motion, tr } from "../ui";
-import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { clamp, spring, springLoop, tune, type Spring } from "../lib/spring";
 import { useT } from "../lib/i18n";
+import { ChartTip } from "../ui";
 
 // Пружины — из Stat Card (designbookmark.com/motion): точки графика 200/17
 // по очереди через 30 мс, цифры 160/22, плашка переключателя 380/30.
@@ -33,6 +34,8 @@ interface Props {
   upIsGood?: boolean;
   /** Значения по порядку дат. */
   values: number[];
+  /** Подписи точек (даты) — для подсказки по тапу. */
+  labels?: string[];
   firstLabel?: string;
   lastLabel?: string;
   ranges: StatRange[];
@@ -40,6 +43,16 @@ interface Props {
   onRange: (key: string) => void;
   /** Свой график вместо линии (например, «вес + повторы»). */
   custom?: ReactNode;
+}
+
+/** Нормировка как у графика: значение → 0..1 с запасом 15% сверху и снизу. */
+function normalizer(values: number[]) {
+  const lo0 = Math.min(...values);
+  const hi0 = Math.max(...values);
+  const span = hi0 - lo0 || Math.abs(hi0) || 1;
+  const lo = lo0 - span * 0.15;
+  const hi = hi0 + span * 0.15;
+  return (v: number) => (v - lo) / (hi - lo);
 }
 
 function resample(values: number[]): number[] {
@@ -75,6 +88,7 @@ export default function StatCard({
   upIsGood = true,
   deltaSuffix = "%",
   values,
+  labels,
   firstLabel,
   lastLabel,
   ranges,
@@ -204,6 +218,11 @@ export default function StatCard({
 
   // Новые данные: цифры докручиваются, точки слева направо переезжают.
   const sig = values.join(",");
+  // Тап по графику — ближайшая точка: подсказка с цифрой и датой.
+  const [tipState, setTipState] = useState<{ sig: string; i: number } | null>(null);
+  const tip = tipState?.sig === sig && tipState.i < values.length ? tipState.i : null;
+  const tipFrac = tip == null ? 0 : values.length > 1 ? tip / (values.length - 1) : 0.5;
+  const tipTop = tip == null ? 0 : 8 + (1 - normalizer(values)(values[tip])) * (H - 16);
   useEffect(() => {
     const s = st.current;
     s.val.t = value ?? 0;
@@ -256,7 +275,39 @@ export default function StatCard({
       <Box sx={{ my: 1.75 }}>
         {custom ?? (
           <>
-            <Box ref={wrapRef} sx={{ position: "relative" }}>
+            <Box
+              ref={wrapRef}
+              onClick={(e) => {
+                if (!values.length) return;
+                const r = e.currentTarget.getBoundingClientRect();
+                const i = Math.round(clamp((e.clientX - r.left) / r.width, 0, 1) * (values.length - 1));
+                setTipState(tip === i ? null : { sig, i });
+              }}
+              sx={{ position: "relative", cursor: values.length ? "pointer" : "default" }}
+            >
+              {tip != null && (
+                <>
+                  <Box
+                    component="span"
+                    sx={{
+                      position: "absolute",
+                      left: `calc(4px + (100% - 8px) * ${tipFrac})`,
+                      top: tipTop,
+                      width: 12,
+                      height: 12,
+                      ml: "-6px",
+                      mt: "-6px",
+                      borderRadius: "50%",
+                      bgcolor: "background.paper",
+                      border: "2.5px solid",
+                      borderColor: green,
+                      zIndex: 2,
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <ChartTip x={tipFrac * 100} top={tipTop - 6} value={format(values[tip])} label={labels?.[tip]} />
+                </>
+              )}
               {values.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ height: H, display: "grid", placeItems: "center" }}>
                   {t("В этом диапазоне нет данных.", "No data in this range.")}

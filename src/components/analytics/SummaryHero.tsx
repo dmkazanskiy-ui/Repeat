@@ -2,6 +2,7 @@ import { tr } from "../../ui";
 import { Card, IconBadge, radius } from "../../ui";
 import { CARD_IN } from "../../theme";
 import NumberTicker from "../NumberTicker";
+import { ChartTip } from "../../ui";
 import { useState, type ReactNode } from "react";
 import { Box, Collapse, Divider, Stack, Typography, useTheme } from "@mui/material";
 import { ExpandMoreRounded as ExpandMoreRoundedIcon } from "../../ui/icons";
@@ -41,6 +42,8 @@ export interface HeroData {
   /** Подпись над крупным числом объёма (по умолчанию «Общий тоннаж»). */
   volumeLabel?: string;
   dailyVolume: number[];
+  /** Подсказки к столбикам по тапу: значение и подпись (дата/день). */
+  barTips?: { value: string; label: string }[];
   /** По каждому дню графика: было восстановление, но не было тренировки. */
   recoveryDays: boolean[];
   /**
@@ -69,11 +72,14 @@ function HeroBars({
   values,
   recoveryDays,
   highlightIndex,
+  tips,
 }: {
   values: number[];
   recoveryDays: boolean[];
   highlightIndex?: number;
+  tips?: { value: string; label: string }[];
 }) {
+  const [tip, setTip] = useState<number | null>(null);
   const theme = useTheme();
   const green = theme.palette.primary.main;
   const gray = theme.palette.text.secondary;
@@ -81,7 +87,10 @@ function HeroBars({
   const max = Math.max(1, ...present);
   const highlightMode = highlightIndex != null;
   return (
-    <Box sx={{ display: "flex", alignItems: "flex-end", gap: "3px", height: 104, width: "100%" }}>
+    <Box sx={{ position: "relative", display: "flex", alignItems: "flex-end", gap: "3px", height: 104, width: "100%" }}>
+      {tip != null && tips?.[tip] && (
+        <ChartTip x={((tip + 0.5) / present.length) * 100} top={0} value={tips[tip].value} label={tips[tip].label} />
+      )}
       {present.map((v, i) => {
         const recovery = recoveryDays[i] && v <= 0;
         const isHi = highlightIndex === i;
@@ -99,8 +108,15 @@ function HeroBars({
         return (
           <Box
             key={i}
+            role={tips ? "button" : undefined}
+            aria-label={tips?.[i] ? `${tips[i].label}: ${tips[i].value}` : undefined}
+            onClick={tips ? () => setTip(tip === i ? null : i) : undefined}
             sx={{
               flex: 1,
+              cursor: tips ? "pointer" : "default",
+              outline: tip === i ? "2px solid" : "none",
+              outlineColor: "text.primary",
+              outlineOffset: 1,
               height: `${heightPct}%`,
               opacity,
               borderRadius: "5px",
@@ -273,7 +289,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
           </Typography>
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
-          <HeroBars values={hero.dailyVolume} recoveryDays={hero.recoveryDays} highlightIndex={hero.highlightIndex} />
+          <HeroBars values={hero.dailyVolume} recoveryDays={hero.recoveryDays} highlightIndex={hero.highlightIndex} tips={hero.barTips} />
         </Box>
       </Stack>
 

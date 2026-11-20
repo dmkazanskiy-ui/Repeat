@@ -1,6 +1,6 @@
 import { tr } from "../../ui";
-import { Card, IconBadge } from "../../ui";
-import { unitLabel } from "../../lib/units";
+import { Card, CollapsibleSection, IconBadge } from "../../ui";
+import { toUnit, unitLabel } from "../../lib/units";
 import { Box, Collapse, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { ExpandMoreRounded } from "../../ui/icons";
@@ -34,18 +34,17 @@ export default function PlateauCard({
   if (details.length === 0) return null;
 
   return (
-    <Box sx={{ mb: 3 }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.5 }}>
-        <IconBadge color={PLATEAU_COLOR}>
+    <CollapsibleSection
+      id="plateaus"
+      icon={
+        <IconBadge color={PLATEAU_COLOR} size={32}>
           <TrendingFlatRounded fontSize="small" />
         </IconBadge>
-        <Typography variant="h2" sx={{ flex: 1 }}>
-          {t("Плато", "Plateaus")}
-        </Typography>
-        <Typography variant="caption" sx={{ color: PLATEAU_COLOR, fontWeight: 700 }}>
-          {details.length}
-        </Typography>
-      </Stack>
+      }
+      title={t("Плато", "Plateaus")}
+      count={details.length}
+      forceOpen={openId != null}
+    >
 
       <Stack spacing={1.25}>
         {details.map((d) => {
@@ -54,7 +53,7 @@ export default function PlateauCard({
             .filter((w) => w.topWeight != null)
             .map((w) => ({
               label: formatDate(w.week),
-              weight: w.topWeight as number,
+              weight: toUnit(w.topWeight as number),
               reps: w.topReps ?? 0,
             }));
 
@@ -156,6 +155,6 @@ export default function PlateauCard({
           );
         })}
       </Stack>
-    </Box>
+    </CollapsibleSection>
   );
 }

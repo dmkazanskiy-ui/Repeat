@@ -108,6 +108,7 @@ export default function BodyPanel({ bodyEntries, onChangeBody, autoAdd = false }
             deltaSuffix={` ${t("кг", "kg")}`}
             upIsGood={false}
             values={rangeWeights.map((p) => p.value)}
+            labels={rangeWeights.map((p) => p.label)}
             firstLabel={rangeWeights[0]?.label}
             lastLabel={rangeWeights[rangeWeights.length - 1]?.label}
             ranges={WEIGHT_RANGES}

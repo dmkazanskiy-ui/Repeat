@@ -175,6 +175,7 @@ function ExerciseRow({
             format={(v) => fmtMetric(metric, v, kg)}
             delta={rangeDelta}
             values={rangeValues}
+            labels={rangeLabels}
             firstLabel={rangeLabels[0]}
             lastLabel={rangeLabels[rangeLabels.length - 1]}
             ranges={RANGES}

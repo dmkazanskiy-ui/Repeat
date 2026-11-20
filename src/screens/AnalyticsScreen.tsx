@@ -1,4 +1,4 @@
-import { tr } from "../ui";
+import { tr, CollapsibleSection } from "../ui";
 import { IconBadge, Tile, radius } from "../ui";
 import { Card } from "../ui";
 import { CARD_IN } from "../theme";
@@ -24,6 +24,7 @@ import { TrendingUpRounded as TrendingUpRoundedIcon } from "../ui/icons";
 import { EmojiEventsOutlined as EmojiEventsOutlinedIcon } from "../ui/icons";
 import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
 import { ChevronRight as ChevronRightIcon } from "../ui/icons";
+import { Close as CloseIcon } from "../ui/icons";
 import { ExpandMore as ExpandMoreIcon } from "../ui/icons";
 import { PriorityHighRounded } from "../ui/icons";
 import { SwapHorizRounded as SwapHorizRoundedIcon } from "../ui/icons";
@@ -163,6 +164,23 @@ export default function AnalyticsScreen({
   // Плато: алерт вверху ведёт в раздел «Прогресс» и раскрывает первое плато.
   const [openPlateau, setOpenPlateau] = useState<string | null>(null);
   const plateauRef = useRef<HTMLDivElement>(null);
+
+  // Алерт плато можно убрать; вернётся, только если набор плато изменится.
+  const [dismissedSig, setDismissedSig] = useState(() => {
+    try {
+      return localStorage.getItem("repeat_plateau_alert_dismissed") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  function dismissPlateauAlert(sig: string) {
+    setDismissedSig(sig);
+    try {
+      localStorage.setItem("repeat_plateau_alert_dismissed", sig);
+    } catch {
+      /* приватный режим */
+    }
+  }
 
   function openPlateaus() {
     setView("strength");
@@ -413,7 +431,9 @@ export default function AnalyticsScreen({
   // Данные карточки-фокуса «Итоги».
   const hero: HeroData = useMemo(() => {
     const volCompare = compareMetric(sessions, period, "volume");
-    const dailyVolume = series(sessions, period, "volume").map((p) => p.value);
+    const volSeries = series(sessions, period, "volume");
+    const dailyVolume = volSeries.map((p) => p.value);
+    const barTips = volSeries.map((p) => ({ value: p.value ? formatVolume(p.value) : "—", label: formatDate(p.date) }));
     const wk = summary.workouts;
     const days = summary.activeDays;
     const modeWord = mode === "month" ? L("месяца", "month") : mode === "custom" ? L("периода", "period") : L("недели", "week");
@@ -433,6 +453,7 @@ export default function AnalyticsScreen({
       volumeText: formatVolume(summary.volume),
       volumeTick: summary.volume > 0 ? { value: summary.volume, format: (v: number) => formatVolume(v) } : undefined,
       dailyVolume,
+      barTips,
       recoveryDays: heroRecoveryDays,
       cardio: {
         value:
@@ -608,7 +629,7 @@ export default function AnalyticsScreen({
       <SummaryHero hero={hero} />
 
       {/* Плато — маленький алерт под первым дашбордом, разбор живёт в «Прогрессе» */}
-      {plateaus.length > 0 && (
+      {plateaus.length > 0 && plateaus.map((p) => p.id).sort().join("|") !== dismissedSig && (
         <Card
           role="button"
           tabIndex={0}
@@ -648,7 +669,17 @@ export default function AnalyticsScreen({
               {t("Разобрать в «Прогрессе»", "See the breakdown in Progress")}
             </Typography>
           </Box>
-          <ChevronRightIcon fontSize="small" sx={{ color: "text.secondary" }} />
+          <IconButton
+            size="small"
+            aria-label={t("Скрыть", "Dismiss")}
+            onClick={(e) => {
+              e.stopPropagation();
+              dismissPlateauAlert(plateaus.map((p) => p.id).sort().join("|"));
+            }}
+            sx={{ color: "text.secondary", mr: -0.5 }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
         </Card>
       )}
 
@@ -754,11 +785,16 @@ export default function AnalyticsScreen({
         <GoalLensCard goal={lensGoal} verdict={lensVerdict} onChangeGoal={setLensGoal} />
       )}
 
-      {/* Что развивается — сила / выносливость / скорость */}
-      <Typography variant="h2" sx={{ mb: 1.5 }}>
-        {t("Что развивается", "What's improving")}
-      </Typography>
-      <CapacitiesCard items={capacities} />
+      {/* Что развивается — только когда есть реальный тренд хотя бы по одному
+          качеству; без данных блок был пустой и бесполезный. */}
+      {capacities.some((c) => c.hasData && c.direction !== "none") && (
+        <>
+          <Typography variant="h2" sx={{ mb: 1.5 }}>
+            {t("Что развивается", "What's improving")}
+          </Typography>
+          <CapacitiesCard items={capacities} />
+        </>
+      )}
 
       {/* Прогресс силы — дашборд без проваливания в каждое упражнение */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
@@ -871,16 +907,13 @@ export default function AnalyticsScreen({
 
       {/* Прогресс по программе A→A */}
       {programCompare.length > 0 && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h2" sx={{ mb: 1.5 }}>
-            {t("Прогресс по программе", "Program progress")}
-          </Typography>
-          <Stack spacing={2}>
+        <CollapsibleSection id="program-progress" title={t("Прогресс по программе", "Program progress")} count={programCompare.length}>
+          <Stack spacing={1.5}>
             {programCompare.map((c) => (
               <ProgramCompareCard key={c.workoutId} c={c} />
             ))}
           </Stack>
-        </Box>
+        </CollapsibleSection>
       )}
 
       {/* Задания: HYROX и кроссфит-бенчмарки — одно и то же задание во времени */}
