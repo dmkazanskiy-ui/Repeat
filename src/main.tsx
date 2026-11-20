@@ -11,6 +11,9 @@ document.querySelector('meta[name="theme-color"]')?.setAttribute("content", MODE
 initTelegram();
 initPressableKeys();
 applyTextScale(loadTextScale());
+// Входные анимации — только при запуске; потом вкладки переключаются мгновенно.
+document.documentElement.classList.add("rp-intro");
+window.setTimeout(() => document.documentElement.classList.remove("rp-intro"), 1200);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

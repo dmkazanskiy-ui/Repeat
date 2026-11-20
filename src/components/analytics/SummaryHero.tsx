@@ -1,3 +1,4 @@
+import { tr } from "../../ui";
 import { Card, IconBadge, radius } from "../../ui";
 import { CARD_IN } from "../../theme";
 import NumberTicker from "../NumberTicker";
@@ -301,7 +302,7 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
             <ExpandMoreRoundedIcon
               sx={{
                 color: "text.secondary",
-                transition: "transform 0.2s",
+                transition: tr("transform"),
                 transform: showMetrics ? "rotate(180deg)" : "none",
               }}
             />

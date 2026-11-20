@@ -5,32 +5,29 @@ body,
   height: 100%;
 }
 
-/* Blur Fade (Magic UI) для карточек: CARD_IN в theme.ts. Соседние карточки
-   идут лесенкой по 40 мс — задержка берётся из номера среди соседей. */
-@keyframes rp-blur-fade {
-  from { opacity: 0; filter: blur(6px); transform: translateY(6px); }
-  to { opacity: 1; filter: none; transform: none; }
+/* Появление карточек — только при первом открытии (html.rp-intro, main.tsx).
+   Без размытия (дорого в WebView на iPhone): прозрачность + сдвиг 6px,
+   0,25 с, сильный ease-out. Лесенка — максимум на три карточки. */
+@keyframes rp-card-in {
+  from { opacity: 0; transform: translateY(6px); }
 }
+html.rp-intro { --rp-card-in: rp-card-in 250ms cubic-bezier(0.23, 1, 0.32, 1) var(--rp-d, 0ms) both; }
 * { --rp-d: 0ms; }
 *:nth-child(2) { --rp-d: 40ms; }
-*:nth-child(3) { --rp-d: 80ms; }
-*:nth-child(4) { --rp-d: 120ms; }
-*:nth-child(5) { --rp-d: 160ms; }
-*:nth-child(6) { --rp-d: 200ms; }
-*:nth-child(7) { --rp-d: 240ms; }
-*:nth-child(n+8) { --rp-d: 280ms; }
+*:nth-child(n+3) { --rp-d: 80ms; }
 
 /* Крупный текст (Профиль → Размер текста, 130%): подписи таб-бара не влезают. */
 html[data-text-scale="130"] .rp-tab-label { display: none; }
 
-/* «Уменьшение движения» в настройках iPhone: переходы и анимации — мгновенно
-   (смена фаз HIIT, раскрытия, свайпы). Смысл ими не передаётся. */
+/* «Уменьшение движения»: убираем сдвиги и масштаб, но оставляем плавную
+   смену цвета и прозрачности — это обратная связь, а не движение. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    transition-property: color, background-color, border-color, opacity, box-shadow, fill, stroke !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Box, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -328,7 +329,7 @@ export default function StatCard({
               fontSize: 13,
               fontWeight: 600,
               color: r.key === range ? "text.primary" : "text.secondary",
-              transition: "color .2s",
+              transition: tr("color", motion.fast, "ease"),
               WebkitTapHighlightColor: "transparent",
             }}
           >

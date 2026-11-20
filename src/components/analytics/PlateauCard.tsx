@@ -1,3 +1,4 @@
+import { tr } from "../../ui";
 import { Card, IconBadge } from "../../ui";
 import { unitLabel } from "../../lib/units";
 import { Box, Collapse, Stack, Typography } from "@mui/material";
@@ -95,7 +96,7 @@ export default function PlateauCard({
                   fontSize="small"
                   sx={{
                     color: "text.secondary",
-                    transition: "transform .2s",
+                    transition: tr("transform"),
                     transform: open ? "rotate(180deg)" : "none",
                   }}
                 />

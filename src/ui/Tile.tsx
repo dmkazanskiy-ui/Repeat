@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Box, ButtonBase, Typography, type SxProps, type Theme } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
-import { radius, space, text } from "./tokens";
+import { radius, space, text, motion, tr } from "./tokens";
 
 interface Props {
   label?: ReactNode;
@@ -31,7 +31,7 @@ export default function Tile({ label, value, aside, children, selected, onClick,
           borderRadius: radius.tile,
           bgcolor: selected ? "action.selected" : "action.hover",
           boxShadow: selected ? `inset 0 0 0 1.5px ${alpha(theme.palette.text.primary, 0.35)}` : "none",
-          transition: "background-color .25s, box-shadow .25s",
+          transition: `${tr("background-color", motion.fast, "ease")}, ${tr("box-shadow", motion.fast, "ease")}`,
         },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}

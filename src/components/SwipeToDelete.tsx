@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useRef, useState } from "react";
@@ -37,6 +38,8 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
   const openAtStart = useRef(0);
   /** Свайп не должен превращаться в открытие карточки по клику. */
   const swiped = useRef(false);
+  /** Последние точки движения — для скорости смаха при отпускании. */
+  const track = useRef<{ x: number; t: number }[]>([]);
 
   const open = offset <= -ACTION_WIDTH / 2;
 
@@ -51,6 +54,7 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
     openAtStart.current = offset;
     axis.current = "none";
     swiped.current = false;
+    track.current = [{ x: event.clientX, t: event.timeStamp }];
     setAnimating(false);
   }
 
@@ -69,8 +73,12 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
 
     if (axis.current !== "x") return;
     swiped.current = true;
-    // Влево — до ширины панели, вправо — не дальше исходного положения.
-    const next = Math.min(0, Math.max(-ACTION_WIDTH, openAtStart.current + dx));
+    track.current = [...track.current.slice(-4), { x: event.clientX, t: event.timeStamp }];
+    // В пределах [−ширина панели, 0] карточка идёт за пальцем, дальше —
+    // с нарастающим сопротивлением (резинка), а не упирается в стену.
+    const raw = openAtStart.current + dx;
+    const rubber = (over: number) => (1 - 1 / ((Math.abs(over) * 0.55) / 40 + 1)) * 40 * Math.sign(over);
+    const next = raw > 0 ? rubber(raw) : raw < -ACTION_WIDTH ? -ACTION_WIDTH + rubber(raw + ACTION_WIDTH) : raw;
     setOffset(next);
   }
 
@@ -84,8 +92,14 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
     }
     if (!wasHorizontal) return;
 
+    // Быстрый смах решает сам, даже короткий; медленный — по положению.
+    const pts = track.current;
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    const v = b && a && b.t > a.t ? (b.x - a.x) / (b.t - a.t) : 0; // px/мс
+    const openIt = v < -0.11 ? true : v > 0.11 ? false : offset <= -ACTION_WIDTH / 2;
     setAnimating(true);
-    setOffset(offset <= -ACTION_WIDTH / 2 ? -ACTION_WIDTH : 0);
+    setOffset(openIt ? -ACTION_WIDTH : 0);
   }
 
   return (
@@ -156,7 +170,7 @@ export default function SwipeToDelete({ children, onDelete, accent }: Props) {
         sx={{
           position: "relative",
           transform: `translateX(${offset}px)`,
-          transition: animating ? "transform 200ms ease-out" : "none",
+          transition: animating ? tr("transform", motion.base) : "none",
           touchAction: "pan-y",
         }}
       >

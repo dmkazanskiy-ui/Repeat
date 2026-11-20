@@ -1,5 +1,7 @@
 import { createTheme } from "@mui/material/styles";
 import { MODE } from "./lib/themeMode";
+import { motion } from "./ui/tokens";
+import { SheetUp, ToastUp } from "./ui/transitions";
 import { DARK_BG, LIGHT_BG } from "./lib/telegram";
 
 const DARK = {
@@ -27,11 +29,11 @@ const LIGHT = {
 const PALETTE = MODE === "light" ? LIGHT : DARK;
 
 /**
- * Появление карточек — Blur Fade из Magic UI: из размытия 6px и сдвига 6px
- * за 0,4 с. Соседние карточки идут лесенкой по 40 мс (переменная --rp-d
- * ставится по номеру среди соседей, см. index.css).
+ * Появление карточек (Blur Fade). Играет только при первом открытии
+ * приложения: класс html.rp-intro снимается через 1,2 с (main.tsx), а без
+ * него переменная пуста и анимации нет — вкладки переключаются мгновенно.
  */
-export const CARD_IN = "rp-blur-fade .4s cubic-bezier(.16,1,.3,1) var(--rp-d, 0ms) both";
+export const CARD_IN = "var(--rp-card-in, none)";
 
 /**
  * Material 3, но подкрученный: скругления мягче стандартных, плотность выше,
@@ -72,7 +74,7 @@ export const theme = createTheme({
           minHeight: 44,
           paddingInline: 16,
           fontWeight: 600,
-          transition: "background-color .15s, border-color .15s, transform .15s",
+          transition: `background-color ${motion.press}ms ease, border-color ${motion.press}ms ease, transform ${motion.press}ms ${motion.easeOut}`,
           "&:active": { transform: "scale(.98)" },
           "&.Mui-focusVisible": { boxShadow: `0 0 0 3px ${PALETTE.primary.main}55` },
         },
@@ -153,6 +155,9 @@ export const theme = createTheme({
     },
     MuiTab: { styleOverrides: { root: { textTransform: "none", fontWeight: 600 } } },
     MuiDivider: { styleOverrides: { root: { borderColor: PALETTE.divider } } },
+    MuiSnackbar: {
+      defaultProps: { slots: { transition: ToastUp }, transitionDuration: { enter: motion.base, exit: motion.fast } },
+    },
     MuiSnackbarContent: { styleOverrides: { root: { borderRadius: 14 } } },
     // Поверхности по эталону «Обзора»: карточка 22, плитка внутри 14, иконка 12.
     // Карточка — p 2 (16) и тонкая рамка; плитка — фон action.hover без рамки, p 1.5;
@@ -163,6 +168,7 @@ export const theme = createTheme({
     MuiMenu: { styleOverrides: { paper: { borderRadius: 14 } } },
     MuiTextField: { defaultProps: { size: "small" } },
     MuiDialog: {
+      defaultProps: { slots: { transition: SheetUp }, transitionDuration: { enter: motion.sheet, exit: motion.base } },
       styleOverrides: {
         // Диалоги на телефоне ведут себя как шторки — привычнее и ближе к краю пальца.
         paper: { margin: 12, width: "calc(100% - 24px)", maxHeight: "85vh", borderRadius: 22 },

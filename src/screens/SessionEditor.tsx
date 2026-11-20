@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { Card, IconBadge } from "../ui";
 import { MODE } from "../lib/themeMode";
 import { useEffect, useMemo, useState } from "react";
@@ -1274,7 +1275,7 @@ export default function SessionEditor({
                         sx={{
                           p: 1.5,
                           mb: isSuper ? 1 : 1.5,
-                          transition: "box-shadow .15s ease, background-color .15s ease",
+                          transition: `${tr("box-shadow", motion.press, "ease")}, ${tr("background-color", motion.press, "ease")}`,
                           ...(isSource && {
                             borderColor: color,
                             borderWidth: 2,

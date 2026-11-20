@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -304,7 +305,7 @@ function RunnerView({ cfg, onExit, onFinish, t }: {
       position: "fixed", inset: 0, zIndex: 1500, display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center", textAlign: "center",
       bgcolor: (th) => th.palette.mode === "dark" ? alpha(accent, 0.14) : alpha(accent, 0.1),
-      transition: "background-color .25s",
+      transition: tr("background-color", motion.fast, "ease"),
     }}>
       <Box sx={{ position: "absolute", top: 14, left: 14 }}>
         <IconButton onClick={onExit} aria-label={L("Выйти из таймера", "Exit timer")}><ArrowBackIcon /></IconButton>

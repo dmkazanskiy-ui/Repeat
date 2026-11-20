@@ -1,3 +1,4 @@
+import { tr } from "../ui";
 import { IconBadge, Tile, radius } from "../ui";
 import { Card } from "../ui";
 import { CARD_IN } from "../theme";
@@ -804,7 +805,7 @@ export default function AnalyticsScreen({
             onClick={() => setStrengthOpen((v) => !v)}
             endIcon={
               <ExpandMoreIcon
-                sx={{ transition: "transform .2s", transform: strengthOpen ? "rotate(180deg)" : "none" }}
+                sx={{ transition: tr("transform"), transform: strengthOpen ? "rotate(180deg)" : "none" }}
               />
             }
             sx={{ mt: 1, justifyContent: "space-between", px: 2 }}
@@ -849,7 +850,7 @@ export default function AnalyticsScreen({
                 onClick={() => setRecordsOpen((v) => !v)}
                 endIcon={
                   <ExpandMoreIcon
-                    sx={{ transition: "transform .2s", transform: recordsOpen ? "rotate(180deg)" : "none" }}
+                    sx={{ transition: tr("transform"), transform: recordsOpen ? "rotate(180deg)" : "none" }}
                   />
                 }
                 sx={{ mt: 1.25, justifyContent: "space-between", px: 2 }}

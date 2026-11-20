@@ -1,3 +1,4 @@
+import { tr } from "../ui";
 import { Card, IconBadge } from "../ui";
 import { globalUnit, unitFor, unitLabel } from "../lib/units";
 import type { ExerciseUnits, WeightUnit } from "../lib/units";
@@ -170,7 +171,7 @@ export default function SessionView({
             <Box sx={{ width: 12, height: 12, borderRadius: "50%", bgcolor: "primary.main", flexShrink: 0 }} />
           )}
           <ExpandMoreRoundedIcon
-            sx={{ color: "text.secondary", transition: "transform .2s", transform: moodOpen ? "rotate(180deg)" : "none" }}
+            sx={{ color: "text.secondary", transition: tr("transform"), transform: moodOpen ? "rotate(180deg)" : "none" }}
           />
         </Box>
         <Collapse in={moodOpen}>

@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { Card, IconBadge, radius } from "../ui";
 import { setGlobalUnit, unitLabel, useGlobalUnit } from "../lib/units";
 import type { WeightUnit } from "../lib/units";
@@ -147,7 +148,7 @@ export default function ProfileScreen({
                 cursor: "pointer",
                 bgcolor: active ? "action.selected" : "action.hover",
                 boxShadow: active ? `inset 0 0 0 1.5px ${alpha(g.color, 0.6)}` : "none",
-                transition: "background-color .25s, box-shadow .25s",
+                transition: `${tr("background-color", motion.fast, "ease")}, ${tr("box-shadow", motion.fast, "ease")}`,
               }}
             >
               <IconBadge color={g.color}>

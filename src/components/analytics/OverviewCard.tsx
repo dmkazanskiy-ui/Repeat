@@ -1,4 +1,4 @@
-import { Card, radius } from "../../ui";
+import { Card, introActive, motion, radius, tr } from "../../ui";
 import { useState } from "react";
 import { Box, Typography } from "@mui/material";
 import { alpha, keyframes, useTheme } from "@mui/material/styles";
@@ -11,19 +11,18 @@ import { today } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import type { Session } from "../../lib/types";
 
-// Тайминги — как в Rubber Dock (designbookmark.com/motion): элементы
-// проявляются из размытия по очереди, столбики вырастают с перелётом.
+// Входная анимация — только при первом открытии приложения (introActive):
+// плитки проявляются лесенкой, столбики вырастают. При смене метрики или
+// периода ничего не пересоздаётся — столбики плавно меняют высоту.
 const itemIn = keyframes`
-  from { opacity: 0; filter: blur(5px); transform: translate3d(0, 10px, 0) scale(.98); }
-  to   { opacity: 1; filter: none; transform: none; }
+  from { opacity: 0; transform: translateY(6px); }
 `;
 const barGrow = keyframes`
   from { transform: scaleY(0); }
   to   { transform: scaleY(1); }
 `;
-const appear = (i: number) => ({
-  animation: `${itemIn} .7s cubic-bezier(.16,1,.3,1) ${i * 45 + 70}ms both`,
-});
+const appear = (i: number) =>
+  introActive() ? { animation: `${itemIn} 300ms ${motion.easeOut} ${Math.min(i, 6) * 30}ms both` } : {};
 
 interface Props {
   sessions: Session[];
@@ -61,9 +60,7 @@ export default function OverviewCard({
         </Typography>
       </Box>
 
-      {/* key: при смене метрики/периода столбики вырастают заново */}
       <Bars
-        key={`${metric}|${period.startDate}|${period.endDate}`}
         sessions={sessions}
         period={period}
         metric={metric}
@@ -151,7 +148,12 @@ function Bars({
   const points = series(sessions, period, metric);
   const nowKey = bucketKey(today(), period.aggregation);
   const nowIdx = points.findIndex((p) => p.date === nowKey);
-  const [picked, setPicked] = useState<number | null>(null);
+  // Выбранный тапом столбик сбрасывается при смене метрики или периода.
+  const sig = `${metric}|${period.startDate}|${period.endDate}`;
+  const [pickedState, setPickedState] = useState<{ sig: string; i: number } | null>(null);
+  const picked = pickedState?.sig === sig ? pickedState.i : null;
+  const setPicked = (i: number) => setPickedState({ sig, i });
+  const [intro] = useState(introActive);
   if (points.length === 0) return null;
 
   const max = Math.max(...points.map((p) => p.value), 1);
@@ -179,7 +181,7 @@ function Bars({
           const pct = p.value > 0 ? Math.max(6, (p.value / max) * 100) : 4;
           return (
             <Box
-              key={p.date}
+              key={i}
               role="button"
               aria-label={`${labelOf(p.date)}: ${meta.format(p.value)}`}
               onClick={() => setPicked(i)}
@@ -193,8 +195,8 @@ function Bars({
                   bgcolor: on ? "primary.main" : grey,
                   opacity: p.value > 0 || on ? 1 : 0.6,
                   transformOrigin: "bottom",
-                  transition: "background-color .25s",
-                  animation: `${barGrow} .8s cubic-bezier(.34,1.56,.64,1) ${i * 35 + 220}ms both`,
+                  transition: `${tr("height", motion.base)}, ${tr("background-color", motion.fast, "ease")}`,
+                  animation: intro ? `${barGrow} 300ms ${motion.easeOut} ${120 + i * 25}ms both` : "none",
                 }}
               />
             </Box>

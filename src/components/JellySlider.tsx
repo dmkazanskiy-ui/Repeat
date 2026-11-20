@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { Box, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -293,7 +294,7 @@ export default function JellySlider({ value, onChange, label, ends, color }: Pro
               height: i % 5 === 0 ? 8 : 4,
               borderRadius: "1px",
               bgcolor: i % 5 === 0 ? "text.disabled" : "action.selected",
-              transition: "background-color .2s ease",
+              transition: tr("background-color", motion.fast, "ease"),
               "&.on": { bgcolor: i % 5 === 0 ? "text.primary" : "text.secondary" },
             }}
           />

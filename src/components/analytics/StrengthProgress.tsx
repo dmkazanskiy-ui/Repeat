@@ -1,3 +1,4 @@
+import { tr } from "../../ui";
 import { IconBadge, Tile, radius } from "../../ui";
 import { CARD_IN } from "../../theme";
 import { massToUnit, toUnit, unitLabel } from "../../lib/units";
@@ -160,7 +161,7 @@ function ExerciseRow({
         <ExpandMoreIcon
           sx={{
             color: "text.secondary",
-            transition: "transform .2s",
+            transition: tr("transform"),
             transform: open ? "rotate(180deg)" : "none",
           }}
         />

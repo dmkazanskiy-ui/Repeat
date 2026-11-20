@@ -1,3 +1,4 @@
+import { motion, tr } from "../ui";
 import { IconBadge, radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useState } from "react";
@@ -349,7 +350,7 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone, consen
               height: 8,
               borderRadius: 999,
               bgcolor: i === slide ? "primary.main" : "divider",
-              transition: "background-color 200ms",
+              transition: tr("background-color", motion.fast, "ease"),
             }}
           />
         ))}
