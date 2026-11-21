@@ -29,6 +29,7 @@ import { today } from "../lib/format";
 import { L, useT } from "../lib/i18n";
 import { haptic } from "../lib/telegram";
 import { deleteAccount, syncAvailable, useSyncState } from "../lib/sync";
+import { useAccount } from "../lib/auth";
 import type { Exercise } from "../lib/types";
 import { ink } from "../lib/themeMode";
 
@@ -159,12 +160,13 @@ export default function BackupPanel({
 export function useSyncText(): { text: string; color: string } {
   const t = useT();
   const s = useSyncState();
+  useAccount(); // перерисовать подпись после входа/выхода
   const time = (ms: number) =>
     new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   let text: string;
   let color = "text.secondary";
   if (!syncAvailable()) {
-    text = t("Синхронизация работает только внутри Telegram", "Sync works only inside Telegram");
+    text = t("Войди через Telegram в профиле — история станет общей на всех устройствах", "Sign in with Telegram in your profile to sync history across devices");
   } else if (s.kind === "ok") {
     text = t(`Синхронизировано с сервером в ${time(s.last)}`, `Synced with the server at ${time(s.last)}`);
   } else if (s.kind === "error") {
@@ -172,6 +174,8 @@ export function useSyncText(): { text: string; color: string } {
     text =
       s.message === "auth"
         ? t("Сервер не принял вход — переоткрой приложение", "Server rejected sign-in — reopen the app")
+        : s.message === "blocked"
+          ? t("Доступ к серверу закрыт — данные остаются на устройстве", "Server access is closed — data stays on this device")
         : s.message === "quota"
           ? t("Превышен лимит 10 МБ на сервере — новые данные остаются на устройстве", "Over the 10 MB server limit — new data stays on this device")
           : s.message === "rate"

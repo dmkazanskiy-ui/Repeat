@@ -5,4 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   base: './',
   plugins: [react()],
+  // Локально: npm run dev + python3 deploy/sync/server.py → /api уходит на сервер синка.
+  server: { proxy: { '/api': 'http://127.0.0.1:8787' } },
 })

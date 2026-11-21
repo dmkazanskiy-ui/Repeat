@@ -7,7 +7,7 @@
 import { get, set } from "./db";
 
 /** Поднять, если меняется текст согласия или политики: спросим заново. */
-export const CONSENT_VERSION = 1;
+export const CONSENT_VERSION = 2; // 2 — имя/юзернейм, журнал посещений, вход в браузере
 export const CONSENT_URL = "consent.html";
 export const PRIVACY_URL = "privacy.html";
 

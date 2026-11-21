@@ -20,6 +20,7 @@ import { Close as CloseIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { ChevronRightRounded as ChevronRightRoundedIcon } from "../ui/icons";
 import MoodPad from "../components/MoodPad";
+import AccountCard from "../components/AccountCard";
 import { DeleteDialog, ExportDialog, ImportDialog, useSyncText } from "../components/BackupPanel";
 import { Settings as SettingsIcon } from "../ui/icons";
 import StackPanel, { type StackPage } from "../ui/StackPanel";
@@ -51,6 +52,7 @@ interface Props {
   programs: TrainingProgram[];
   focusGoal: FocusGoal | null;
   onOpenPrograms: () => void;
+  onOpenAdmin: () => void;
   onChangeRecovery: (entries: RecoveryEntry[]) => void;
   onChangeFocusGoal: (goal: FocusGoal | null) => void;
   onChangeLang: (lang: Lang) => void;
@@ -75,6 +77,7 @@ export default function ProfileScreen({
   programs,
   focusGoal,
   onOpenPrograms,
+  onOpenAdmin,
   onChangeRecovery,
   onChangeFocusGoal,
   onChangeLang,
@@ -252,6 +255,9 @@ export default function ProfileScreen({
           <SettingsIcon sx={{ fontSize: 22 }} />
         </IconButton>
       </Stack>
+
+      {/* Аккаунт Telegram: вход в браузере, выход, админка */}
+      <AccountCard onOpenAdmin={onOpenAdmin} />
 
       {/* Цель — влияет на подбор «Тренером» */}
       <Typography variant="h2" sx={{ mb: 1.5 }}>

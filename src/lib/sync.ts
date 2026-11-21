@@ -6,13 +6,15 @@
 // видно, что изменилось на этом устройстве, включая удаления. Конфликт
 // решает время правки: побеждает более поздняя (last write wins).
 //
-// Работает только внутри Telegram: вход — подпись initData, без паролей.
+// Вход — аккаунт Telegram: в Mini App подпись initData, в браузере сессия,
+// полученная входом через бота (см. lib/auth). Без паролей.
 // Фото прогресса не синхронизируются (тяжёлые; остаются на устройстве).
 
 import { useSyncExternalStore } from "react";
 import { del, get, keys, set } from "./db";
 import type { BackupData } from "./backup";
 import { isConsentValid } from "./consent";
+import { authAvailable, authHeader, sessionLost } from "./auth";
 
 type Collection =
   | "sessions"
@@ -179,12 +181,8 @@ export function useSyncState(): SyncState {
   );
 }
 
-function initData(): string {
-  return window.Telegram?.WebApp?.initData ?? "";
-}
-
 export function syncAvailable(): boolean {
-  return Boolean(initData());
+  return authAvailable();
 }
 
 // ───────────── Обмен ─────────────
@@ -238,12 +236,13 @@ async function exchange(getLocal: () => BackupData): Promise<SyncResult> {
 
     const res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `tma ${initData()}` },
+      headers: { "Content-Type": "application/json", Authorization: authHeader() ?? "" },
       body: JSON.stringify({ since, epoch, changes }),
     });
     if (!res.ok) {
       const code = res.status;
-      throw new Error(code === 401 ? "auth" : code === 413 ? "quota" : code === 429 ? "rate" : `http ${code}`);
+      if (code === 401 || code === 403) sessionLost();
+      throw new Error(code === 401 ? "auth" : code === 403 ? "blocked" : code === 413 ? "quota" : code === 429 ? "rate" : `http ${code}`);
     }
     const body = (await res.json()) as
       | { reset: true; epoch: string | null }
@@ -294,7 +293,7 @@ export function takeResetNotice(): boolean {
 /**
  * Удалить аккаунт: данные и копии на сервере, затем всё на этом устройстве.
  * Другие устройства сотрут у себя данные при следующем обмене (новый epoch).
- * Вне Telegram сервера нет — стираем только локальное.
+ * Без входа сервера нет — стираем только локальное.
  */
 export async function deleteAccount(): Promise<void> {
   disabled = true;
@@ -303,7 +302,7 @@ export async function deleteAccount(): Promise<void> {
     if (syncAvailable()) {
       const res = await fetch("/api/account/delete", {
         method: "POST",
-        headers: { Authorization: `tma ${initData()}` },
+        headers: { Authorization: authHeader() ?? "" },
       });
       if (!res.ok) throw new Error(`http ${res.status}`);
     }

@@ -69,6 +69,8 @@ import AnalyticsScreen from "./screens/AnalyticsScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import OnboardingScreen from "./screens/OnboardingScreen";
 import ProgramsScreen from "./screens/ProgramsScreen";
+import AdminScreen from "./screens/AdminScreen";
+import { hello, takeLogoutNotice, useAccount } from "./lib/auth";
 import HiitScreen from "./screens/HiitScreen";
 import { loadHiit, saveHiit, hiitWorkSec } from "./lib/hiit";
 import type { HiitConfig } from "./lib/hiit";
@@ -128,6 +130,7 @@ export default function App() {
   const [programEditId, setProgramEditId] = useState<string | null>(null);
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [showHiit, setShowHiit] = useState(false);
   const [hiitCfg, setHiitCfg] = useState<HiitConfig>(() => loadHiit());
   const [tab, setTab] = useState<Tab>("calendar");
@@ -169,6 +172,9 @@ export default function App() {
       setSessions(loaded);
       if (takeResetNotice()) {
         setToast(L("Аккаунт и все данные удалены", "Account and all data deleted"));
+      }
+      if (takeLogoutNotice()) {
+        setToast(L("Вы вышли — история осталась в аккаунте", "Signed out — your history stays in the account"));
       }
       if (fixedOld.fixed || stale.closed) {
         void saveSessions(loaded);
@@ -508,6 +514,15 @@ export default function App() {
       return next;
     });
   }, []);
+  // Вход: отметиться на сервере (посещение, «кто я», админка) и сразу
+  // обменяться данными. Только после согласия — до него на сервер ничего не уходит.
+  const account = useAccount();
+  const consentOk = isConsentValid(consent);
+  useEffect(() => {
+    if (!ready || !consentOk || !account.authed) return;
+    void hello();
+    void doSync();
+  }, [ready, consentOk, account.authed, doSync]);
   // И при возврате в приложение, и раз в минуту — чтобы подтянуть чужие правки.
   useEffect(() => {
     if (!ready) return;
@@ -752,7 +767,9 @@ export default function App() {
         }
       : programBeingViewed
         ? () => setOpenProgramId(null)
-        : showPrograms
+        : showAdmin && account.admin
+          ? () => setShowAdmin(false)
+          : showPrograms
             ? () => setShowPrograms(false)
             : open
               ? closeSession
@@ -818,6 +835,8 @@ export default function App() {
               setOpenProgramId(null);
             }}
           />
+        ) : showAdmin && account.admin ? (
+          <AdminScreen onBack={() => setShowAdmin(false)} />
         ) : showPrograms ? (
           <ProgramsScreen
             programs={programs}
@@ -996,6 +1015,7 @@ export default function App() {
                 programs={programs}
                 focusGoal={focusGoal}
                 onOpenPrograms={() => setShowPrograms(true)}
+                onOpenAdmin={() => setShowAdmin(true)}
                 onChangeRecovery={changeRecovery}
                 onChangeFocusGoal={changeFocusGoal}
                 onChangeLang={changeLang}
@@ -1056,7 +1076,7 @@ export default function App() {
 
       {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
           По ширине совпадает с контентом (maxWidth sm), с подписями. */}
-      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && (
+      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !(showAdmin && account.admin) && (
         <Box
           sx={{
             position: "fixed",
