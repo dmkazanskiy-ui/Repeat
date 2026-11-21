@@ -17,7 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { TrendingUpRounded as TrendingUpRoundedIcon } from "../ui/icons";
+import { TrendingUpRounded as TrendingUpRoundedIcon, TrendingDownRounded as TrendingDownRoundedIcon, TrendingFlatRounded as TrendingFlatRoundedIcon } from "../ui/icons";
 import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
 import { ChevronRight as ChevronRightIcon } from "../ui/icons";
 import { Close as CloseIcon } from "../ui/icons";
@@ -495,6 +495,8 @@ export default function AnalyticsScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, allSessions, period, records, bestInPeriod, strengthSummary, lang]);
 
+  const activeMeterRows = useMemo(() => meterRows.filter((r) => r.share > 0), [meterRows]);
+
   // Данные карточки-фокуса «Итоги».
   const hero: HeroData = useMemo(() => {
     const volCompare = compareMetric(sessions, period, "volume");
@@ -677,14 +679,17 @@ export default function AnalyticsScreen({
 
       {/* Итоги периода — карточка-фокус с крупными числами и инсайтами 2×2 */}
       {/* Итоги периода: коротко — итог и полоса по видам, по тапу — подробности */}
+      {/* Виды, которых в периоде не было, не показываем. Набор строк сменился —
+          перемонтируем: пружины полосы заведены по числу строк. */}
       <PeriodMeter
+        key={activeMeterRows.map((r) => r.id).join()}
         title={hero.title}
         changePercent={hero.changePercent}
         changeLabel={hero.changeLabel}
         total={summary.workouts}
         totalWord={(n) => (lang === "ru" ? ruPlural(n, "тренировка", "тренировки", "тренировок") : n === 1 ? "workout" : "workouts")}
         sub={hero.daysText}
-        rows={meterRows}
+        rows={activeMeterRows}
       />
 
       {/* Плато — маленький алерт под первым дашбордом, разбор живёт в «Прогрессе» */}
@@ -872,11 +877,12 @@ export default function AnalyticsScreen({
       ) : (
         <>
           <Card>
-            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 1 }}>
-              <StatusCount value={strengthSummary.up} label={t("растут", "rising")} tone="up" />
-              <StatusCount value={strengthSummary.flat} label={t("стабильны", "steady")} tone="flat" />
-              <StatusCount value={strengthSummary.down} label={t("снижаются", "falling")} tone="flat" />
-              <StatusCount value={strengthSummary.plateau} label={t("плато", "plateau")} tone="warn" />
+            {/* Те же плитки, что в «Как идёшь к цели»: подпись сверху, число, стрелка тренда. */}
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1 }}>
+              <StatusCount value={strengthSummary.up} label={t("Растут", "Rising")} tone="up" />
+              <StatusCount value={strengthSummary.flat} label={t("Стабильны", "Steady")} tone="flat" />
+              <StatusCount value={strengthSummary.down} label={t("Снижаются", "Falling")} tone="down" />
+              <StatusCount value={strengthSummary.plateau} label={t("Плато", "Plateau")} tone="warn" />
             </Box>
             {strengthSummary.gainers.length > 0 && (
               <>
@@ -1585,22 +1591,17 @@ function StatusCount({
 }: {
   value: number;
   label: string;
-  tone: "up" | "flat" | "warn";
+  tone: "up" | "flat" | "down" | "warn";
 }) {
-  // Цифры — одним цветом текста; смысл несёт точка у подписи (цвет — только у элементов).
-  const accent = tone === "up" ? ink("#4ade80") : tone === "warn" ? ink("#f59e0b") : null;
+  // Цифры — одним цветом; направление показывает стрелка (цвет — только у элементов).
+  const Icon = tone === "up" ? TrendingUpRoundedIcon : tone === "down" ? TrendingDownRoundedIcon : TrendingFlatRoundedIcon;
+  const color = tone === "up" ? ink("#4ade80") : tone === "warn" ? ink("#f59e0b") : "text.secondary";
   return (
-    <Tile sx={{ textAlign: "center" }}>
-      <Typography sx={{ fontSize: 24, fontWeight: 800, color: value === 0 ? "text.disabled" : "text.primary", lineHeight: 1.15 }}>
-        {value}
-      </Typography>
-      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-        {accent && value > 0 && <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: accent, flex: "none" }} />}
-        <Typography variant="caption" color="text.secondary">
-          {label}
-        </Typography>
-      </Box>
-    </Tile>
+    <Tile
+      label={label}
+      value={`${value} ${L("упр.", "ex.")}`}
+      aside={value > 0 ? <Icon sx={{ fontSize: 18, color, alignSelf: "center" }} /> : undefined}
+    />
   );
 }
 

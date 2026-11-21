@@ -82,7 +82,7 @@ export function goalVerdict(x: LensInput): GoalVerdict {
 
 function strengthVerdict(x: LensInput): GoalVerdict {
   const metrics: LensMetric[] = [
-    { label: L("Растут в силе", "Gaining strength"), value: `${x.strengthUp} ${L("упр.", "ex.")}`, dir: x.strengthUp > 0 ? "up" : "none" },
+    { label: L("Растут", "Gaining"), value: `${x.strengthUp} ${L("упр.", "ex.")}`, dir: x.strengthUp > 0 ? "up" : "none" },
     { label: L("Плато", "Plateau"), value: `${x.plateau}`, dir: x.plateau > 0 ? "down" : "none" },
     { label: L("Рекорды", "Records"), value: `${x.recordsCount}`, dir: x.recordsCount > 0 ? "up" : "none" },
   ];
