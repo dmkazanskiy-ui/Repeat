@@ -77,7 +77,7 @@ export default function WorkoutActions({ onCopyTo, onDelete, feedHidden, onToggl
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {t("В какой день? Те же упражнения и веса, без отметок о выполнении.", "Which day? Same exercises and weights, nothing ticked.")}
           </Typography>
-          <TextField type="date" fullWidth value={date} onChange={(e) => setDate(e.target.value)} />
+          <TextField hiddenLabel type="date" fullWidth value={date} onChange={(e) => setDate(e.target.value)} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setRepeatOpen(false)}>{t("Отмена", "Cancel")}</Button>

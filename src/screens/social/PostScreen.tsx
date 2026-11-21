@@ -177,6 +177,7 @@ export default function PostScreen({
         {canComment ? (
           <Stack direction="row" spacing={1} sx={{ alignItems: "flex-end" }}>
             <TextField
+              hiddenLabel
               fullWidth
               multiline
               maxRows={4}

@@ -634,6 +634,7 @@ export default function AnalyticsScreen({
         <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
           <TextField
             type="date"
+          slotProps={{ inputLabel: { shrink: true } }}
             label={t("С", "From")}
             value={from}
             onChange={(e) => setFrom(e.target.value)}
@@ -641,6 +642,7 @@ export default function AnalyticsScreen({
           />
           <TextField
             type="date"
+          slotProps={{ inputLabel: { shrink: true } }}
             label={t("По", "To")}
             value={to}
             onChange={(e) => setTo(e.target.value)}

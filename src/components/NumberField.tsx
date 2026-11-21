@@ -58,6 +58,7 @@ export default function NumberField({
 
   return (
     <TextField
+      hiddenLabel={!rest.label}
       {...rest}
       value={text}
       slotProps={{

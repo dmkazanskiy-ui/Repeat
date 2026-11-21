@@ -244,6 +244,7 @@ function MeasurementDialog({
       <DialogContent>
         <TextField
           type="date"
+          slotProps={{ inputLabel: { shrink: true } }}
           label={t("Дата", "Date")}
           fullWidth
           value={draft.date}

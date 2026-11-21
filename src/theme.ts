@@ -40,6 +40,10 @@ export const CARD_IN = "var(--rp-card-in, none)";
  * заглавные буквы на кнопках отключены. Цель — чтобы приложение читалось
  * современно и на Android, и на iPhone, а не как «андроид на айфоне».
  */
+/** Заливка полей ввода — та же, что у подложек сегментов и плиток. */
+const FIELD = MODE === "light" ? "rgba(15,23,42,0.05)" : "rgba(238,242,247,0.06)";
+const FIELD_HOVER = MODE === "light" ? "rgba(15,23,42,0.08)" : "rgba(238,242,247,0.09)";
+
 export const theme = createTheme({
   palette: PALETTE,
   shape: { borderRadius: 14 },
@@ -166,7 +170,29 @@ export const theme = createTheme({
       styleOverrides: { root: { backgroundImage: "none" }, outlined: { borderRadius: 22, animation: CARD_IN } },
     },
     MuiMenu: { styleOverrides: { paper: { borderRadius: 14 } } },
-    MuiTextField: { defaultProps: { size: "small" } },
+    // Поля — как плитки: сплошная мягкая заливка без рамки, 12px, подпись внутри
+    // сверху. Фокус — тонкое кольцо; подпись не перекрашиваем (текст — один цвет).
+    MuiTextField: { defaultProps: { size: "small", variant: "filled" } },
+    MuiFilledInput: {
+      defaultProps: { disableUnderline: true },
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          backgroundColor: FIELD,
+          transition: `background-color ${motion.fast}ms ease, box-shadow ${motion.fast}ms ease`,
+          "&:hover": { backgroundColor: FIELD_HOVER },
+          "&.Mui-focused": { backgroundColor: FIELD, boxShadow: `inset 0 0 0 1.5px ${PALETTE.primary.main}` },
+          "&.Mui-error": { boxShadow: `inset 0 0 0 1.5px ${PALETTE.error.main}` },
+          "&.Mui-disabled": { backgroundColor: FIELD, opacity: 0.6 },
+        },
+        input: { borderRadius: 12 },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: { color: PALETTE.text.secondary, "&.Mui-focused": { color: PALETTE.text.secondary } },
+      },
+    },
     MuiDialog: {
       defaultProps: { slots: { transition: SheetUp }, transitionDuration: { enter: motion.sheet, exit: motion.base } },
       styleOverrides: {

@@ -172,7 +172,7 @@ export default function ExercisePickerDialog({
           </Stack>
         ) : (
           <>
-            <TextField
+            <TextField hiddenLabel
               placeholder={t("Поиск по 200+ упражнениям", "Search 200+ exercises")}
               value={query}
               fullWidth
