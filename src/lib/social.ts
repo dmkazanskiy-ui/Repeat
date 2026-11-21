@@ -16,7 +16,7 @@ import {
   sessionSetCount,
   sessionVolume,
 } from "./types";
-import type { Exercise, Session, SessionKind } from "./types";
+import type { Exercise, Session, SessionKind, WorkoutPhoto } from "./types";
 
 export const ACTIVITIES = [
   { id: "strength", ru: "Силовые", en: "Strength" },
@@ -60,6 +60,7 @@ export interface Snap {
   distanceM: number | null;
   sets: number | null;
   exercises: { name: string; sets: { w: number | null; r: number | null; wu?: boolean }[] }[];
+  photos?: WorkoutPhoto[];
 }
 
 export interface Post {
@@ -83,6 +84,18 @@ export interface PublicProfile {
   mine: boolean;
   posts: number;
   likes: number;
+  followers: number;
+  following: number;
+  followed: boolean;
+}
+
+export const photoUrl = (id: string) => `/api/social/photo/${id}.jpg`;
+
+export async function uploadPhoto(dataUrl: string, w: number, h: number): Promise<WorkoutPhoto> {
+  return api<WorkoutPhoto>("photo", { data: dataUrl, w, h });
+}
+export function deletePhoto(id: string): Promise<unknown> {
+  return api("photo/delete", { id }).catch(() => null);
 }
 
 export function avatarUrl(a: { pid: string; av: number } | null | undefined): string | null {
@@ -154,6 +167,7 @@ export const fetchProfile = (pid: string) => api<PublicProfile>(`profile/${encod
 export const setLike = (post: string, on: boolean) => api<{ likes: number; liked: boolean }>("like", { post, on });
 export const addComment = (post: string, text: string) => api<Post>("comment", { post, text });
 export const deleteComment = (post: string, id: string) => api<Post>("comment/delete", { post, id });
+export const setFollow = (pid: string, on: boolean) => api<PublicProfile>("follow", { pid, on });
 export const deletePost = (post: string) => api<{ ok: true }>("post/delete", { post });
 
 // ───────────── Публикация своих тренировок ─────────────
@@ -185,6 +199,7 @@ export function toSnap(s: Session, exercises: Exercise[]): Snap {
               .map((st) => ({ w: st.weight, r: st.reps, ...(st.warmup ? { wu: true } : {}) })),
           }))
         : [],
+    photos: (s.photos ?? []).slice(0, 10),
   };
 }
 

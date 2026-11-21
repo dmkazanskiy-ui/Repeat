@@ -2,6 +2,7 @@
 import { typeColor } from "../../lib/activityColors";
 import { formatVolume } from "../../lib/format";
 import type { Snap } from "../../lib/social";
+import type { WorkoutPhoto } from "../../lib/types";
 
 export function snapStats(snap: Snap, t: (ru: string, en: string) => string): { label: string; value: string }[] {
   const out: { label: string; value: string }[] = [];
@@ -32,5 +33,12 @@ export function setLine(sets: Snap["exercises"][number]["sets"]): string {
 
 export function kindColor(kind: Snap["kind"]): string {
   return typeColor(kind === "hiit" ? "wod" : kind);
+}
+
+
+/** Ширина / высота с ограничением: слишком высокие и слишком широкие подрезаем. */
+export function photoRatio(p: WorkoutPhoto | undefined): number {
+  if (!p?.w || !p?.h) return 4 / 5;
+  return Math.min(1.91, Math.max(0.8, p.w / p.h));
 }
 

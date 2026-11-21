@@ -3,7 +3,8 @@ import SpringDropdown from "../../ui/SpringDropdown";
 import { Card } from "../../ui";
 import { massToUnit, unitLabel } from "../../lib/units";
 import { useMemo, useState } from "react";
-import { Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Box, Stack, Typography } from "@mui/material";
+import Segmented from "../../ui/Segmented";
 import { useTheme } from "@mui/material/styles";
 import { addDays, formatDate, today } from "../../lib/format";
 import { exercisePlateau, metricSeries } from "../../lib/analytics";
@@ -232,20 +233,9 @@ export default function StrengthHero({
         </Typography>
       )}
 
-      <ToggleButtonGroup
-        value={range}
-        exclusive
-        size="small"
-        fullWidth
-        onChange={(_, v) => v && setRange(v)}
-        sx={{ mt: 1.5 }}
-      >
-        {RANGES.map((r) => (
-          <ToggleButton key={r.key} value={r.key} sx={{ fontSize: 12, py: 0.5, minHeight: 36 }}>
-            {r.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+      <Box sx={{ mt: 1.5 }}>
+        <Segmented size="small" value={range} onChange={setRange} options={RANGES.map((r) => ({ value: r.key, label: r.label }))} />
+      </Box>
     </Card>
   );
 }

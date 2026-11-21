@@ -1,4 +1,5 @@
 import { tr, CollapsibleSection, Section } from "../ui";
+import Segmented from "../ui/Segmented";
 import { IconBadge, Tile, radius, text } from "../ui";
 import { Card } from "../ui";
 import { CARD_IN } from "../theme";
@@ -12,11 +13,7 @@ import {
   Divider,
   IconButton,
   Stack,
-  Tab,
-  Tabs,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -620,37 +617,18 @@ export default function AnalyticsScreen({
         {t("Аналитика", "Analytics")}
       </Typography>
 
-      <ToggleButtonGroup
-        value={mode}
-        exclusive
-        fullWidth
-        size="small"
-        onChange={(_, v) => v && setMode(v)}
-        sx={{
-          mb: 2,
-          gap: 0.5,
-          p: 0.5,
-          borderRadius: 999,
-          bgcolor: "action.hover",
-          "& .MuiToggleButton-root": {
-            border: 0,
-            borderRadius: "999px !important",
-            textTransform: "none",
-            fontWeight: 600,
-            color: "text.secondary",
-            py: 0.75,
-          },
-          "& .MuiToggleButton-root.Mui-selected": {
-            color: "primary.main",
-            bgcolor: "rgba(74,222,128,0.14)",
-            "&:hover": { bgcolor: "rgba(74,222,128,0.2)" },
-          },
-        }}
-      >
-        <ToggleButton value="week">{t("Неделя", "Week")}</ToggleButton>
-        <ToggleButton value="month">{t("Месяц", "Month")}</ToggleButton>
-        <ToggleButton value="custom">{t("Период", "Range")}</ToggleButton>
-      </ToggleButtonGroup>
+      <Box sx={{ mb: 2 }}>
+        <Segmented
+          ariaLabel={t("Период", "Period")}
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "week", label: t("Неделя", "Week") },
+            { value: "month", label: t("Месяц", "Month") },
+            { value: "custom", label: t("Период", "Range") },
+          ]}
+        />
+      </Box>
 
       {mode === "custom" ? (
         <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center" }}>
@@ -763,23 +741,21 @@ export default function AnalyticsScreen({
       )}
 
       {/* Разделы — отвечают на 4 вопроса, чтобы не вываливать всё простынёй */}
-      <Tabs
-        value={view}
-        onChange={(_, v: View) => setView(v)}
-        variant="scrollable"
-        scrollButtons={false}
-        sx={{
-          mb: 2,
-          minHeight: 40,
-          "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontSize: 14, px: 1.5 },
-        }}
-      >
-        <Tab label={t("Объём", "Volume")} value="volume" />
-        <Tab label={t("Прогресс", "Progress")} value="strength" />
-        <Tab label={t("Мышцы", "Muscles")} value="muscles" />
-        <Tab label={t("Восстановление", "Recovery")} value="recovery" />
-        <Tab label={t("Тело", "Body")} value="body" />
-      </Tabs>
+      <Box sx={{ mb: 2 }}>
+        <Segmented
+          fit="content"
+          ariaLabel={t("Раздел", "Section")}
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "volume", label: t("Объём", "Volume") },
+            { value: "strength", label: t("Прогресс", "Progress") },
+            { value: "muscles", label: t("Мышцы", "Muscles") },
+            { value: "recovery", label: t("Восстановление", "Recovery") },
+            { value: "body", label: t("Тело", "Body") },
+          ]}
+        />
+      </Box>
 
       {view === "volume" && (
         <>

@@ -12,6 +12,7 @@ import BodyMap from "../components/analytics/BodyMap";
 import { sessionMuscleLoads } from "../lib/analytics";
 import { Edit as EditIcon } from "../ui/icons";
 import WorkoutActions from "../components/WorkoutActions";
+import WorkoutPhotos from "../components/social/WorkoutPhotos";
 import { ActivityIcon } from "../lib/icons";
 import {
   formatDateFull,
@@ -144,6 +145,9 @@ export default function SessionView({
           )}
         </Box>
       </Stack>
+
+      {/* Фото после тренировки — как в Strava. */}
+      <WorkoutPhotos photos={session.photos ?? []} onChange={(photos) => onChange({ ...session, photos })} />
 
       {/* Самочувствие после — точка на 2D-карте (оси под контекст). У
           восстановления «Как зашло» живёт в своём редакторе. */}

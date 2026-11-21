@@ -804,15 +804,21 @@ def delete_account(uid: str) -> dict:
 # веса тела и самочувствия. Telegram id наружу не уходит — у профиля свой pid.
 
 social_lock = threading.RLock()
-SOCIAL: dict = {"profiles": {}, "posts": {}}
+SOCIAL: dict = {"profiles": {}, "posts": {}, "follows": {}, "photos": {}}
 ACTIVITIES = {"strength", "run", "bike", "swim", "walk", "mobility", "hiit", "recovery", "crossfit", "boxing", "climb", "team"}
 MAX_POSTS_PER_USER = 200
 MAX_COMMENTS = 300
 AVATAR_MAX = 200 * 1024
+PHOTO_MAX = 1600 * 1024  # одно фото тренировки (клиент жмёт до ~1600 px)
+PHOTOS_PER_USER = 300
 
 
 def social_path() -> str:
     return os.path.join(DATA_DIR, "social.json")
+
+
+def photo_path(pid: str) -> str:
+    return os.path.join(DATA_DIR, "photos", f"{pid}.jpg")
 
 
 def avatar_path(pid: str) -> str:
@@ -824,7 +830,7 @@ def load_social() -> None:
     try:
         with open(social_path(), encoding="utf-8") as f:
             data = json.load(f)
-        SOCIAL = {"profiles": data.get("profiles", {}), "posts": data.get("posts", {})}
+        SOCIAL = {"profiles": data.get("profiles", {}), "posts": data.get("posts", {}), "follows": data.get("follows", {}), "photos": data.get("photos", {})}
     except FileNotFoundError:
         pass
 
@@ -927,11 +933,68 @@ def set_avatar(uid: str, body) -> dict:
     return own_profile(uid)
 
 
+def decode_jpeg(body, limit: int) -> bytes:
+    import base64
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, str) or not data.startswith("data:image/jpeg;base64,"):
+        raise ApiError(400, "bad image")
+    try:
+        raw = base64.b64decode(data.split(",", 1)[1], validate=True)
+    except ValueError:
+        raise ApiError(400, "bad image")
+    if len(raw) > limit or raw[:3] != b"\xff\xd8\xff":
+        raise ApiError(413, "bad image")
+    return raw
+
+
+def upload_photo(uid: str, body) -> dict:
+    """Фото тренировки. Адрес — случайный id: видят его только те, кому показали
+    (владелец и, если тренировка в ленте, другие пользователи)."""
+    raw = decode_jpeg(body, PHOTO_MAX)
+    num = lambda v: int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v < 20000 else None
+    w, h = num(body.get("w")), num(body.get("h"))
+    with social_lock:
+        if sum(1 for ph in SOCIAL["photos"].values() if ph["uid"] == uid) >= PHOTOS_PER_USER:
+            raise ApiError(413, "quota")
+        pid_ = secrets.token_urlsafe(16)
+        os.makedirs(os.path.dirname(photo_path(pid_)), exist_ok=True)
+        with open(photo_path(pid_), "wb") as f:
+            f.write(raw)
+        SOCIAL["photos"][pid_] = {"uid": uid, "t": int(time.time()), "w": w, "h": h}
+        save_social()
+    return {"id": pid_, "w": w, "h": h}
+
+
+def delete_photo(uid: str, body) -> dict:
+    pid_ = body.get("id") if isinstance(body, dict) else None
+    with social_lock:
+        ph = SOCIAL["photos"].get(pid_ or "")
+        if not ph or (ph["uid"] != uid and not is_admin(uid)):
+            raise ApiError(404, "no photo")
+        SOCIAL["photos"].pop(pid_, None)
+        save_social()
+    try:
+        os.remove(photo_path(pid_))
+    except FileNotFoundError:
+        pass
+    return {"ok": True}
+
+
+def serve_photo(pid_: str):
+    if pid_ not in SOCIAL["photos"] or is_blocked(SOCIAL["photos"][pid_]["uid"]):
+        return None
+    try:
+        with open(photo_path(pid_), "rb") as f:
+            return f.read()
+    except (FileNotFoundError, OSError):
+        return None
+
+
 def post_id(uid: str, sid: str) -> str:
     return hashlib.sha256(f"{uid}:{sid}".encode()).hexdigest()[:16]
 
 
-def clean_snap(snap) -> dict:
+def clean_snap(snap, uid: str = "") -> dict:
     """Слепок тренировки: только разрешённые поля, с ограничениями по размеру."""
     if not isinstance(snap, dict):
         raise ApiError(400, "bad post")
@@ -956,6 +1019,12 @@ def clean_snap(snap) -> dict:
             if isinstance(st, dict):
                 sets.append({"w": num(st.get("w"), 0, 2000), "r": num(st.get("r"), 0, 1000), **({"wu": True} if st.get("wu") else {})})
         out["exercises"].append({"name": clean_text(ex.get("name"), 80), "sets": sets})
+    out["photos"] = []
+    for ph in (snap.get("photos") or [])[:10]:
+        if isinstance(ph, dict) and isinstance(ph.get("id"), str):
+            meta = SOCIAL["photos"].get(ph["id"])
+            if meta and meta["uid"] == uid:  # чужие фото к своему посту не прицепить
+                out["photos"].append({"id": ph["id"], "w": meta.get("w"), "h": meta.get("h")})
     if out["kind"] not in ("strength", "cardio", "mobility", "recovery", "wod", "hiit"):
         raise ApiError(400, "bad post")
     return out
@@ -979,7 +1048,7 @@ def publish(uid: str, body) -> dict:
         for item in upsert:
             if not isinstance(item, dict) or not isinstance(item.get("sid"), str) or len(item["sid"]) > 100:
                 continue
-            snap = clean_snap(item.get("snap"))
+            snap = clean_snap(item.get("snap"), uid)
             raw = json.dumps(snap, ensure_ascii=False, sort_keys=True)
             if len(raw) > 20000:
                 continue
@@ -1113,11 +1182,33 @@ def public_profile(me: str, pid: str) -> dict:
     pr = SOCIAL["profiles"][uid]
     with social_lock:
         posts = [p for p in SOCIAL["posts"].values() if p["uid"] == uid]
+        followers = sum(1 for f, targets in SOCIAL["follows"].items() if uid in targets and not is_blocked(f))
+        following = len([x for x in SOCIAL["follows"].get(uid, []) if visible(x)])
+        followed = uid in SOCIAL["follows"].get(me, [])
     return {
+        "followers": followers, "following": following, "followed": followed,
         "pid": pid, "name": pr.get("name") or "Без имени", "bio": pr.get("bio", ""), "acts": pr.get("acts", []),
         "av": pr.get("av", 0), "mine": uid == me, "posts": len(posts),
         "likes": sum(len(p["likes"]) for p in posts),
     }
+
+
+def follow(me: str, body) -> dict:
+    """Подписка на открытый профиль. Список подписчиков наружу не отдаём — только число."""
+    pid = body.get("pid") if isinstance(body, dict) else None
+    uid = uid_by_pid(pid) if isinstance(pid, str) else None
+    if not uid or uid == me or not visible(uid):
+        raise ApiError(404, "no profile")
+    with social_lock:
+        lst = SOCIAL["follows"].setdefault(me, [])
+        if body.get("on") and uid not in lst:
+            if len(lst) >= 2000:
+                raise ApiError(429, "full")
+            lst.append(uid)
+        elif not body.get("on") and uid in lst:
+            lst.remove(uid)
+        save_social()
+    return public_profile(me, pid)
 
 
 def serve_avatar(pid: str):
@@ -1137,11 +1228,25 @@ def forget_social(uid: str) -> None:
         pr = SOCIAL["profiles"].pop(uid, None)
         for k in [k for k, p in SOCIAL["posts"].items() if p["uid"] == uid]:
             SOCIAL["posts"].pop(k, None)
+        SOCIAL["follows"].pop(uid, None)
+        for lst in SOCIAL["follows"].values():
+            if uid in lst:
+                lst.remove(uid)
         for p in SOCIAL["posts"].values():
             if uid in p["likes"]:
                 p["likes"].remove(uid)
             p["comments"] = [c for c in p["comments"] if c["uid"] != uid]
         save_social()
+    with social_lock:
+        mine = [k for k, ph in SOCIAL["photos"].items() if ph["uid"] == uid]
+        for k in mine:
+            SOCIAL["photos"].pop(k, None)
+        save_social()
+    for k in mine:
+        try:
+            os.remove(photo_path(k))
+        except FileNotFoundError:
+            pass
     if pr:
         try:
             os.remove(avatar_path(pr["pid"]))
@@ -1238,6 +1343,17 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(img)
             return
+        if path.startswith("/api/social/photo/") and path.endswith(".jpg"):
+            img = serve_photo(path[len("/api/social/photo/"):-4])
+            if img is None:
+                return self._send(404, {"error": "not found"})
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "private, max-age=604800, immutable")
+            self.send_header("Content-Length", str(len(img)))
+            self.end_headers()
+            self.wfile.write(img)
+            return
         if path == "/api/social/me":
             return self._handle(lambda: own_profile(self._auth()["uid"]))
         if path == "/api/social/published":
@@ -1270,7 +1386,8 @@ class Handler(BaseHTTPRequestHandler):
         social_routes = {
             "/api/social/profile": set_profile, "/api/social/avatar": set_avatar, "/api/social/publish": publish,
             "/api/social/like": like, "/api/social/comment": comment, "/api/social/comment/delete": delete_comment,
-            "/api/social/post/delete": delete_post,
+            "/api/social/post/delete": delete_post, "/api/social/follow": follow,
+            "/api/social/photo": upload_photo, "/api/social/photo/delete": delete_photo,
         }
         if self.path in social_routes:
             fn = social_routes[self.path]

@@ -528,6 +528,9 @@ export function copySessionTo(session: Session, date: string): Session {
     pausedAt: null,
     pausedMs: null,
     autoEnded: false,
+    // Фото — про ту тренировку, к повтору не переносятся.
+    photos: [],
+    feedHidden: false,
     avgHr: null,
     time: nowTime(),
     exercises: session.exercises.map((exercise) => ({

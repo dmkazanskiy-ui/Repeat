@@ -1,4 +1,5 @@
 import { Card, radius } from "../ui";
+import Segmented from "../ui/Segmented";
 import { useState } from "react";
 import {
   Box,
@@ -6,8 +7,6 @@ import {
   Chip,
   IconButton,
   Stack,
-  Tab,
-  Tabs,
   Typography,
 } from "@mui/material";
 import { Add as AddIcon } from "../ui/icons";
@@ -125,18 +124,16 @@ export default function ProgramsScreen({
         <Typography variant="h1">{t("Программы", "Programs")}</Typography>
       </Stack>
 
-      <Tabs
-        value={tab}
-        onChange={(_, v) => setTab(v)}
-        sx={{
-          mb: 2,
-          minHeight: 40,
-          "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontSize: 14 },
-        }}
-      >
-        <Tab label={t("Мои программы", "My programs")} value="mine" />
-        <Tab label={t("Библиотека", "Library")} value="library" />
-      </Tabs>
+      <Box sx={{ mb: 2 }}>
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "mine", label: t("Мои программы", "My programs") },
+            { value: "library", label: t("Библиотека", "Library") },
+          ]}
+        />
+      </Box>
 
       {tab === "mine" && (
         <Stack spacing={1}>

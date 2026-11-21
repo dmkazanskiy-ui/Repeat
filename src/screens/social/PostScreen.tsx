@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { Box, Button, CircularProgress, IconButton, ListItemIcon, Menu, MenuItem, Stack, TextField, Typography } from "@mui/material";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
-import { Card, IconBadge, Section, Tile, text } from "../../ui";
+import { Card, IconBadge, Section, Tile, radius, text } from "../../ui";
+import PhotoCarousel from "../../components/social/PhotoCarousel";
 import { ArrowBack as ArrowBackIcon, DeleteOutlined as DeleteOutlineIcon } from "../../ui/icons";
 import Avatar from "../../components/social/Avatar";
 import LikeButton from "../../components/social/LikeButton";
@@ -102,6 +103,12 @@ export default function PostScreen({
           </IconButton>
         )}
       </Stack>
+
+      {(snap.photos?.length ?? 0) > 0 && (
+        <Box sx={{ mb: 1.5 }}>
+          <PhotoCarousel photos={snap.photos!} rounded={radius.card} />
+        </Box>
+      )}
 
       <Card sx={{ mb: 1.5 }}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: stats.length ? 2 : 0 }}>

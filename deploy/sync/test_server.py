@@ -40,7 +40,7 @@ class ServerTest(unittest.TestCase):
             if os.path.isfile(path):
                 os.remove(path)
         server.META = {"admin": None, "users": {}, "sessions": {}}
-        server.SOCIAL = {"profiles": {}, "posts": {}}
+        server.SOCIAL = {"profiles": {}, "posts": {}, "follows": {}, "photos": {}}
         server.logins.clear()
         server.bot_info.update(username=None, polling="on")
         self.sent = Sent()
@@ -149,10 +149,29 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(server.feed("111", {})["posts"], [])
         server.set_profile("222", {"public": True, "consent": True})
         server.publish("222", {"upsert": [{"sid": "s1", "hash": "h1", "snap": snap}]})
+        # Фото: прикрепить к посту можно только своё.
+        import base64
+        jpeg = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff" + b"0" * 100).decode()
+        mine = server.upload_photo("222", {"data": jpeg, "w": 1080, "h": 1350})
+        theirs = server.upload_photo("111", {"data": jpeg, "w": 10, "h": 10})
+        snap2 = dict(snap, photos=[{"id": mine["id"]}, {"id": theirs["id"]}])
+        server.publish("222", {"upsert": [{"sid": "s1", "hash": "h2", "snap": snap2}]})
+        photos = server.feed("111", {})["posts"][0]["snap"]["photos"]
+        self.assertEqual([p["id"] for p in photos], [mine["id"]])
+        self.assertEqual(photos[0]["h"], 1350)
+        self.assertIsNotNone(server.serve_photo(mine["id"]))
+        # Подписка: только на открытый профиль, наружу — числа.
+        anna = server.own_profile("222")["pid"]
+        pr = server.follow("111", {"pid": anna, "on": True})
+        self.assertEqual((pr["followers"], pr["followed"]), (1, True))
+        with self.assertRaises(server.ApiError):
+            server.follow("111", {"pid": server.own_profile("111")["pid"], "on": True})
         # Удаление аккаунта стирает соцданные.
         server.delete_account("111")
         p = server.feed("222", {})["posts"][0]
         self.assertEqual((p["likes"], p["comments"]), (0, 0))
+        self.assertEqual(server.public_profile("222", anna)["followers"], 0)
+        self.assertIsNone(server.serve_photo(theirs["id"]))
 
 
 if __name__ == "__main__":

@@ -2,13 +2,14 @@
 // чей Telegram id сервер закрепил за ADMIN_USERNAME (см. deploy/sync/server.py).
 // Содержимое тренировок сюда не приходит — только количества и даты.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, IconButton, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, IconButton, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import { Card, Tile, radius, text } from "../ui";
 import { ArrowBack as ArrowBackIcon, Close as CloseIcon } from "../ui/icons";
 import { adminFetch } from "../lib/auth";
 import PullToRefresh from "../components/PullToRefresh";
+import Segmented from "../ui/Segmented";
 import { useLang, useT } from "../lib/i18n";
 import { ink } from "../lib/themeMode";
 
@@ -126,17 +127,17 @@ export default function AdminScreen({ onBack }: { onBack: () => void }) {
         </IconButton>
       </Stack>
 
-      <Tabs
-        value={view}
-        onChange={(_, v: View) => setView(v)}
-        variant="scrollable"
-        scrollButtons={false}
-        sx={{ mb: 2, minHeight: 40, "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontSize: 14, px: 1.5 } }}
-      >
-        <Tab label={t("Люди", "People")} value="people" />
-        <Tab label={t("Посещения", "Visits")} value="visits" />
-        <Tab label={t("Журнал", "Log")} value="log" />
-      </Tabs>
+      <Box sx={{ mb: 2 }}>
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "people", label: t("Люди", "People") },
+            { value: "visits", label: t("Посещения", "Visits") },
+            { value: "log", label: t("Журнал", "Log") },
+          ]}
+        />
+      </Box>
 
       {error && (
         <Card sx={{ mb: 1.5 }}>

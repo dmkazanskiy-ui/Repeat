@@ -1,6 +1,7 @@
 import { motion, tr } from "../ui";
 import { Card, IconBadge, Tile, radius, text } from "../ui";
 import WorkoutActions from "../components/WorkoutActions";
+import WorkoutPhotos from "../components/social/WorkoutPhotos";
 import { CheckRounded as CheckRoundedIcon, Close as CloseIcon } from "../ui/icons";
 import { MODE } from "../lib/themeMode";
 import { useEffect, useMemo, useState } from "react";
@@ -904,6 +905,8 @@ export default function SessionEditor({
           </Box>
         )}
       </Card>
+
+      {session.endedAt && <WorkoutPhotos photos={session.photos ?? []} onChange={(photos) => onChange({ ...session, photos })} />}
 
       {/* Тяжесть — оценка после/во время, до старта не спрашиваем. */}
       {(running || session.endedAt) && (
