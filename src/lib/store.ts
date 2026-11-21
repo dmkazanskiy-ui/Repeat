@@ -531,6 +531,8 @@ export function copySessionTo(session: Session, date: string): Session {
     // Фото — про ту тренировку, к повтору не переносятся.
     photos: [],
     feedHidden: false,
+    // Заметки-дела переносим, но неотмеченными — их снова нужно сделать.
+    todos: session.todos?.map((td) => ({ ...td, id: newId(), done: false })),
     avgHr: null,
     time: nowTime(),
     exercises: session.exercises.map((exercise) => ({

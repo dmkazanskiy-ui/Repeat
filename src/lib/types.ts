@@ -427,6 +427,13 @@ export interface CardioData {
   segments?: CardioSegment[];
 }
 
+/** Короткая заметка-дело к тренировке: «взять ремни», «снять технику». */
+export interface TodoItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface WorkoutPhoto {
   id: string;
   w: number | null;
@@ -497,6 +504,8 @@ export interface Session {
   recovery?: RecoveryData | null;
   /** Только для kind === "wod": задание и его результат. */
   wod?: WodData | null;
+  /** Заметки-дела к тренировке (чек-лист). */
+  todos?: TodoItem[];
   /** Фото после тренировки (хранятся на сервере, здесь — только id и пропорции). */
   photos?: WorkoutPhoto[];
   /** Не показывать в ленте, даже если профиль публичный. */

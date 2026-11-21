@@ -2,6 +2,9 @@ import { motion, tr } from "../ui";
 import { Card, IconBadge, Tile, radius, text } from "../ui";
 import WorkoutActions from "../components/WorkoutActions";
 import WorkoutPhotos from "../components/social/WorkoutPhotos";
+import TodoList from "../components/TodoList";
+import GhostField from "../components/GhostField";
+import { noteSuggestions, todoSuggestions } from "../lib/suggestions";
 import { CheckRounded as CheckRoundedIcon, Close as CloseIcon } from "../ui/icons";
 import { MODE } from "../lib/themeMode";
 import { useEffect, useMemo, useState } from "react";
@@ -1396,17 +1399,20 @@ export default function SessionEditor({
         </>
       )}
 
-      <TextField
-        fullWidth
-        multiline
-        minRows={2}
-        label={t("Заметки", "Notes")}
-        value={session.notes ?? ""}
-        onChange={(event) =>
-          onChange({ ...session, notes: event.target.value || null })
-        }
-        sx={{ mt: 3 }}
-      />
+      <Box sx={{ mt: 3 }}>
+        <TodoList items={session.todos ?? []} onChange={(todos) => onChange({ ...session, todos })} suggestions={todoSuggestions(sessions)} />
+      </Box>
+
+      <Box sx={{ mt: 1.5 }}>
+        <GhostField
+          label={t("Комментарий", "Comment")}
+          minRows={2}
+          maxLength={2000}
+          value={session.notes ?? ""}
+          onChange={(v) => onChange({ ...session, notes: v || null })}
+          candidates={noteSuggestions(sessions)}
+        />
+      </Box>
 
       <ExercisePickerDialog
         open={picker != null}

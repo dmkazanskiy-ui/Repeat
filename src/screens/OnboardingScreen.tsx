@@ -1,14 +1,10 @@
-import { motion, tr } from "../ui";
 import { IconBadge, radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useState } from "react";
-import { Box, Button, Checkbox, Link, Stack, Typography, useTheme } from "@mui/material";
+import { Box, Button, Checkbox, Stack, Typography, useTheme } from "@mui/material";
 import { L } from "../lib/i18n";
 import { alpha } from "@mui/material/styles";
 import { CheckRounded as CheckRoundedIcon } from "../ui/icons";
-import { AccessTimeRounded as AccessTimeRoundedIcon } from "../ui/icons";
-import MonitorWeightOutlinedIcon from "@mui/icons-material/MonitorWeightOutlined";
-import { RepeatRounded as RepeatRoundedIcon } from "../ui/icons";
 import { CheckCircleRounded as CheckCircleRoundedIcon } from "../ui/icons";
 import { RadioButtonUncheckedRounded as RadioButtonUncheckedRoundedIcon } from "../ui/icons";
 import { ActivityIcon } from "../lib/icons";
@@ -16,7 +12,9 @@ import { areaPath, smoothPath } from "../lib/chart";
 import type { Pt } from "../lib/chart";
 import { FOCUS_GOALS } from "../lib/workoutBuilder";
 import type { FocusGoal } from "../lib/workoutBuilder";
-import { CONSENT_URL, PRIVACY_URL, openDoc } from "../lib/consent";
+import { CONSENT_URL, PRIVACY_URL } from "../lib/consent";
+import StepProgress from "../ui/StepProgress";
+import DocLink from "../components/DocLink";
 import { ink } from "../lib/themeMode";
 
 interface Props {
@@ -34,20 +32,7 @@ interface Props {
  * отдельной ссылкой.
  */
 function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  const doc = (path: string, label: string) => (
-    <Link
-      component="button"
-      type="button"
-      onClick={(e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openDoc(path);
-      }}
-      sx={{ display: "inline", p: 0, verticalAlign: "baseline", textAlign: "left", font: "inherit", color: "primary.main" }}
-    >
-      {label}
-    </Link>
-  );
+  const doc = (path: string, label: string) => <DocLink href={path}>{label}</DocLink>;
   return (
     <Box
       component="label"
@@ -85,78 +70,99 @@ function ConsentCheck({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
-/** Пример карточки тренировки — наш реальный визуал (силовая, фиолетовая). */
+/**
+ * Пример — кусочек настоящего редактора: упражнение и подходы с плитками
+ * «сделано». Третий подход отмечается сам — так видно, как это работает.
+ */
 function SampleCard() {
   const color = ink("#a78bfa");
+  const theme = useTheme();
+  const onColor = theme.palette.getContrastText(color);
+  const field = {
+    flex: 1,
+    height: 40,
+    px: 1.25,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: "12px",
+    bgcolor: "action.hover",
+    fontSize: 15,
+    fontVariantNumeric: "tabular-nums",
+  } as const;
+  const sets = [
+    { w: 80, r: 8, done: true },
+    { w: 85, r: 6, done: true },
+    { w: 85, r: 6, done: false },
+  ];
   return (
     <Box
       sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1.5,
+        width: "100%",
+        maxWidth: 340,
         p: 2,
-        borderRadius: radius.card, animation: CARD_IN,
+        textAlign: "left",
+        borderRadius: radius.card,
+        animation: CARD_IN,
         border: "1px solid",
         borderColor: "divider",
-        backgroundColor: "background.paper",
-        width: "100%",
-        maxWidth: 320,
+        bgcolor: "background.paper",
       }}
     >
-      <IconBadge color={color}>
-        <ActivityIcon icon="gym" fontSize="medium" />
-      </IconBadge>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box
-          component="span"
-          sx={{
-            display: "inline-flex",
-            height: 20,
-            px: 0.9,
-            mb: 0.5,
-            borderRadius: 1,
-            border: "1px solid",
-            borderColor: "divider",
-            color,
-            fontSize: 11,
-            fontWeight: 600,
-            alignItems: "center",
-          }}
-        >
-          {L("Силовая", "Strength")}
-        </Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
-          {L("День A · грудь / спина", "Day A · chest / back")}
+      <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", mb: 1.5 }}>
+        <IconBadge color={color} size={32}>
+          <ActivityIcon icon="gym" fontSize="small" />
+        </IconBadge>
+        <Typography sx={{ fontSize: 15, fontWeight: 700, flex: 1, minWidth: 0 }} noWrap>
+          {L("Жим штанги лёжа", "Barbell bench press")}
         </Typography>
-        <Stack direction="row" spacing={1.5} sx={{ mt: 0.75, color: "text.secondary" }}>
-          <Stack direction="row" spacing={0.4} sx={{ alignItems: "center" }}>
-            <AccessTimeRoundedIcon sx={{ fontSize: 14, opacity: 0.75 }} />
-            <Typography variant="caption">{L("48 мин", "48 min")}</Typography>
-          </Stack>
-          <Stack direction="row" spacing={0.4} sx={{ alignItems: "center" }}>
-            <MonitorWeightOutlinedIcon sx={{ fontSize: 14, opacity: 0.75 }} />
-            <Typography variant="caption">{L("8 200 кг", "8,200 kg")}</Typography>
-          </Stack>
-          <Stack direction="row" spacing={0.4} sx={{ alignItems: "center" }}>
-            <RepeatRoundedIcon sx={{ fontSize: 14, opacity: 0.75 }} />
-            <Typography variant="caption">{L("18 подх.", "18 sets")}</Typography>
-          </Stack>
-        </Stack>
-      </Box>
-      <Box
-        sx={{
-          width: 24,
-          height: 24,
-          borderRadius: "50%",
-          bgcolor: alpha(color, 0.16),
-          border: "1px solid",
-          borderColor: "divider",
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        <CheckRoundedIcon sx={{ color, fontSize: 15 }} />
-      </Box>
+        <Typography sx={{ fontSize: 12, color: "text.secondary" }}>{L("1 660 кг", "1,660 kg")}</Typography>
+      </Stack>
+      <Stack direction="row" spacing={1} sx={{ mb: 0.5 }}>
+        <Box sx={{ width: 20 }} />
+        <Typography sx={{ flex: 1, fontSize: 11, color: "text.secondary" }}>{L("Вес", "Weight")}</Typography>
+        <Typography sx={{ flex: 1, fontSize: 11, color: "text.secondary" }}>{L("Повторы", "Reps")}</Typography>
+        <Box sx={{ width: 40 }} />
+      </Stack>
+      <Stack spacing={0.75}>
+        {sets.map((set, i) => {
+          const auto = !set.done; // этот подход «отмечается» сам
+          return (
+            <Stack key={i} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+              <Typography sx={{ width: 20, textAlign: "center", fontSize: 13, color: "text.secondary" }}>{i + 1}</Typography>
+              <Box sx={field}>
+                {set.w}
+                <Box component="span" sx={{ fontSize: 12, color: "text.secondary" }}>
+                  {L("кг", "kg")}
+                </Box>
+              </Box>
+              <Box sx={field}>{set.r}</Box>
+              <Box
+                sx={{
+                  width: 40,
+                  height: 40,
+                  flex: "none",
+                  borderRadius: "12px",
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: set.done ? color : "action.hover",
+                  color: set.done ? onColor : "text.disabled",
+                  ...(auto && {
+                    "@keyframes onb-tick": {
+                      "0%, 40%": { backgroundColor: theme.palette.action.hover, color: theme.palette.text.disabled, transform: "scale(1)" },
+                      "48%": { transform: "scale(0.9)" },
+                      "60%, 100%": { backgroundColor: color, color: onColor, transform: "scale(1)" },
+                    },
+                    animation: "onb-tick 2.6s cubic-bezier(.34,1.56,.64,1) 0.6s forwards",
+                  }),
+                }}
+              >
+                <CheckRoundedIcon sx={{ fontSize: 22 }} />
+              </Box>
+            </Stack>
+          );
+        })}
+      </Stack>
     </Box>
   );
 }
@@ -340,31 +346,33 @@ export default function OnboardingScreen({ focusGoal, onPickGoal, onDone, consen
         </Box>
       )}
 
-      {/* Точки */}
-      <Stack direction="row" spacing={1} sx={{ justifyContent: "center", mb: 2, visibility: consentOnly ? "hidden" : "visible" }}>
-        {SLIDES.map((_, i) => (
-          <Box
-            key={i}
-            sx={{
-              width: i === slide ? 20 : 8,
-              height: 8,
-              borderRadius: 999,
-              bgcolor: i === slide ? "primary.main" : "divider",
-              transition: tr("background-color", motion.fast, "ease"),
-            }}
-          />
-        ))}
-      </Stack>
+      {/* Шаги — Step progress: линия доезжает, пройденные шаги с галочкой. */}
+      {!consentOnly && (
+        <Box sx={{ mb: 3 }}>
+          <StepProgress steps={[L("Запись", "Log"), L("Прогресс", "Progress"), L("Цель", "Goal"), L("Старт", "Start")]} current={slide} />
+        </Box>
+      )}
 
-      <Button
-        fullWidth
-        variant="contained"
-        size="large"
-        disabled={last && !agreed}
-        onClick={() => (last ? onDone() : setSlide((s) => s + 1))}
-      >
-        {last ? L("Запустить", "Launch") : L("Продолжить", "Continue")}
-      </Button>
+      <Stack direction="row" spacing={1.25}>
+        {slide > 0 && !consentOnly && (
+          <Button
+            size="large"
+            onClick={() => setSlide((s) => s - 1)}
+            sx={{ flex: 1, height: 48, borderRadius: radius.tile, bgcolor: "action.hover", color: "text.primary", "&:hover": { bgcolor: "action.selected" } }}
+          >
+            {L("Назад", "Back")}
+          </Button>
+        )}
+        <Button
+          variant="contained"
+          size="large"
+          disabled={last && !agreed}
+          onClick={() => (last ? onDone() : setSlide((s) => s + 1))}
+          sx={{ flex: slide > 0 && !consentOnly ? 1.4 : 1, height: 48, borderRadius: radius.tile }}
+        >
+          {last ? L("Запустить", "Launch") : L("Продолжить", "Continue")}
+        </Button>
+      </Stack>
     </Box>
   );
 }

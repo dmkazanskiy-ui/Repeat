@@ -1,15 +1,17 @@
 // Мой публичный профиль: фото, имя, о себе, чем занимаюсь, и открыт ли он.
 import { useRef, useState } from "react";
-import { Box, Button, Checkbox, CircularProgress, FormControlLabel, IconButton, Link, Stack, Switch, TextField, Typography } from "@mui/material";
+import { Box, Button, Checkbox, CircularProgress, FormControlLabel, IconButton, Stack, Switch, TextField, Typography } from "@mui/material";
 import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
 import { Card, Section, radius } from "../../ui";
 import { ArrowBack as ArrowBackIcon } from "../../ui/icons";
 import Avatar from "../../components/social/Avatar";
+import DocLink from "../../components/DocLink";
+import GhostField from "../../components/GhostField";
+import { bioSuggestions } from "../../lib/suggestions";
 import AvatarCropDialog from "../../components/social/AvatarCropDialog";
 import { ACTIVITIES, saveProfile, uploadAvatar, useMyProfile } from "../../lib/social";
 import type { ActivityId, MyProfile } from "../../lib/social";
 import { fileToScaledDataUrl } from "../../lib/image";
-import { openDoc } from "../../lib/consent";
 import { useLang, useT } from "../../lib/i18n";
 
 export const SHARE_CONSENT_URL = "share-consent.html";
@@ -118,16 +120,18 @@ function Editor({ onBack, onPreview, me }: Props & { me: MyProfile }) {
 
       <Stack spacing={1.5}>
         <TextField label={t("Имя", "Name")} value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} fullWidth />
-        <TextField
-          label={t("О себе", "About me")}
-          placeholder={t("Например: тренируюсь 4 раза в неделю, готовлюсь к полумарафону", "E.g. training 4×/week, getting ready for a half marathon")}
-          value={bio}
-          onChange={(e) => setBio(e.target.value.slice(0, 200))}
-          multiline
-          minRows={2}
-          fullWidth
-          helperText={`${bio.length}/200`}
-        />
+        <Box>
+          <GhostField
+            label={t("О себе", "About me")}
+            minRows={2}
+            maxLength={200}
+            value={bio}
+            onChange={(v) => setBio(v.replace(/\n/g, " "))}
+            candidates={bioSuggestions()}
+            placeholder={t("Например: тренируюсь 4 раза в неделю", "E.g. training 4×/week")}
+          />
+          <Typography sx={{ fontSize: 12, color: "text.secondary", mt: 0.5, ml: 1.5 }}>{bio.length}/200</Typography>
+        </Box>
       </Stack>
 
       <Section title={t("Чем занимаюсь", "What I do")}>
@@ -182,9 +186,7 @@ function Editor({ onBack, onPreview, me }: Props & { me: MyProfile }) {
               label={
                 <Typography variant="body2">
                   {t("Даю ", "I give ")}
-                  <Link component="button" type="button" onClick={() => openDoc(SHARE_CONSENT_URL)} sx={{ verticalAlign: "baseline" }}>
-                    {t("согласие на показ этих данных другим пользователям", "consent to show this data to other users")}
-                  </Link>
+                  <DocLink href={SHARE_CONSENT_URL}>{t("согласие на показ этих данных другим пользователям", "consent to show this data to other users")}</DocLink>
                 </Typography>
               }
             />

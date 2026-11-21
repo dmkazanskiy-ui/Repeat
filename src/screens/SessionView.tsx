@@ -13,6 +13,7 @@ import { sessionMuscleLoads } from "../lib/analytics";
 import { Edit as EditIcon } from "../ui/icons";
 import WorkoutActions from "../components/WorkoutActions";
 import WorkoutPhotos from "../components/social/WorkoutPhotos";
+import TodoList from "../components/TodoList";
 import { ActivityIcon } from "../lib/icons";
 import {
   formatDateFull,
@@ -302,6 +303,12 @@ export default function SessionView({
             </Typography>
           )}
         </Card>
+      )}
+
+      {(session.todos?.length ?? 0) > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <TodoList items={session.todos!} onChange={(todos) => onChange({ ...session, todos })} />
+        </Box>
       )}
 
       {session.notes && (
