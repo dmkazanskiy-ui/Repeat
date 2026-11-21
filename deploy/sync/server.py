@@ -72,6 +72,8 @@ BOT_POLL = os.environ.get("BOT_POLL", "1") == "1"
 # сюда ставится свой прокси (например, Cloudflare Worker), который пересылает
 # /bot<token>/<method> на api.telegram.org.
 TG_API = os.environ.get("TG_API", "https://api.telegram.org").rstrip("/")
+# Общий секрет с прокси (deploy/tg-relay): без него прокси не пускает.
+TG_API_KEY = os.environ.get("TG_API_KEY", "").strip()
 SESSION_TTL = 90 * 24 * 3600  # веб-сессия живёт 90 дней с последнего захода
 LOGIN_TTL = 600  # код входа через бота — 10 минут
 VISIT_GAP = 30 * 60  # новое посещение — после 30 минут тишины
@@ -335,7 +337,7 @@ def bot_api(method: str, params: dict, timeout: float = 10):
     req = urllib.request.Request(
         f"{TG_API}/bot{BOT_TOKEN}/{method}",
         data=json.dumps(params).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **({"X-Relay-Key": TG_API_KEY} if TG_API_KEY else {})},
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         body = json.loads(r.read())
