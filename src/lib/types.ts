@@ -491,6 +491,8 @@ export interface Session {
   recovery?: RecoveryData | null;
   /** Только для kind === "wod": задание и его результат. */
   wod?: WodData | null;
+  /** Не показывать в ленте, даже если профиль публичный. */
+  feedHidden?: boolean;
   title: string | null;
   notes: string | null;
   createdAt: string; // ISO

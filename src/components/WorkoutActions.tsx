@@ -5,13 +5,20 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, 
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import { DeleteOutlined as DeleteOutlineIcon, ReplayRounded as ReplayRoundedIcon } from "../ui/icons";
 import { useT } from "../lib/i18n";
+import { useMyProfile } from "../lib/social";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 
 interface Props {
   onCopyTo?: (date: string) => void;
   onDelete: () => void;
+  /** Показывается, только когда профиль публичный. */
+  feedHidden?: boolean;
+  onToggleFeed?: () => void;
 }
 
-export default function WorkoutActions({ onCopyTo, onDelete }: Props) {
+export default function WorkoutActions({ onCopyTo, onDelete, feedHidden, onToggleFeed }: Props) {
+  const social = useMyProfile();
   const t = useT();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [repeatOpen, setRepeatOpen] = useState(false);
@@ -38,6 +45,17 @@ export default function WorkoutActions({ onCopyTo, onDelete }: Props) {
               <ReplayRoundedIcon fontSize="small" />
             </ListItemIcon>
             {t("Повторить", "Repeat")}
+          </MenuItem>
+        )}
+        {onToggleFeed && social?.public && (
+          <MenuItem
+            onClick={() => {
+              setAnchor(null);
+              onToggleFeed();
+            }}
+          >
+            <ListItemIcon>{feedHidden ? <VisibilityRoundedIcon fontSize="small" /> : <VisibilityOffRoundedIcon fontSize="small" />}</ListItemIcon>
+            {feedHidden ? t("Показать в ленте", "Show in feed") : t("Скрыть из ленты", "Hide from feed")}
           </MenuItem>
         )}
         <MenuItem

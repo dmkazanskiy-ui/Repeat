@@ -53,6 +53,7 @@ interface Props {
   focusGoal: FocusGoal | null;
   onOpenPrograms: () => void;
   onOpenAdmin: () => void;
+  onOpenSocialProfile: () => void;
   onChangeRecovery: (entries: RecoveryEntry[]) => void;
   onChangeFocusGoal: (goal: FocusGoal | null) => void;
   onChangeLang: (lang: Lang) => void;
@@ -78,6 +79,7 @@ export default function ProfileScreen({
   focusGoal,
   onOpenPrograms,
   onOpenAdmin,
+  onOpenSocialProfile,
   onChangeRecovery,
   onChangeFocusGoal,
   onChangeLang,
@@ -257,7 +259,7 @@ export default function ProfileScreen({
       </Stack>
 
       {/* Аккаунт Telegram: вход в браузере, выход, админка */}
-      <AccountCard onOpenAdmin={onOpenAdmin} />
+      <AccountCard onOpenAdmin={onOpenAdmin} onOpenSocialProfile={onOpenSocialProfile} />
 
       {/* Цель — влияет на подбор «Тренером» */}
       <Typography variant="h2" sx={{ mb: 1.5 }}>

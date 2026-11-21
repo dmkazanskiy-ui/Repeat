@@ -7,6 +7,8 @@ import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSetting
 import { Card, IconBadge, radius } from "../ui";
 import { ChevronRightRounded as ChevronRightRoundedIcon, Close as CloseIcon } from "../ui/icons";
 import { inTelegram, logout, pollWebLogin, startWebLogin, useAccount } from "../lib/auth";
+import { useMyProfile } from "../lib/social";
+import Avatar from "./social/Avatar";
 import type { LoginStart } from "../lib/auth";
 import { useT } from "../lib/i18n";
 import { ink } from "../lib/themeMode";
@@ -14,9 +16,10 @@ import { ink } from "../lib/themeMode";
 const TG_BLUE = ink("#38bdf8");
 const ADMIN_GREEN = ink("#4ade80");
 
-export default function AccountCard({ onOpenAdmin }: { onOpenAdmin: () => void }) {
+export default function AccountCard({ onOpenAdmin, onOpenSocialProfile }: { onOpenAdmin: () => void; onOpenSocialProfile: () => void }) {
   const t = useT();
   const account = useAccount();
+  const social = useMyProfile();
   const [loginOpen, setLoginOpen] = useState(false);
   const [confirmOut, setConfirmOut] = useState(false);
   const tg = inTelegram();
@@ -55,6 +58,28 @@ export default function AccountCard({ onOpenAdmin }: { onOpenAdmin: () => void }
         )}
         {!account.authed && <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />}
       </Stack>
+
+      {account.authed && social && (
+        <Stack
+          direction="row"
+          spacing={1.5}
+          role="button"
+          tabIndex={0}
+          onClick={onOpenSocialProfile}
+          sx={{ alignItems: "center", px: 2, py: 1.5, cursor: "pointer", borderTop: 1, borderColor: "divider" }}
+        >
+          <Avatar person={social} size={32} />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {t("Публичный профиль", "Public profile")}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+              {social.public ? t("Открыт — тренировки в ленте", "Public — workouts in the feed") : t("Закрыт — добавь фото и пару слов о себе", "Private — add a photo and a few words")}
+            </Typography>
+          </Box>
+          <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
+        </Stack>
+      )}
 
       {account.admin && (
         <Stack

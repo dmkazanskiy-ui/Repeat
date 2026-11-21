@@ -820,7 +820,7 @@ export default function SessionEditor({
             {t("Готово", "Done")}
           </Button>
         )}
-        <WorkoutActions onCopyTo={onCopyTo} onDelete={onDelete} />
+        <WorkoutActions onCopyTo={onCopyTo} onDelete={onDelete} feedHidden={session.feedHidden} onToggleFeed={() => onChange({ ...session, feedHidden: !session.feedHidden })} />
       </Stack>
 
       {/* Hero: что за тренировка и где ты в ней. Кнопки действий — в нижней панели. */}

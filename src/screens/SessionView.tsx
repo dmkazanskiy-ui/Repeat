@@ -122,7 +122,7 @@ export default function SessionView({
         <Button size="small" startIcon={<EditIcon sx={{ fontSize: 16 }} />} onClick={onEdit}>
           {t("Изменить", "Edit")}
         </Button>
-        <WorkoutActions onCopyTo={onCopyTo} onDelete={onDelete} />
+        <WorkoutActions onCopyTo={onCopyTo} onDelete={onDelete} feedHidden={session.feedHidden} onToggleFeed={() => onChange({ ...session, feedHidden: !session.feedHidden })} />
       </Stack>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 2 }}>

@@ -788,8 +788,365 @@ def delete_account(uid: str) -> dict:
         if META["users"].pop(uid, None) is not None:
             save_meta()
     forget_events(uid)
+    forget_social(uid)
     log_event("account_deleted")  # без id: человек отозвал согласие
     return {"deleted": True}
+
+
+
+# ───────────── Соцчасть: публичный профиль и лента (social.json, avatars/) ─────────────
+#
+# Всё по согласию: профиль и тренировки видны другим только после того, как
+# человек сам включил «Публичный профиль» и дал отдельное согласие на
+# распространение (ст. 10.1 152-ФЗ). Лента видна только вошедшим в Repeat.
+# Наружу уходит обезличенный слепок тренировки, который собирает сам клиент:
+# упражнения, подходы, длительность, дистанция. Без заметок, пульса, калорий,
+# веса тела и самочувствия. Telegram id наружу не уходит — у профиля свой pid.
+
+social_lock = threading.RLock()
+SOCIAL: dict = {"profiles": {}, "posts": {}}
+ACTIVITIES = {"strength", "run", "bike", "swim", "walk", "mobility", "hiit", "recovery", "crossfit", "boxing", "climb", "team"}
+MAX_POSTS_PER_USER = 200
+MAX_COMMENTS = 300
+AVATAR_MAX = 200 * 1024
+
+
+def social_path() -> str:
+    return os.path.join(DATA_DIR, "social.json")
+
+
+def avatar_path(pid: str) -> str:
+    return os.path.join(DATA_DIR, "avatars", f"{pid}.jpg")
+
+
+def load_social() -> None:
+    global SOCIAL
+    try:
+        with open(social_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        SOCIAL = {"profiles": data.get("profiles", {}), "posts": data.get("posts", {})}
+    except FileNotFoundError:
+        pass
+
+
+def save_social() -> None:
+    with social_lock:
+        raw = json.dumps(SOCIAL, ensure_ascii=False, separators=(",", ":")).encode()
+        tmp = social_path() + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(raw)
+        os.replace(tmp, social_path())
+
+
+def profile_of(uid: str) -> dict:
+    """Профиль человека; создаётся закрытым при первом обращении."""
+    with social_lock:
+        pr = SOCIAL["profiles"].get(uid)
+        if pr is None:
+            u = META["users"].get(uid, {})
+            pr = {"pid": secrets.token_urlsafe(8), "public": False, "name": u.get("n") or (("@" + u["u"]) if u.get("u") else ""),
+                  "bio": "", "acts": [], "av": 0, "consentAt": None}
+            SOCIAL["profiles"][uid] = pr
+            save_social()
+        return pr
+
+
+def uid_by_pid(pid: str):
+    for uid, pr in SOCIAL["profiles"].items():
+        if pr.get("pid") == pid:
+            return uid
+    return None
+
+
+def visible(uid: str) -> bool:
+    pr = SOCIAL["profiles"].get(uid)
+    return bool(pr and pr.get("public")) and not is_blocked(uid)
+
+
+def author_card(uid: str) -> dict:
+    pr = SOCIAL["profiles"].get(uid, {})
+    return {"pid": pr.get("pid"), "name": pr.get("name") or "Без имени", "av": pr.get("av", 0)}
+
+
+def own_profile(uid: str) -> dict:
+    pr = profile_of(uid)
+    return {"pid": pr["pid"], "public": pr["public"], "name": pr["name"], "bio": pr["bio"], "acts": pr["acts"], "av": pr["av"]}
+
+
+def set_profile(uid: str, body) -> dict:
+    if not isinstance(body, dict):
+        raise ApiError(400, "bad request")
+    with social_lock:
+        pr = profile_of(uid)
+        if "name" in body:
+            name = clean_text(body.get("name"), 40).strip()
+            if not name:
+                raise ApiError(400, "name")
+            pr["name"] = name
+        if "bio" in body:
+            pr["bio"] = clean_text(str(body.get("bio") or "").replace("\n", " "), 200).strip()
+        if "acts" in body and isinstance(body["acts"], list):
+            pr["acts"] = [a for a in body["acts"] if a in ACTIVITIES][:12]
+        if "public" in body:
+            want = bool(body["public"])
+            if want and not pr["public"]:
+                if body.get("consent") is not True:
+                    raise ApiError(400, "consent")
+                pr["consentAt"] = int(time.time())
+                log_event("social_public", uid)
+            if not want and pr["public"]:
+                # Закрыл профиль — убираем из ленты всё его (лайки/комменты чужим постам остаются обезличенными).
+                for pid_ in [k for k, v in SOCIAL["posts"].items() if v["uid"] == uid]:
+                    SOCIAL["posts"].pop(pid_, None)
+                pr["consentAt"] = None
+                log_event("social_private", uid)
+            pr["public"] = want
+        save_social()
+    return own_profile(uid)
+
+
+def set_avatar(uid: str, body) -> dict:
+    import base64
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, str) or not data.startswith("data:image/jpeg;base64,"):
+        raise ApiError(400, "bad image")
+    try:
+        raw = base64.b64decode(data.split(",", 1)[1], validate=True)
+    except ValueError:
+        raise ApiError(400, "bad image")
+    if len(raw) > AVATAR_MAX or raw[:3] != b"\xff\xd8\xff":
+        raise ApiError(413, "bad image")
+    pr = profile_of(uid)
+    os.makedirs(os.path.dirname(avatar_path(pr["pid"])), exist_ok=True)
+    with open(avatar_path(pr["pid"]) + ".tmp", "wb") as f:
+        f.write(raw)
+    os.replace(avatar_path(pr["pid"]) + ".tmp", avatar_path(pr["pid"]))
+    with social_lock:
+        pr["av"] = int(time.time())
+        save_social()
+    return own_profile(uid)
+
+
+def post_id(uid: str, sid: str) -> str:
+    return hashlib.sha256(f"{uid}:{sid}".encode()).hexdigest()[:16]
+
+
+def clean_snap(snap) -> dict:
+    """Слепок тренировки: только разрешённые поля, с ограничениями по размеру."""
+    if not isinstance(snap, dict):
+        raise ApiError(400, "bad post")
+    num = lambda v, lo=0, hi=10**7: (v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and lo <= v <= hi else None)
+    out = {
+        "kind": clean_text(snap.get("kind"), 16),
+        "title": clean_text(snap.get("title"), 80),
+        "icon": clean_text(snap.get("icon"), 32),
+        "date": clean_text(snap.get("date"), 10),
+        "time": clean_text(snap.get("time"), 5),
+        "durationSec": num(snap.get("durationSec"), 0, 86400),
+        "volume": num(snap.get("volume")),
+        "distanceM": num(snap.get("distanceM"), 0, 10**6),
+        "sets": num(snap.get("sets"), 0, 10000),
+        "exercises": [],
+    }
+    for ex in (snap.get("exercises") or [])[:30]:
+        if not isinstance(ex, dict):
+            continue
+        sets = []
+        for st in (ex.get("sets") or [])[:30]:
+            if isinstance(st, dict):
+                sets.append({"w": num(st.get("w"), 0, 2000), "r": num(st.get("r"), 0, 1000), **({"wu": True} if st.get("wu") else {})})
+        out["exercises"].append({"name": clean_text(ex.get("name"), 80), "sets": sets})
+    if out["kind"] not in ("strength", "cardio", "mobility", "recovery", "wod", "hiit"):
+        raise ApiError(400, "bad post")
+    return out
+
+
+def published(uid: str) -> dict:
+    with social_lock:
+        return {"posts": {p["sid"]: p["hash"] for p in SOCIAL["posts"].values() if p["uid"] == uid}}
+
+
+def publish(uid: str, body) -> dict:
+    if not isinstance(body, dict):
+        raise ApiError(400, "bad request")
+    pr = profile_of(uid)
+    if not pr["public"]:
+        raise ApiError(403, "private")
+    upsert, remove = body.get("upsert") or [], body.get("remove") or []
+    if not isinstance(upsert, list) or not isinstance(remove, list) or len(upsert) > 60 or len(remove) > 500:
+        raise ApiError(400, "bad request")
+    with social_lock:
+        for item in upsert:
+            if not isinstance(item, dict) or not isinstance(item.get("sid"), str) or len(item["sid"]) > 100:
+                continue
+            snap = clean_snap(item.get("snap"))
+            raw = json.dumps(snap, ensure_ascii=False, sort_keys=True)
+            if len(raw) > 20000:
+                continue
+            pid_ = post_id(uid, item["sid"])
+            cur = SOCIAL["posts"].get(pid_)
+            SOCIAL["posts"][pid_] = {
+                "uid": uid, "sid": item["sid"], "t": cur["t"] if cur else int(time.time()),
+                "hash": clean_text(item.get("hash"), 64), "snap": snap,
+                "likes": cur["likes"] if cur else [], "comments": cur["comments"] if cur else [],
+            }
+        for sid in remove:
+            if isinstance(sid, str):
+                SOCIAL["posts"].pop(post_id(uid, sid), None)
+        mine = sorted((p for p in SOCIAL["posts"].items() if p[1]["uid"] == uid), key=lambda kv: kv[1]["t"])
+        for k, _ in mine[:-MAX_POSTS_PER_USER]:
+            SOCIAL["posts"].pop(k, None)
+        save_social()
+    return published(uid)
+
+
+def post_view(pid_: str, p: dict, me: str, full: bool = False) -> dict:
+    out = {
+        "id": pid_, "t": p["t"], "author": author_card(p["uid"]), "mine": p["uid"] == me,
+        "snap": p["snap"], "likes": len(p["likes"]), "liked": me in p["likes"],
+        "comments": len([c for c in p["comments"] if visible(c["uid"]) or c["uid"] == me]),
+    }
+    if full:
+        out["commentList"] = [
+            {"id": c["id"], "t": c["t"], "text": c["text"], "author": author_card(c["uid"]), "mine": c["uid"] == me}
+            for c in p["comments"] if visible(c["uid"]) or c["uid"] == me
+        ]
+    return out
+
+
+def feed(me: str, query: dict) -> dict:
+    try:
+        offset = max(0, int(query.get("offset", ["0"])[0]))
+    except ValueError:
+        offset = 0
+    only = query.get("pid", [""])[0]
+    owner = uid_by_pid(only) if only else None
+    with social_lock:
+        items = [
+            (k, p) for k, p in SOCIAL["posts"].items()
+            if visible(p["uid"]) and (not only or p["uid"] == owner)
+        ]
+        items.sort(key=lambda kv: (kv[1]["snap"].get("date", ""), kv[1]["t"]), reverse=True)
+        page = items[offset:offset + 20]
+        return {"posts": [post_view(k, p, me) for k, p in page], "more": len(items) > offset + 20}
+
+
+def get_post(me: str, pid_: str) -> dict:
+    with social_lock:
+        p = SOCIAL["posts"].get(pid_)
+        if not p or not (visible(p["uid"]) or p["uid"] == me):
+            raise ApiError(404, "no post")
+        return post_view(pid_, p, me, full=True)
+
+
+def like(me: str, body) -> dict:
+    pid_ = body.get("post") if isinstance(body, dict) else None
+    with social_lock:
+        p = SOCIAL["posts"].get(pid_ or "")
+        if not p or not visible(p["uid"]):
+            raise ApiError(404, "no post")
+        if body.get("on") and me not in p["likes"]:
+            p["likes"].append(me)
+        elif not body.get("on") and me in p["likes"]:
+            p["likes"].remove(me)
+        save_social()
+        return {"likes": len(p["likes"]), "liked": me in p["likes"]}
+
+
+def comment(me: str, body) -> dict:
+    if not isinstance(body, dict):
+        raise ApiError(400, "bad request")
+    text = clean_text(str(body.get("text") or "").replace("\n", " "), 500).strip()
+    if not text:
+        raise ApiError(400, "empty")
+    if not profile_of(me)["public"]:
+        raise ApiError(403, "private")
+    with social_lock:
+        p = SOCIAL["posts"].get(body.get("post") or "")
+        if not p or not visible(p["uid"]):
+            raise ApiError(404, "no post")
+        if len(p["comments"]) >= MAX_COMMENTS:
+            raise ApiError(429, "full")
+        p["comments"].append({"id": secrets.token_urlsafe(6), "uid": me, "text": text, "t": int(time.time())})
+        save_social()
+        return get_post(me, body["post"])
+
+
+def delete_comment(me: str, body) -> dict:
+    if not isinstance(body, dict):
+        raise ApiError(400, "bad request")
+    with social_lock:
+        p = SOCIAL["posts"].get(body.get("post") or "")
+        if not p:
+            raise ApiError(404, "no post")
+        c = next((c for c in p["comments"] if c["id"] == body.get("id")), None)
+        if not c:
+            raise ApiError(404, "no comment")
+        if me not in (c["uid"], p["uid"]) and not is_admin(me):
+            raise ApiError(403, "forbidden")
+        p["comments"].remove(c)
+        save_social()
+        if is_admin(me) and me not in (c["uid"], p["uid"]):
+            log_event("admin", me, d="delete comment")
+        return get_post(me, body["post"])
+
+
+def delete_post(me: str, body) -> dict:
+    pid_ = body.get("post") if isinstance(body, dict) else None
+    with social_lock:
+        p = SOCIAL["posts"].get(pid_ or "")
+        if not p:
+            raise ApiError(404, "no post")
+        if p["uid"] != me and not is_admin(me):
+            raise ApiError(403, "forbidden")
+        SOCIAL["posts"].pop(pid_, None)
+        save_social()
+    if p["uid"] != me:
+        log_event("admin", me, d="delete post")
+    return {"ok": True}
+
+
+def public_profile(me: str, pid: str) -> dict:
+    uid = uid_by_pid(pid)
+    if not uid or not (visible(uid) or uid == me):
+        raise ApiError(404, "no profile")
+    pr = SOCIAL["profiles"][uid]
+    with social_lock:
+        posts = [p for p in SOCIAL["posts"].values() if p["uid"] == uid]
+    return {
+        "pid": pid, "name": pr.get("name") or "Без имени", "bio": pr.get("bio", ""), "acts": pr.get("acts", []),
+        "av": pr.get("av", 0), "mine": uid == me, "posts": len(posts),
+        "likes": sum(len(p["likes"]) for p in posts),
+    }
+
+
+def serve_avatar(pid: str):
+    uid = uid_by_pid(pid)
+    if not uid or not visible(uid):
+        return None
+    try:
+        with open(avatar_path(pid), "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        return None
+
+
+def forget_social(uid: str) -> None:
+    """Удаление аккаунта: профиль, аватар, посты, лайки и комментарии человека."""
+    with social_lock:
+        pr = SOCIAL["profiles"].pop(uid, None)
+        for k in [k for k, p in SOCIAL["posts"].items() if p["uid"] == uid]:
+            SOCIAL["posts"].pop(k, None)
+        for p in SOCIAL["posts"].values():
+            if uid in p["likes"]:
+                p["likes"].remove(uid)
+            p["comments"] = [c for c in p["comments"] if c["uid"] != uid]
+        save_social()
+    if pr:
+        try:
+            os.remove(avatar_path(pr["pid"]))
+        except FileNotFoundError:
+            pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -870,6 +1227,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
         if path == "/api/auth/config":
             return self._handle(lambda: {"bot": bot_username(), "web": bool(bot_username()) and bot_info["polling"] == "on"})
+        if path.startswith("/api/social/avatar/") and path.endswith(".jpg"):
+            img = serve_avatar(path[len("/api/social/avatar/"):-4])
+            if img is None:
+                return self._send(404, {"error": "not found"})
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(len(img)))
+            self.end_headers()
+            self.wfile.write(img)
+            return
+        if path == "/api/social/me":
+            return self._handle(lambda: own_profile(self._auth()["uid"]))
+        if path == "/api/social/published":
+            return self._handle(lambda: published(self._auth()["uid"]))
+        if path == "/api/social/feed":
+            return self._handle(lambda: feed(self._auth()["uid"], urllib.parse.parse_qs(qs)))
+        if path.startswith("/api/social/post/"):
+            return self._handle(lambda: get_post(self._auth()["uid"], path[len("/api/social/post/"):]))
+        if path.startswith("/api/social/profile/"):
+            return self._handle(lambda: public_profile(self._auth()["uid"], path[len("/api/social/profile/"):]))
         if path == "/api/admin/overview":
             return self._handle(lambda: (self._admin(), admin_overview())[1])
         if path == "/api/admin/events":
@@ -889,6 +1267,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._handle(lambda: web_login_poll(self._body()))
         if self.path == "/api/auth/logout":
             return self._handle(lambda: logout(self._auth()))
+        social_routes = {
+            "/api/social/profile": set_profile, "/api/social/avatar": set_avatar, "/api/social/publish": publish,
+            "/api/social/like": like, "/api/social/comment": comment, "/api/social/comment/delete": delete_comment,
+            "/api/social/post/delete": delete_post,
+        }
+        if self.path in social_routes:
+            fn = social_routes[self.path]
+            return self._handle(lambda: fn(self._auth()["uid"], self._body()))
         if self.path == "/api/admin/user":
             return self._handle(lambda: admin_user(self._admin()["uid"], self._body()))
         self._send(404, {"error": "not found"})
@@ -900,6 +1286,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
     load_meta()
+    load_social()
     threading.Thread(target=flusher, daemon=True).start()
     if BOT_TOKEN and BOT_POLL:
         threading.Thread(target=bot_loop, daemon=True).start()

@@ -40,6 +40,7 @@ class ServerTest(unittest.TestCase):
             if os.path.isfile(path):
                 os.remove(path)
         server.META = {"admin": None, "users": {}, "sessions": {}}
+        server.SOCIAL = {"profiles": {}, "posts": {}}
         server.logins.clear()
         server.bot_info.update(username=None, polling="on")
         self.sent = Sent()
@@ -113,6 +114,45 @@ class ServerTest(unittest.TestCase):
         server.admin_user("111", {"uid": "222", "action": "delete"})
         self.assertNotIn("222", server.META["users"])
         self.assertFalse(any(e.get("uid") == "222" for e in server.read_events()))
+
+
+    def test_social_flow(self):
+        server.hello(self.ident(ADMIN), {})
+        server.hello(self.ident(OTHER), {})
+        snap = {"kind": "strength", "title": "Грудь", "date": "2026-11-21", "notes": "секрет", "avgHr": 150,
+                "exercises": [{"name": "Жим", "sets": [{"w": 80, "r": 8}]}]}
+        # Закрытый профиль публиковать не может; открыть — только с согласием.
+        with self.assertRaises(server.ApiError):
+            server.publish("222", {"upsert": [{"sid": "s1", "snap": snap}]})
+        with self.assertRaises(server.ApiError):
+            server.set_profile("222", {"public": True})
+        server.set_profile("222", {"public": True, "consent": True, "bio": "бегаю", "acts": ["run", "hack"]})
+        self.assertEqual(server.own_profile("222")["acts"], ["run"])
+        server.publish("222", {"upsert": [{"sid": "s1", "hash": "h1", "snap": snap}]})
+        self.assertEqual(server.published("222")["posts"], {"s1": "h1"})
+        f = server.feed("111", {})
+        self.assertEqual(len(f["posts"]), 1)
+        dump = json.dumps(f)
+        self.assertNotIn("секрет", dump)
+        self.assertNotIn("150", dump)
+        self.assertNotIn("222", dump)  # telegram id наружу не уходит
+        post = f["posts"][0]["id"]
+        server.like("111", {"post": post, "on": True})
+        # Комментировать можно только с открытым профилем.
+        with self.assertRaises(server.ApiError):
+            server.comment("111", {"post": post, "text": "огонь"})
+        server.set_profile("111", {"public": True, "consent": True})
+        full = server.comment("111", {"post": post, "text": "огонь"})
+        self.assertEqual((full["likes"], len(full["commentList"])), (1, 1))
+        # Закрыл профиль — посты пропали из ленты.
+        server.set_profile("222", {"public": False})
+        self.assertEqual(server.feed("111", {})["posts"], [])
+        server.set_profile("222", {"public": True, "consent": True})
+        server.publish("222", {"upsert": [{"sid": "s1", "hash": "h1", "snap": snap}]})
+        # Удаление аккаунта стирает соцданные.
+        server.delete_account("111")
+        p = server.feed("222", {})["posts"][0]
+        self.assertEqual((p["likes"], p["comments"]), (0, 0))
 
 
 if __name__ == "__main__":

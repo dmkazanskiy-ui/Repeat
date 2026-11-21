@@ -33,3 +33,6 @@ html.rp-intro { --rp-card-in: rp-card-in 250ms cubic-bezier(0.23, 1, 0.32, 1) va
 @keyframes rp-flap {
   from { transform: translateY(-100%); opacity: 0; }
 }
+
+/* Главная: мягкая привязка прокрутки — лента «подхватывает» экран (FeedSection). */
+html.rp-snap { scroll-snap-type: y proximity; }

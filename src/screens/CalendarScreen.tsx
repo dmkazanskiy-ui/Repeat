@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useMemo, useState } from "react";
@@ -125,6 +126,8 @@ interface Props {
   /** Сколько дней не обновлялся вес (null — свежий). Калории считаются по нему. */
   weightStaleDays?: number | null;
   onUpdateWeight?: () => void;
+  /** Что-то под днём — на главной это лента. */
+  footer?: ReactNode;
 }
 
 export default function CalendarScreen({
@@ -145,6 +148,7 @@ export default function CalendarScreen({
   onRepeatLast,
   weightStaleDays = null,
   onUpdateWeight,
+  footer,
 }: Props) {
   const t = useT();
   const [cursor, setCursor] = useState(() => parseDateKey(selected));
@@ -378,6 +382,7 @@ export default function CalendarScreen({
           {selected > todayKey ? t("Запланировать тренировку", "Schedule a workout") : t("Добавить тренировку", "Add a workout")}
         </Button>
       )}
+      {footer}
     </Box>
   );
 }

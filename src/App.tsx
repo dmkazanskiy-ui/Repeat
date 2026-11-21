@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -70,6 +70,13 @@ import ProfileScreen from "./screens/ProfileScreen";
 import OnboardingScreen from "./screens/OnboardingScreen";
 import ProgramsScreen from "./screens/ProgramsScreen";
 import AdminScreen from "./screens/AdminScreen";
+import { loadMyProfile, syncFeed, useMyProfile } from "./lib/social";
+// Соцчасть грузим отдельным куском — она не нужна, пока до неё не долистали.
+const FeedSection = lazy(() => import("./components/social/FeedSection"));
+const PostScreen = lazy(() => import("./screens/social/PostScreen"));
+const PublicProfileScreen = lazy(() => import("./screens/social/PublicProfileScreen"));
+const ProfileEditScreen = lazy(() => import("./screens/social/ProfileEditScreen"));
+type SocialView = { v: "post"; id: string } | { v: "profile"; pid: string } | { v: "edit" };
 import { hello, takeLogoutNotice, useAccount } from "./lib/auth";
 import HiitScreen from "./screens/HiitScreen";
 import { loadHiit, saveHiit, hiitWorkSec } from "./lib/hiit";
@@ -131,6 +138,15 @@ export default function App() {
   const [openProgramId, setOpenProgramId] = useState<string | null>(null);
   const [showPrograms, setShowPrograms] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  // Экраны ленты — стопкой: пост → профиль автора → его пост… «Назад» снимает верхний.
+  const [socialStack, setSocialStack] = useState<SocialView[]>([]);
+  const socialTop = socialStack[socialStack.length - 1] ?? null;
+  const pushSocial = useCallback((view: SocialView) => {
+    setSocialStack((s) => [...s, view]);
+    window.scrollTo({ top: 0 });
+  }, []);
+  const popSocial = useCallback(() => setSocialStack((s) => s.slice(0, -1)), []);
+  const [feedKey, setFeedKey] = useState(0);
   const [showHiit, setShowHiit] = useState(false);
   const [hiitCfg, setHiitCfg] = useState<HiitConfig>(() => loadHiit());
   const [tab, setTab] = useState<Tab>("calendar");
@@ -521,7 +537,17 @@ export default function App() {
     if (!ready || !consentOk || !account.authed) return;
     void hello();
     void doSync();
+    void loadMyProfile();
   }, [ready, consentOk, account.authed, doSync]);
+  // Свои тренировки в ленту — только при открытом профиле; правки склеиваем.
+  const myProfile = useMyProfile();
+  useEffect(() => {
+    if (!ready || !consentOk || !account.authed || !myProfile?.public) return;
+    const id = window.setTimeout(() => {
+      void syncFeed(sessions, exercises).then((changed) => changed && setFeedKey((k) => k + 1));
+    }, 3000);
+    return () => window.clearTimeout(id);
+  }, [ready, consentOk, account.authed, myProfile?.public, sessions, exercises]);
   // И при возврате в приложение, и раз в минуту — чтобы подтянуть чужие правки.
   useEffect(() => {
     if (!ready) return;
@@ -759,7 +785,9 @@ export default function App() {
         }
       : programBeingViewed
         ? () => setOpenProgramId(null)
-        : showAdmin && account.admin
+        : socialTop
+          ? popSocial
+          : showAdmin && account.admin
           ? () => setShowAdmin(false)
           : showPrograms
             ? () => setShowPrograms(false)
@@ -827,6 +855,28 @@ export default function App() {
               setOpenProgramId(null);
             }}
           />
+        ) : socialTop ? (
+          <Suspense fallback={null}>
+            {socialTop.v === "post" ? (
+              <PostScreen
+                key={socialTop.id}
+                id={socialTop.id}
+                onBack={popSocial}
+                onAuthor={(pid) => pushSocial({ v: "profile", pid })}
+                onEditProfile={() => pushSocial({ v: "edit" })}
+              />
+            ) : socialTop.v === "profile" ? (
+              <PublicProfileScreen
+                key={socialTop.pid}
+                pid={socialTop.pid}
+                onBack={popSocial}
+                onOpenPost={(id) => pushSocial({ v: "post", id })}
+                onEdit={() => pushSocial({ v: "edit" })}
+              />
+            ) : (
+              <ProfileEditScreen onBack={popSocial} onPreview={(pid) => pushSocial({ v: "profile", pid })} />
+            )}
+          </Suspense>
         ) : showAdmin && account.admin ? (
           <AdminScreen onBack={() => setShowAdmin(false)} />
         ) : showPrograms ? (
@@ -952,6 +1002,16 @@ export default function App() {
                     setWeightRequest(true);
                     setTab("stats");
                   }}
+                  footer={
+                    <Suspense fallback={null}>
+                      <FeedSection
+                        refreshKey={feedKey}
+                        onOpenPost={(id) => pushSocial({ v: "post", id })}
+                        onOpenProfile={(pid) => pushSocial({ v: "profile", pid })}
+                        onEditProfile={() => pushSocial({ v: "edit" })}
+                      />
+                    </Suspense>
+                  }
                 />
                 <NewSessionDialog
                   open={creating}
@@ -1004,6 +1064,7 @@ export default function App() {
                 focusGoal={focusGoal}
                 onOpenPrograms={() => setShowPrograms(true)}
                 onOpenAdmin={() => setShowAdmin(true)}
+                onOpenSocialProfile={() => pushSocial({ v: "edit" })}
                 onChangeRecovery={changeRecovery}
                 onChangeFocusGoal={changeFocusGoal}
                 onChangeLang={changeLang}
@@ -1064,7 +1125,7 @@ export default function App() {
 
       {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
           По ширине совпадает с контентом (maxWidth sm), с подписями. */}
-      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !(showAdmin && account.admin) && (
+      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !(showAdmin && account.admin) && !socialTop && (
         <Box
           sx={{
             position: "fixed",
