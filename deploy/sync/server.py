@@ -68,6 +68,10 @@ APP_URL = os.environ.get("APP_URL", "https://repeat.dm-kazanskiy.online/")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "dmkazanskiy").strip().lstrip("@").lower()
 ADMIN_IDS = {u.strip() for u in os.environ.get("ADMIN_IDS", "").split(",") if u.strip()}
 BOT_POLL = os.environ.get("BOT_POLL", "1") == "1"
+# Адрес Bot API. С VPS в РФ api.telegram.org может быть недоступен — тогда
+# сюда ставится свой прокси (например, Cloudflare Worker), который пересылает
+# /bot<token>/<method> на api.telegram.org.
+TG_API = os.environ.get("TG_API", "https://api.telegram.org").rstrip("/")
 SESSION_TTL = 90 * 24 * 3600  # веб-сессия живёт 90 дней с последнего захода
 LOGIN_TTL = 600  # код входа через бота — 10 минут
 VISIT_GAP = 30 * 60  # новое посещение — после 30 минут тишины
@@ -329,7 +333,7 @@ bot_info = {"username": os.environ.get("BOT_USERNAME") or None, "polling": "off"
 
 def bot_api(method: str, params: dict, timeout: float = 10):
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+        f"{TG_API}/bot{BOT_TOKEN}/{method}",
         data=json.dumps(params).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -340,11 +344,16 @@ def bot_api(method: str, params: dict, timeout: float = 10):
     return body.get("result")
 
 
+bot_fail_until = [0.0]
+
+
 def bot_username():
-    if bot_info["username"] is None and BOT_TOKEN:
+    """Юзернейм бота (getMe). Неудачу помним 5 минут, чтобы не тормозить запросы."""
+    if bot_info["username"] is None and BOT_TOKEN and time.time() >= bot_fail_until[0]:
         try:
-            bot_info["username"] = bot_api("getMe", {}).get("username")
+            bot_info["username"] = bot_api("getMe", {}, timeout=5).get("username")
         except Exception:
+            bot_fail_until[0] = time.time() + 300
             return None
     return bot_info["username"]
 
@@ -857,7 +866,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             return self._send(200, {"ok": True})
         if path == "/api/auth/config":
-            return self._handle(lambda: {"bot": bot_username(), "web": bot_info["polling"] == "on"})
+            return self._handle(lambda: {"bot": bot_username(), "web": bool(bot_username()) and bot_info["polling"] == "on"})
         if path == "/api/admin/overview":
             return self._handle(lambda: (self._admin(), admin_overview())[1])
         if path == "/api/admin/events":
