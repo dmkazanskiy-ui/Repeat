@@ -11,7 +11,7 @@ import MoodPad from "../components/MoodPad";
 import BodyMap from "../components/analytics/BodyMap";
 import { sessionMuscleLoads } from "../lib/analytics";
 import { Edit as EditIcon } from "../ui/icons";
-import { ContentCopy as ContentCopyIcon } from "../ui/icons";
+import WorkoutActions from "../components/WorkoutActions";
 import { ActivityIcon } from "../lib/icons";
 import {
   formatDateFull,
@@ -52,7 +52,7 @@ interface Props {
   onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onCopyToClipboard: () => void;
+  onCopyTo?: (date: string) => void;
   onChange: (session: Session) => void;
   /** Свои единицы веса упражнений (тренажёры в фунтах). */
   exerciseUnits?: ExerciseUnits;
@@ -73,7 +73,7 @@ export default function SessionView({
   onBack,
   onEdit,
   onDelete,
-  onCopyToClipboard,
+  onCopyTo,
   onChange,
   exerciseUnits,
 }: Props) {
@@ -115,11 +115,14 @@ export default function SessionView({
         <IconButton onClick={onBack} edge="start" aria-label={t("Назад", "Back")}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+        <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, minWidth: 0 }}>
           {formatDateFull(session.date)}
           {session.time ? ` · ${session.time}` : ""}
         </Typography>
-        <Chip label={t("Завершена", "Completed")} size="small" color="primary" variant="outlined" />
+        <Button size="small" startIcon={<EditIcon sx={{ fontSize: 16 }} />} onClick={onEdit}>
+          {t("Изменить", "Edit")}
+        </Button>
+        <WorkoutActions onCopyTo={onCopyTo} onDelete={onDelete} />
       </Stack>
 
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 2 }}>
@@ -303,27 +306,6 @@ export default function SessionView({
         </Card>
       )}
 
-      <Button
-        fullWidth
-        variant="contained"
-        startIcon={<EditIcon />}
-        onClick={onEdit}
-        sx={{ mt: 1 }}
-      >
-        {t("Редактировать", "Edit")}
-      </Button>
-      <Button
-        fullWidth
-        variant="outlined"
-        startIcon={<ContentCopyIcon />}
-        onClick={onCopyToClipboard}
-        sx={{ mt: 1 }}
-      >
-        {t("Скопировать тренировку", "Copy workout")}
-      </Button>
-      <Button fullWidth color="error" onClick={onDelete} sx={{ mt: 1 }}>
-        {t("Удалить тренировку", "Delete workout")}
-      </Button>
     </Box>
     </ThemeProvider>
   );

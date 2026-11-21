@@ -1,18 +1,17 @@
 import { motion, tr } from "../ui";
-import { Card, IconBadge } from "../ui";
+import { Card, IconBadge, Tile, radius, text } from "../ui";
+import WorkoutActions from "../components/WorkoutActions";
+import { CheckRounded as CheckRoundedIcon, Close as CloseIcon } from "../ui/icons";
 import { MODE } from "../lib/themeMode";
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, MouseEvent } from "react";
 import {
   Box,
   Button,
-  Checkbox,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   ListItemIcon,
   Menu,
@@ -27,16 +26,12 @@ import type { Theme } from "@mui/material/styles";
 import { ArrowBack as ArrowBackIcon } from "../ui/icons";
 import { DeleteOutlined as DeleteOutlineIcon } from "../ui/icons";
 import { Add as AddIcon } from "../ui/icons";
-import { ContentCopy as ContentCopyIcon } from "../ui/icons";
-import { PlayArrow as PlayArrowIcon } from "../ui/icons";
-import { Edit as EditIcon } from "../ui/icons";
 import RestTimer from "../components/RestTimer";
 import { celebrateFinish, celebrateRecord } from "../lib/confetti";
 import { sessionSetsRecord } from "../lib/analytics/records";
 import { haptic } from "../lib/telegram";
 import { PlayArrowRounded as PlayArrowRoundedIcon } from "../ui/icons";
 import { PauseRounded as PauseRoundedIcon } from "../ui/icons";
-import { Stop as StopIcon } from "../ui/icons";
 import { LinkOff as LinkOffIcon } from "../ui/icons";
 import { Link as LinkIcon } from "../ui/icons";
 import { SwapHoriz as SwapHorizIcon } from "../ui/icons";
@@ -122,7 +117,6 @@ interface Props {
   onBack: () => void;
   onCreateExercise: (name: string, group: MuscleGroup) => Exercise;
   onCopyTo: (date: string) => void;
-  onCopyToClipboard: () => void;
   /** Выйти из режима правки завершённой тренировки — обратно в read-only. */
   onExitEditing?: () => void;
   /** Свои единицы веса упражнений и смена единицы для упражнения. */
@@ -168,6 +162,52 @@ function dropUncheckedSets(exercises: SessionExercise[]): SessionExercise[] {
 }
 
 /** Круговой таймер: кольцо — прогресс подходов, центр — прошедшее время. */
+/**
+ * Отметка «подход сделан»: плитка 40×40 вместо мелкого чекбокса. Пусто —
+ * серая, сделано — заливка цветом типа и галочка с пружинкой.
+ */
+function DoneToggle({
+  checked,
+  color,
+  onColor,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  color: string;
+  onColor: string;
+  label: string;
+  onToggle: (checked: boolean, trusted: boolean) => void;
+}) {
+  return (
+    <Box
+      component="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={(e: MouseEvent<HTMLElement>) => onToggle(!checked, e.nativeEvent.isTrusted)}
+      sx={{
+        width: 40,
+        height: 40,
+        flex: "none",
+        p: 0,
+        border: "none",
+        borderRadius: radius.control,
+        display: "grid",
+        placeItems: "center",
+        cursor: "pointer",
+        bgcolor: checked ? color : "action.hover",
+        color: checked ? onColor : "text.disabled",
+        transition: `${tr("background-color", motion.fast, "ease")}, ${tr("transform", motion.press)}`,
+        "&:active": { transform: "scale(0.92)" },
+        "& svg": { transition: tr("transform", motion.base, "cubic-bezier(.34,1.56,.64,1)"), transform: checked ? "scale(1)" : "scale(0.7)" },
+      }}
+    >
+      <CheckRoundedIcon sx={{ fontSize: 22 }} />
+    </Box>
+  );
+}
+
 function CircularTimer({
   elapsedSec,
   progress,
@@ -224,7 +264,6 @@ export default function SessionEditor({
   onBack,
   onCreateExercise,
   onCopyTo,
-  onCopyToClipboard,
   onExitEditing,
   onReplaced,
   exerciseUnits,
@@ -240,9 +279,10 @@ export default function SessionEditor({
     anchor: HTMLElement;
     group: number;
   } | null>(null);
-  const [copyDate, setCopyDate] = useState("");
   // Последний удалённый подход — для «Вернуть»: корзина стоит рядом с
   // галочкой «выполнено», промах пальцем не должен стоить данных.
+  // Меню подхода (тап по номеру): разминка, дроп, удалить.
+  const [setMenu, setSetMenu] = useState<{ exId: string; set: WorkoutSet; index: number; anchor: HTMLElement } | null>(null);
   const [removedSet, setRemovedSet] = useState<{ exId: string; set: WorkoutSet; index: number } | null>(null);
   // Диалог завершения: длительность и средний пульс вводятся вручную —
   // «Начать» жать необязательно.
@@ -718,6 +758,8 @@ export default function SessionEditor({
           endedAt: new Date().toISOString(),
           pausedMs: (session.pausedMs ?? 0) + extraPause,
           pausedAt: null,
+          // Завершили руками — это реальное время, не оценка.
+          autoEnded: false,
           avgHr: sessionAvgHr(session),
           time: session.time ?? nowTime(),
           exercises: settle(session.exercises),
@@ -741,28 +783,12 @@ export default function SessionEditor({
 
   return (
     <ThemeProvider theme={editorTheme}>
-    <Box sx={{ pb: restEndsAt != null ? 14 : 6 }}>
-      {/* Шапка: назад · статус-точка · дата/время · Завершить/Готово */}
+    <Box sx={{ pb: session.endedAt ? 6 : restEndsAt != null ? 22 : 13 }}>
+      {/* Шапка: назад · дата/время · Готово · «⋯» (редкие действия) */}
       <Stack direction="row" spacing={1} sx={{ mb: 1.5, alignItems: "center" }}>
         <IconButton onClick={onBack} edge="start" aria-label={t("Назад", "Back")}>
           <ArrowBackIcon />
         </IconButton>
-        <Box
-          sx={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            flexShrink: 0,
-            bgcolor:
-              running && !paused
-                ? color
-                : paused
-                  ? "warning.main"
-                  : session.endedAt
-                    ? color
-                    : "text.disabled",
-          }}
-        />
         <Stack direction="row" spacing={0.5} sx={{ flex: 1, alignItems: "center", minWidth: 0 }}>
           <Typography variant="body2" color="text.secondary" noWrap>
             {formatDateFull(session.date)} ·
@@ -779,7 +805,7 @@ export default function SessionEditor({
             sx={{
               background: "transparent",
               border: "none",
-              color: alpha(color, 0.9),
+              color: "text.primary",
               font: "inherit",
               fontWeight: 600,
               cursor: "pointer",
@@ -789,25 +815,16 @@ export default function SessionEditor({
             }}
           />
         </Stack>
-        {session.endedAt
-          ? onExitEditing && (
-              <Button size="small" onClick={onExitEditing}>
-                {t("Готово", "Done")}
-              </Button>
-            )
-          : running && (
-              <Button size="small" color="error" variant="outlined" onClick={handleFinish}>
-                {t("Завершить", "Finish")}
-              </Button>
-            )}
+        {session.endedAt && onExitEditing && (
+          <Button size="small" onClick={onExitEditing}>
+            {t("Готово", "Done")}
+          </Button>
+        )}
+        <WorkoutActions onCopyTo={onCopyTo} onDelete={onDelete} />
       </Stack>
 
-      {/* Hero-блок тренировки */}
-      <Card
-        sx={{
-          mb: 2,
-          borderColor: "divider" }}
-      >
+      {/* Hero: что за тренировка и где ты в ней. Кнопки действий — в нижней панели. */}
+      <Card sx={{ mb: 1.5 }}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
           <IconBadge color={color} size={48}>
             <ActivityIcon icon={activityIcon(session)} fontSize="medium" />
@@ -821,41 +838,32 @@ export default function SessionEditor({
               onChange={(event) => onChange({ ...session, title: event.target.value || null })}
               slotProps={{ input: { disableUnderline: true, style: { fontSize: 19, fontWeight: 700 } } }}
             />
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 0.25 }}>
-              <Chip
-                label={statusLabel}
-                size="small"
-                variant={running && !paused ? "filled" : "outlined"}
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", mt: 0.25, minWidth: 0 }}>
+              <Box
                 sx={{
-                  height: 22,
-                  fontSize: 11,
-                  ...(running && !paused
-                    ? { bgcolor: color, color: onColor }
-                    : { borderColor: alpha(color, 0.5), color }),
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  flex: "none",
+                  bgcolor: paused ? "warning.main" : running || session.endedAt ? color : "text.disabled",
                 }}
               />
-              {/* Тип недели волны — снапшот на момент старта дня программы. */}
-              {session.weekType && (
-                <Chip
-                  label={`${session.weekType.name} ${t("неделя", "week")}`}
-                  size="small"
-                  variant="outlined"
-                  sx={{ height: 22, fontSize: 11, borderColor: "divider", color: "text.secondary" }}
-                />
-              )}
-              {(running || session.endedAt) && (
-                <Typography variant="caption" color="text.secondary">
-                  {formatDuration(session.endedAt ? sessionDurationSec(session) : elapsedSec)}
-                  {session.autoEnded && ` · ${t("оценено", "estimated")}`}
-                </Typography>
-              )}
+              <Typography variant="caption" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+                {[
+                  statusLabel,
+                  session.endedAt
+                    ? `${formatDuration(sessionDurationSec(session))}${session.autoEnded ? ` ${t("(оценено)", "(estimated)")}` : ""}`
+                    : null,
+                  session.kind === "strength" && session.exercises.length > 0 && !running
+                    ? `${session.exercises.length} ${t("упр.", "ex.")} · ${totalSets} ${t("подх.", "sets")}`
+                    : null,
+                  session.weekType ? `${session.weekType.name} ${t("неделя", "week")}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Typography>
               {session.endedAt && (
-                <Button
-                  size="small"
-                  startIcon={<EditIcon sx={{ fontSize: 15 }} />}
-                  onClick={editDuration}
-                  sx={{ minWidth: 0, py: 0, px: 0.5, fontSize: 11 }}
-                >
+                <Button size="small" onClick={editDuration} sx={{ minWidth: 0, py: 0, px: 0.5, fontSize: 12, flex: "none" }}>
                   {t("Изменить", "Edit")}
                 </Button>
               )}
@@ -863,138 +871,64 @@ export default function SessionEditor({
           </Box>
         </Stack>
 
-        {/* Таймер + прогресс во время выполнения. Если справа есть контент
-            (силовая: тоннаж/подходы) — 50/50; иначе таймер по центру. */}
+        {/* Идёт: таймер-кольцо (прогресс = доля отмеченных подходов) и плитки. */}
         {running && (
-          <Stack
-            direction="row"
-            spacing={2}
-            sx={{
-              mt: 2,
-              alignItems: "center",
-              justifyContent: session.kind === "strength" ? "flex-start" : "center",
-            }}
-          >
-            <Stack
-              spacing={1}
-              sx={{ alignItems: "center", flex: session.kind === "strength" ? 1 : "0 1 auto" }}
-            >
-              <CircularTimer
-                elapsedSec={elapsedSec}
-                progress={setsProgress}
-                label={paused ? t("На паузе", "Paused") : t("Тренировка идёт", "In progress")}
-                color={color}
-                theme={theme}
-              />
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={paused ? <PlayArrowRoundedIcon /> : <PauseRoundedIcon />}
-                onClick={togglePause}
-              >
-                {paused ? t("Продолжить", "Resume") : t("Пауза", "Pause")}
-              </Button>
-            </Stack>
+          <Stack direction="row" spacing={2} sx={{ mt: 2, alignItems: "center", justifyContent: session.kind === "strength" ? "flex-start" : "center" }}>
+            <CircularTimer
+              elapsedSec={elapsedSec}
+              progress={setsProgress}
+              label={paused ? t("На паузе", "Paused") : t("Идёт", "In progress")}
+              color={color}
+              theme={theme}
+            />
             {session.kind === "strength" && (
-              <Stack spacing={1.5} sx={{ flex: 1, minWidth: 0 }}>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {t("Тоннаж", "Tonnage")}
-                  </Typography>
-                  <Typography sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>
-                    {formatVolume(volume)}
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {t("Подходы", "Sets")}
-                  </Typography>
-                  <Typography sx={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>
-                    {doneSets} {t("из", "of")} {totalSets}
-                  </Typography>
-                  <Box sx={{ mt: 0.5, height: 5, borderRadius: 999, bgcolor: "action.hover", overflow: "hidden" }}>
-                    <Box sx={{ height: "100%", width: `${Math.round(setsProgress * 100)}%`, bgcolor: color }} />
+              <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+                <Tile label={t("Тоннаж", "Tonnage")} value={formatVolume(volume)} />
+                <Tile label={t("Подходы", "Sets")} value={`${doneSets} ${t("из", "of")} ${totalSets}`}>
+                  <Box sx={{ mt: 0.75, height: 4, borderRadius: 999, bgcolor: "action.hover", overflow: "hidden" }}>
+                    <Box sx={{ height: "100%", width: `${Math.round(setsProgress * 100)}%`, bgcolor: color, transition: tr("width", motion.base) }} />
                   </Box>
-                </Box>
+                </Tile>
               </Stack>
             )}
           </Stack>
         )}
 
-        {/* Завершённая — итог; не начатая — кнопка «Начать» */}
-        {session.endedAt ? (
-          session.kind === "strength" && (
-            <Stack direction="row" spacing={3} sx={{ mt: 2 }}>
-              <Box>
-                <Typography variant="caption" color="text.secondary">{t("Тоннаж", "Tonnage")}</Typography>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{formatVolume(volume)}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="caption" color="text.secondary">{t("Подходы", "Sets")}</Typography>
-                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{totalSets}</Typography>
-              </Box>
-              {sessionAvgHr(session) != null && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">{t("Пульс", "HR")}</Typography>
-                  <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{sessionAvgHr(session)}</Typography>
-                </Box>
-              )}
-              {kcal != null && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {t("Калории", "Calories")}
-                  </Typography>
-                  <Typography sx={{ fontSize: 18, fontWeight: 800 }}>
-                    {/* «≈» честно отделяет расчёт от числа с табло. */}
-                    {isCaloriesEstimate(session) ? "≈ " : ""}
-                    {kcal}
-                  </Typography>
-                </Box>
-              )}
-            </Stack>
-          )
-        ) : !running ? (
-          <Stack spacing={0.5} sx={{ mt: 2 }}>
-            <Button
-              fullWidth
-              variant="contained"
-              startIcon={<PlayArrowIcon />}
-              onClick={() =>
-                onChange({
-                  ...session,
-                  startedAt: new Date().toISOString(),
-                  time: session.time ?? nowTime(),
-                })
-              }
-            >
-              {t("Начать тренировку", "Start workout")}
-            </Button>
-            <Button fullWidth size="small" startIcon={<StopIcon />} onClick={handleFinish}>
-              {t("Завершить без таймера", "Finish without timer")}
-            </Button>
-          </Stack>
-        ) : null}
+        {/* Завершена — итог плитками. */}
+        {session.endedAt && session.kind === "strength" && (
+          <Box sx={{ mt: 2, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 1 }}>
+            <Tile label={t("Тоннаж", "Tonnage")} value={formatVolume(volume)} />
+            <Tile label={t("Подходы", "Sets")} value={totalSets} />
+            {sessionAvgHr(session) != null && <Tile label={t("Пульс", "HR")} value={sessionAvgHr(session)} />}
+            {kcal != null && <Tile label={t("Калории", "Calories")} value={`${isCaloriesEstimate(session) ? "≈ " : ""}${kcal}`} />}
+          </Box>
+        )}
       </Card>
 
-      {/* Тяжесть тренировки — субъективно, питает аналитику нагрузки. */}
-      <Stack direction="row" spacing={1} sx={{ mb: 3, alignItems: "center" }}>
-        <Typography variant="body2" color="text.secondary">
-          {t("Тяжесть", "Effort")}
-        </Typography>
-        {INTENSITY_OPTIONS.map((opt) => {
-          const active = session.intensity === opt.value;
-          return (
-            <Chip
-              key={opt.value}
-              label={opt.label}
-              size="small"
-              onClick={() => onChange({ ...session, intensity: active ? null : opt.value })}
-              variant={active ? "filled" : "outlined"}
-              sx={active ? { bgcolor: color, color: onColor } : undefined}
-            />
-          );
-        })}
-      </Stack>
+      {/* Тяжесть — оценка после/во время, до старта не спрашиваем. */}
+      {(running || session.endedAt) && (
+        <Box sx={{ mb: 3 }}>
+          <Typography sx={{ ...text.label, mb: 0.75 }}>
+            {session.endedAt ? t("Как прошла", "How it went") : t("Как идёт", "How it’s going")}
+          </Typography>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 1 }}>
+            {INTENSITY_OPTIONS.map((opt) => {
+              const active = session.intensity === opt.value;
+              return (
+                <Tile
+                  key={opt.value}
+                  selected={active}
+                  onClick={() => onChange({ ...session, intensity: active ? null : opt.value })}
+                  sx={{ py: 1.25, textAlign: "center" }}
+                >
+                  <Typography sx={{ fontSize: 14, fontWeight: 600, color: active ? color : "text.primary" }}>{opt.label}</Typography>
+                </Tile>
+              );
+            })}
+          </Box>
+        </Box>
+      )}
+      {!running && !session.endedAt && <Box sx={{ mb: 1.5 }} />}
 
       {session.kind !== "strength" && (
         <TextField
@@ -1187,21 +1121,6 @@ export default function SessionEditor({
 
       {session.kind === "strength" && (
         <>
-          {session.exercises.length > 0 && (
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ mb: 1.5, alignItems: "baseline" }}
-            >
-              <Typography variant="subtitle2">
-                {t("Тоннаж", "Tonnage")} {formatVolume(sessionVolume(session))}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                · {sessionSetCount(session)} {t("подх.", "sets")}
-              </Typography>
-            </Stack>
-          )}
-
           {linkingId && (
             <Stack
               direction="row"
@@ -1229,7 +1148,7 @@ export default function SessionEditor({
                   key={groupKey}
                   sx={
                     isSuper
-                      ? { mb: 1.5, pl: 1, borderLeft: "3px solid", borderColor: color }
+                      ? { mb: 1.5, p: 0.75, borderRadius: radius.card, bgcolor: alpha(color, 0.08) }
                       : { mb: 1.5 }
                   }
                 >
@@ -1237,14 +1156,11 @@ export default function SessionEditor({
                     <Stack
                       direction="row"
                       spacing={1}
-                      sx={{ mb: 0.5, alignItems: "center" }}
+                      sx={{ mb: 0.5, px: 0.75, alignItems: "center" }}
                     >
-                      <Chip
-                        label={t("Супер-сет", "Superset")}
-                        size="small"
-                        variant="outlined"
-                        sx={{ borderColor: alpha(color, 0.5), color }}
-                      />
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color }}>
+                        {t("Супер-сет", "Superset")} {letter}
+                      </Typography>
                       <Button
                         size="small"
                         startIcon={<LinkOffIcon />}
@@ -1276,10 +1192,7 @@ export default function SessionEditor({
                           p: 1.5,
                           mb: isSuper ? 1 : 1.5,
                           transition: `${tr("box-shadow", motion.press, "ease")}, ${tr("background-color", motion.press, "ease")}`,
-                          ...(isSource && {
-                            borderColor: color,
-                            borderWidth: 2,
-                          }) }}
+                          ...(isSource && { boxShadow: `inset 0 0 0 2px ${color}` }) }}
                       >
                         <Stack
                           direction="row"
@@ -1343,48 +1256,49 @@ export default function SessionEditor({
                           </IconButton>
                         </Stack>
 
-                <Stack spacing={1}>
+                {/* Подписи колонок — один раз на упражнение: после ввода плейсхолдеры исчезают. */}
+                {item.sets.length > 0 && (
+                  <Stack direction="row" spacing={1} sx={{ px: 0.25, mb: 0.5 }}>
+                    <Box sx={{ width: 28, flex: "none" }} />
+                    <Typography sx={{ ...text.caption, fontSize: 11, flex: 1 }}>{t("Вес", "Weight")}</Typography>
+                    <Typography sx={{ ...text.caption, fontSize: 11, flex: 1 }}>{t("Повторы", "Reps")}</Typography>
+                    <Box sx={{ width: 40, flex: "none" }} />
+                  </Stack>
+                )}
+                <Stack spacing={0.75}>
                   {item.sets.map((set, index) => {
                     const drops = set.drops ?? [];
                     return (
                       <Box key={set.id}>
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          sx={{ alignItems: "center" }}
-                        >
-                          {/* Тап по номеру переключает рабочий ⇄ разминочный.
-                              Разминка помечается «Р» и не идёт в тоннаж. */}
+                        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                          {/* Номер подхода — вход в меню подхода: разминка, дроп, удалить.
+                              Так в строке остаются только вес, повторы и отметка. */}
                           <Box
                             component="button"
-                            onClick={() =>
-                              patchSet(item.id, set.id, { warmup: !set.warmup })
-                            }
-                            aria-label={
-                              set.warmup ? t("Разминочный подход", "Warm-up set") : t("Рабочий подход", "Working set")
-                            }
+                            onClick={(e: MouseEvent<HTMLElement>) => setSetMenu({ exId: item.id, set, index, anchor: e.currentTarget })}
+                            aria-label={t(`Подход ${index + 1}: действия`, `Set ${index + 1}: actions`)}
                             sx={{
-                              // Видимая ширина — цифра, зона нажатия ≥ 28×40.
-                              minWidth: 28,
+                              width: 28,
                               height: 40,
-                              mx: -0.5,
+                              flex: "none",
                               p: 0,
                               border: "none",
+                              borderRadius: radius.control,
                               bgcolor: "transparent",
                               cursor: "pointer",
                               fontFamily: "inherit",
-                              fontSize: 12,
-                              fontWeight: set.warmup ? 700 : 400,
+                              fontSize: 13,
+                              fontWeight: set.warmup ? 700 : 500,
                               color: set.warmup ? "warning.main" : "text.secondary",
+                              fontVariantNumeric: "tabular-nums",
+                              "&:active": { bgcolor: "action.hover" },
                             }}
                           >
                             {set.warmup ? t("Р", "W") : index + 1}
                           </Box>
                           <WeightField
                             valueKg={set.weight}
-                            onChangeKg={(value) =>
-                              patchSet(item.id, set.id, { weight: value })
-                            }
+                            onChangeKg={(value) => patchSet(item.id, set.id, { weight: value })}
                             unit={unitFor(item.exerciseId, exerciseUnits)}
                             onUnitChange={(u) => onExerciseUnit?.(item.exerciseId, u)}
                             sx={{ flex: 1, opacity: set.warmup ? 0.5 : 1 }}
@@ -1393,70 +1307,33 @@ export default function SessionEditor({
                             placeholder={t("повт", "reps")}
                             integer
                             value={set.reps}
-                            onChange={(value) =>
-                              patchSet(item.id, set.id, { reps: value })
-                            }
+                            onChange={(value) => patchSet(item.id, set.id, { reps: value })}
                             sx={{ flex: 1, opacity: set.warmup ? 0.5 : 1 }}
                           />
-                          <Checkbox
+                          <DoneToggle
                             checked={set.done}
-                            onChange={(event) => {
-                              const checked = event.target.checked;
+                            color={color}
+                            onColor={onColor}
+                            label={t("Подход выполнен", "Set done")}
+                            onToggle={(checked, trusted) => {
                               patchSet(item.id, set.id, { done: checked });
                               if (checked) haptic("light");
-                              // Отдых стартует только по живому тапу по самому
-                              // чекбоксу и только на переходе «не отмечен →
-                              // отмечен»: правка веса/повторов или любой
-                              // программный ререндер таймер не запускают.
-                              if (
-                                checked &&
-                                !set.done &&
-                                !set.warmup &&
-                                !session.endedAt &&
-                                event.nativeEvent.isTrusted
-                              ) {
-                                startRest();
-                              }
+                              // Отдых стартует только по живому тапу и только на
+                              // переходе «не отмечен → отмечен».
+                              if (checked && !set.done && !set.warmup && !session.endedAt && trusted) startRest();
                             }}
-                            sx={{ "&.Mui-checked": { color } }}
                           />
-                          <IconButton
-                            size="small"
-                            aria-label={t("Убрать подход", "Remove set")}
-                            sx={{ ml: 0.5 }}
-                            onClick={() => {
-                              setRemovedSet({ exId: item.id, set, index });
-                              patchExercise(item.id, (ex) => ({
-                                ...ex,
-                                sets: ex.sets.filter((s) => s.id !== set.id),
-                              }));
-                            }}
-                          >
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
                         </Stack>
 
-                        {/* Ступени дропа — с отступом под подходом. Колонки
-                            веса и повторов совпадают с основной строкой. */}
+                        {/* Ступени дропа — с отступом под подходом. */}
                         {drops.map((drop) => (
-                          <Stack
-                            key={drop.id}
-                            direction="row"
-                            spacing={1}
-                            sx={{ alignItems: "center", mt: 1 }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ width: 14, textAlign: "center" }}
-                            >
+                          <Stack key={drop.id} direction="row" spacing={1} sx={{ alignItems: "center", mt: 0.75 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ width: 28, flex: "none", textAlign: "center" }}>
                               ↳
                             </Typography>
                             <WeightField
                               valueKg={drop.weight}
-                              onChangeKg={(value) =>
-                                patchDrop(item.id, set.id, drop.id, { weight: value })
-                              }
+                              onChangeKg={(value) => patchDrop(item.id, set.id, drop.id, { weight: value })}
                               unit={unitFor(item.exerciseId, exerciseUnits)}
                               onUnitChange={(u) => onExerciseUnit?.(item.exerciseId, u)}
                               sx={{ flex: 1 }}
@@ -1465,43 +1342,18 @@ export default function SessionEditor({
                               placeholder={t("повт", "reps")}
                               integer
                               value={drop.reps}
-                              onChange={(value) =>
-                                patchDrop(item.id, set.id, drop.id, { reps: value })
-                              }
+                              onChange={(value) => patchDrop(item.id, set.id, drop.id, { reps: value })}
                               sx={{ flex: 1 }}
                             />
-                            {/* Пустая колонка под чекбоксом — чтобы поля совпали. */}
-                            <Box sx={{ width: 42 }} />
                             <IconButton
-                              size="small"
                               aria-label={t("Убрать дроп", "Remove drop")}
-                              onClick={() =>
-                                patchSet(item.id, set.id, {
-                                  drops: drops.filter((d) => d.id !== drop.id),
-                                })
-                              }
+                              onClick={() => patchSet(item.id, set.id, { drops: drops.filter((d) => d.id !== drop.id) })}
+                              sx={{ width: 40, height: 40, flex: "none", color: "text.secondary" }}
                             >
-                              <DeleteOutlineIcon fontSize="small" />
+                              <CloseIcon sx={{ fontSize: 18 }} />
                             </IconButton>
                           </Stack>
                         ))}
-
-                        <Button
-                          size="small"
-                          onClick={() =>
-                            patchSet(item.id, set.id, {
-                              drops: [
-                                ...drops,
-                                // Ступень стартует от веса предыдущей ступени
-                                // или самого подхода — дальше его снижают.
-                                newDrop(drops[drops.length - 1]?.weight ?? set.weight),
-                              ],
-                            })
-                          }
-                          sx={{ ml: 2.5, mt: 0.5, minWidth: 0, fontSize: 12 }}
-                        >
-                          {t("+ дроп", "+ drop")}
-                        </Button>
                       </Box>
                     );
                   })}
@@ -1552,51 +1404,6 @@ export default function SessionEditor({
         }
         sx={{ mt: 3 }}
       />
-
-      <Button fullWidth variant="contained" onClick={onBack} sx={{ mt: 2 }}>
-        {t("Сохранить", "Save")}
-      </Button>
-
-      <Divider sx={{ my: 3 }} />
-
-      <Typography variant="caption" color="text.secondary">
-        {t("Повторить эту тренировку в другой день", "Repeat this workout on another day")}
-      </Typography>
-      {/* Поле даты тянется, кнопка занимает ровно своё — иначе инпут
-          оказывался уже кнопки и выглядел сломанным. */}
-      <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: "center" }}>
-        <TextField
-          type="date"
-          value={copyDate}
-          onChange={(event) => setCopyDate(event.target.value)}
-          sx={{ flex: 1 }}
-        />
-        <Button
-          variant="outlined"
-          disabled={!copyDate}
-          onClick={() => {
-            onCopyTo(copyDate);
-            setCopyDate("");
-          }}
-          sx={{ flexShrink: 0, whiteSpace: "nowrap" }}
-        >
-          {t("Повторить", "Repeat")}
-        </Button>
-      </Stack>
-
-      <Button
-        fullWidth
-        variant="outlined"
-        startIcon={<ContentCopyIcon />}
-        onClick={onCopyToClipboard}
-        sx={{ mt: 2 }}
-      >
-        {t("Скопировать тренировку", "Copy workout")}
-      </Button>
-
-      <Button fullWidth color="error" onClick={onDelete} sx={{ mt: 1 }}>
-        {t("Удалить тренировку", "Delete workout")}
-      </Button>
 
       <ExercisePickerDialog
         open={picker != null}
@@ -1767,8 +1574,105 @@ export default function SessionEditor({
         </DialogActions>
       </Dialog>
 
+      {/* Меню подхода — по тапу на номер. */}
+      <Menu open={setMenu != null} anchorEl={setMenu?.anchor ?? null} onClose={() => setSetMenu(null)}>
+        <MenuItem
+          onClick={() => {
+            if (setMenu) patchSet(setMenu.exId, setMenu.set.id, { warmup: !setMenu.set.warmup });
+            setSetMenu(null);
+          }}
+        >
+          <ListItemIcon>{setMenu?.set.warmup ? <CheckRoundedIcon fontSize="small" /> : <Box sx={{ width: 20 }} />}</ListItemIcon>
+          {t("Разминочный — не в тоннаж", "Warm-up — not in tonnage")}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (setMenu) {
+              const { exId, set } = setMenu;
+              const drops = set.drops ?? [];
+              // Ступень стартует от веса предыдущей ступени или самого подхода.
+              patchSet(exId, set.id, { drops: [...drops, newDrop(drops[drops.length - 1]?.weight ?? set.weight)] });
+            }
+            setSetMenu(null);
+          }}
+        >
+          <ListItemIcon>
+            <AddIcon fontSize="small" />
+          </ListItemIcon>
+          {t("Добавить дроп", "Add a drop")}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (setMenu) {
+              const { exId, set, index } = setMenu;
+              setRemovedSet({ exId, set, index });
+              patchExercise(exId, (ex) => ({ ...ex, sets: ex.sets.filter((x) => x.id !== set.id) }));
+            }
+            setSetMenu(null);
+          }}
+        >
+          <ListItemIcon>
+            <DeleteOutlineIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <Typography color="error">{t("Удалить подход", "Delete set")}</Typography>
+        </MenuItem>
+      </Menu>
+
+      {/* Нижняя панель — главное действие под большим пальцем. */}
+      {!session.endedAt && (
+        <Box
+          sx={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1200,
+            pt: 3,
+            pb: "calc(12px + env(safe-area-inset-bottom, 0px))",
+            background: (th) => `linear-gradient(to top, ${th.palette.background.default} 62%, ${alpha(th.palette.background.default, 0)})`,
+            pointerEvents: "none",
+          }}
+        >
+          <Stack direction="row" spacing={1} sx={{ maxWidth: 600, mx: "auto", px: 2, pointerEvents: "auto", alignItems: "center" }}>
+            {running ? (
+              <>
+                <IconButton
+                  onClick={togglePause}
+                  aria-label={paused ? t("Продолжить", "Resume") : t("Пауза", "Pause")}
+                  sx={{ width: 52, height: 52, flex: "none", borderRadius: radius.tile, bgcolor: "action.hover", color: paused ? color : "text.primary" }}
+                >
+                  {paused ? <PlayArrowRoundedIcon /> : <PauseRoundedIcon />}
+                </IconButton>
+                <Button fullWidth variant="contained" onClick={handleFinish} sx={{ height: 52, borderRadius: radius.tile, fontSize: 16 }}>
+                  {t("Завершить", "Finish")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  onClick={handleFinish}
+                  sx={{ height: 52, flex: "none", px: 2, borderRadius: radius.tile, bgcolor: "action.hover", color: "text.primary", whiteSpace: "nowrap" }}
+                >
+                  {t("Уже сделал", "Log as done")}
+                </Button>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<PlayArrowRoundedIcon />}
+                  onClick={() => onChange({ ...session, startedAt: new Date().toISOString(), time: session.time ?? nowTime() })}
+                  sx={{ height: 52, borderRadius: radius.tile, fontSize: 16 }}
+                >
+                  {t("Начать", "Start")}
+                </Button>
+              </>
+            )}
+          </Stack>
+        </Box>
+      )}
+
       {restEndsAt != null && (
         <RestTimer
+          bottomOffset={session.endedAt ? 0 : 76}
           endsAt={restEndsAt}
           target={restTarget}
           color={color}
@@ -1799,7 +1703,7 @@ export default function SessionEditor({
             {t("Вернуть", "Undo")}
           </Button>
         }
-        sx={{ bottom: { xs: 96 } }}
+        sx={{ bottom: { xs: session.endedAt ? 96 : 150 } }}
       />
     </Box>
     </ThemeProvider>

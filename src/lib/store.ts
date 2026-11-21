@@ -524,6 +524,10 @@ export function copySessionTo(session: Session, date: string): Session {
     // и итоги, иначе она сразу открывается read-only «Завершена».
     startedAt: null,
     endedAt: null,
+    // Метки прошлой сессии (пауза, «завершена автоматически») к копии не относятся.
+    pausedAt: null,
+    pausedMs: null,
+    autoEnded: false,
     avgHr: null,
     time: nowTime(),
     exercises: session.exercises.map((exercise) => ({

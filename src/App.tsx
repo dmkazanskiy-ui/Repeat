@@ -156,7 +156,6 @@ export default function App() {
   // мастер «Тренер» (из проактивного «Сегодня»).
   const [dialogStart, setDialogStart] = useState<NewSessionStep>("kind");
   const [undo, setUndo] = useState<Session | null>(null);
-  const [clipboard, setClipboard] = useState<Session | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // Необязательная кнопка у тоста («И в программе» после замены упражнения).
   const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null);
@@ -687,13 +686,6 @@ export default function App() {
     [sessions, programs, recovery, exercises, commit, commitPrograms],
   );
 
-  const pasteSession = useCallback(() => {
-    if (!clipboard) return;
-    const copy = copySessionTo(clipboard, selected);
-    commit([...sessions, copy]);
-    setOpenId(copy.id);
-    setEditing(true);
-  }, [clipboard, selected, sessions, commit]);
 
   // Открыть лист «Новая тренировка»: обычный выбор или сразу мастер «Тренер».
   const openCreate = useCallback((step: "kind" | "goal" = "kind") => {
@@ -875,13 +867,15 @@ export default function App() {
               onChange={updateSession}
               onBack={closeSession}
               onEdit={() => setEditing(true)}
+              onCopyTo={(date) => {
+                const copy = copySessionTo(open, date);
+                commit([...sessions, copy]);
+                setSelected(date);
+                closeSession();
+              }}
               onDelete={() => {
                 deleteSession(open.id);
                 closeSession();
-              }}
-              onCopyToClipboard={() => {
-                setClipboard(open);
-                setToast(t("Тренировка скопирована. Открой нужный день и нажми + → «Вставить тренировку»", "Workout copied. Open the day you want and tap + → “Paste workout”."));
               }}
             />
           ) : (
@@ -928,10 +922,6 @@ export default function App() {
                 setSelected(date);
                 closeSession();
               }}
-              onCopyToClipboard={() => {
-                setClipboard(open);
-                setToast(t("Тренировка скопирована. Открой нужный день и нажми + → «Вставить тренировку»", "Workout copied. Open the day you want and tap + → “Paste workout”."));
-              }}
             />
           )
         ) : (
@@ -968,7 +958,6 @@ export default function App() {
                   cardioKinds={cardioKinds}
                   mobilityKinds={mobilityKinds}
                   programs={programs}
-                  hasClipboard={Boolean(clipboard)}
                   initialStep={dialogStart}
                   onClose={() => setCreating(false)}
                   onCreate={createSession}
@@ -980,7 +969,6 @@ export default function App() {
                     setCreating(false);
                     setShowHiit(true);
                   }}
-                  onPaste={pasteSession}
                   onSuggested={createSuggestedWorkout}
                   sessions={sessions}
                   exercises={exercises}

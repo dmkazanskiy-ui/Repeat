@@ -17,6 +17,8 @@ interface Props {
   color: string;
   onAdjust: (deltaSec: number) => void;
   onSkip: () => void;
+  /** Поднять над нижней панелью экрана, px. */
+  bottomOffset?: number;
 }
 
 type Shape = "idle" | "compact" | "open";
@@ -46,7 +48,7 @@ const size = (s: Shape): [number, number] => {
  * перетекает через размытие. По нулю вибрирует и становится зелёным,
  * дальше считает перебор и сам закрывается через 25 с.
  */
-export default function RestTimer({ endsAt, target, color, onAdjust, onSkip }: Props) {
+export default function RestTimer({ endsAt, target, color, onAdjust, onSkip, bottomOffset = 0 }: Props) {
   const t = useT();
   const [now, setNow] = useState(() => Date.now());
   const [shape, setShape] = useState<Shape>("idle");
@@ -195,8 +197,9 @@ export default function RestTimer({ endsAt, target, color, onAdjust, onSkip }: P
         position: "fixed",
         left: 0,
         right: 0,
-        bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-        zIndex: 1400,
+        bottom: `calc(${16 + bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
+        // Над нижней панелью экрана (1200), но под меню и окнами (1300+).
+        zIndex: 1250,
         display: "flex",
         justifyContent: "center",
         pointerEvents: "none",

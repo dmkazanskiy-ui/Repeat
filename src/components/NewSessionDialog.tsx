@@ -15,7 +15,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { ContentPaste as ContentPasteIcon } from "../ui/icons";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import { ArrowBack as ArrowBackIcon } from "../ui/icons";
 import { PlayArrowRounded as PlayArrowRoundedIcon } from "../ui/icons";
@@ -80,14 +79,12 @@ interface Props {
   cardioKinds: CustomActivity[];
   mobilityKinds: CustomActivity[];
   programs: TrainingProgram[];
-  hasClipboard: boolean;
   onClose: () => void;
   onCreate: (kind: SessionKind, options: CreateOptions) => void;
   onAddCustom: (kind: "cardio" | "mobility", activity: CustomActivity) => void;
   onStartProgram: (program: TrainingProgram, workoutIndex: number) => void;
   /** Открыть HIIT-таймер (конфиг + раннер), сессия создастся на финише. */
   onStartHiit: () => void;
-  onPaste: () => void;
   /** Запуск подобранной тренировки (создать сессию из плана и открыть). */
   onSuggested: (suggestion: WorkoutSuggestion) => void;
   /** Для умного подбора: история + постоянная цель профиля. */
@@ -220,13 +217,11 @@ export default function NewSessionDialog({
   cardioKinds,
   mobilityKinds,
   programs,
-  hasClipboard,
   onClose,
   onCreate,
   onAddCustom,
   onStartProgram,
   onStartHiit,
-  onPaste,
   onSuggested,
   sessions,
   exercises,
@@ -328,20 +323,6 @@ export default function NewSessionDialog({
                 onClick={() => pickKind(c.id)}
               />
             ))}
-
-            {hasClipboard && (
-              <Button
-                variant="outlined"
-                startIcon={<ContentPasteIcon />}
-                onClick={() => {
-                  onPaste();
-                  close();
-                }}
-                sx={{ justifyContent: "flex-start", px: 2, py: 1.25, mt: 0.5 }}
-              >
-                {t("Вставить скопированную тренировку", "Paste copied workout")}
-              </Button>
-            )}
 
             {/* Блок «Подсказка тренера» — умный подбор тренировки */}
             <Card sx={{ mt: 1 }}>
