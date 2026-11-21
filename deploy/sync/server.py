@@ -337,7 +337,8 @@ def bot_api(method: str, params: dict, timeout: float = 10):
     req = urllib.request.Request(
         f"{TG_API}/bot{BOT_TOKEN}/{method}",
         data=json.dumps(params).encode(),
-        headers={"Content-Type": "application/json", **({"X-Relay-Key": TG_API_KEY} if TG_API_KEY else {})},
+        # Свой User-Agent: Cloudflare режет стандартный «Python-urllib» (ошибка 1010).
+        headers={"Content-Type": "application/json", "User-Agent": "repeat-sync/1.0", **({"X-Relay-Key": TG_API_KEY} if TG_API_KEY else {})},
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         body = json.loads(r.read())
