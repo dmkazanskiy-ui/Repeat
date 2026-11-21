@@ -5,6 +5,7 @@ import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
 import { Card, Section, radius } from "../../ui";
 import { ArrowBack as ArrowBackIcon } from "../../ui/icons";
 import Avatar from "../../components/social/Avatar";
+import AvatarCropDialog from "../../components/social/AvatarCropDialog";
 import { ACTIVITIES, saveProfile, uploadAvatar, useMyProfile } from "../../lib/social";
 import type { ActivityId, MyProfile } from "../../lib/social";
 import { fileToScaledDataUrl } from "../../lib/image";
@@ -41,17 +42,27 @@ function Editor({ onBack, onPreview, me }: Props & { me: MyProfile }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
 
   const turningOn = isPublic && !me.public;
   const dirty = name !== me.name || bio !== me.bio || acts.join() !== me.acts.join() || isPublic !== me.public;
 
+  // Выбрал фото → сначала обрезка в круг, потом загрузка.
   async function pickPhoto(file: File | undefined) {
+    if (fileRef.current) fileRef.current.value = "";
     if (!file) return;
     setError(null);
     try {
-      // Аватар — 320 px JPEG: этого хватает и на 96 px в профиле, и на ретине.
-      const data = await fileToScaledDataUrl(file, 320, 0.82);
-      setPreview(data);
+      setCropSrc(await fileToScaledDataUrl(file, 1600, 0.9));
+    } catch {
+      setError(t("Не получилось открыть фото — попробуй другое.", "Couldn’t open the photo — try another one."));
+    }
+  }
+
+  async function uploadCropped(data: string) {
+    setCropSrc(null);
+    setPreview(data);
+    try {
       await uploadAvatar(data);
     } catch {
       setPreview(null);
@@ -101,6 +112,7 @@ function Editor({ onBack, onPreview, me }: Props & { me: MyProfile }) {
             <PhotoCameraRoundedIcon sx={{ fontSize: 18 }} />
           </IconButton>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0])} />
+          {cropSrc && <AvatarCropDialog src={cropSrc} onCancel={() => setCropSrc(null)} onDone={(d) => void uploadCropped(d)} />}
         </Box>
       </Stack>
 
