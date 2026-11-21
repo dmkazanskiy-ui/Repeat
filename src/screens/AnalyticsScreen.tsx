@@ -1,5 +1,5 @@
-import { tr, CollapsibleSection } from "../ui";
-import { IconBadge, Tile, radius } from "../ui";
+import { tr, CollapsibleSection, Section } from "../ui";
+import { IconBadge, Tile, radius, text } from "../ui";
 import { Card } from "../ui";
 import { CARD_IN } from "../theme";
 import { fmtWeightRound, unitLabel } from "../lib/units";
@@ -21,7 +21,6 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { TrendingUpRounded as TrendingUpRoundedIcon } from "../ui/icons";
-import { EmojiEventsOutlined as EmojiEventsOutlinedIcon } from "../ui/icons";
 import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
 import { ChevronRight as ChevronRightIcon } from "../ui/icons";
 import { Close as CloseIcon } from "../ui/icons";
@@ -784,16 +783,24 @@ export default function AnalyticsScreen({
 
       {view === "volume" && (
         <>
+      <Section
+        first
+        title={t("Обзор", "Overview")}
+        action={
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {rangeLabel}
+          </Typography>
+        }
+      >
       <OverviewCard
         sessions={sessions}
         period={period}
         metric={metric}
         onMetric={setMetric}
-        title={t("Обзор", "Overview")}
-        rangeLabel={rangeLabel}
         labelOf={labelOf}
         avgPerDay={avgPerDay}
       />
+      </Section>
 
       {/* Распределение активности */}
       {dist.length > 0 && (
@@ -822,7 +829,7 @@ export default function AnalyticsScreen({
       </Typography>
       <Card sx={{ mb: 1.5 }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: "baseline", mb: 1.5 }}>
-          <Typography variant="subtitle2" sx={{ flex: 1 }}>
+          <Typography sx={{ ...text.label, flex: 1 }}>
             {t("Эта неделя", "This week")}
           </Typography>
           <Typography variant="caption" color="text.secondary">
@@ -938,7 +945,6 @@ export default function AnalyticsScreen({
 
       {/* Рекорды — свежие сверху, остальные под дропдауном */}
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 3, mb: 1.5 }}>
-        <EmojiEventsOutlinedIcon sx={{ color: ink("#f59e0b"), fontSize: 22 }} />
         <Typography variant="h2">{t("Рекорды", "Records")}</Typography>
         {records.length > 0 && (
           <Chip
@@ -1603,20 +1609,19 @@ function StatusCount({
   label: string;
   tone: "up" | "flat" | "warn";
 }) {
-  // Акцент только у растущих (зелёный) и плато (янтарь); остальное нейтрально.
+  // Цифры — одним цветом текста; смысл несёт точка у подписи (цвет — только у элементов).
   const accent = tone === "up" ? ink("#4ade80") : tone === "warn" ? ink("#f59e0b") : null;
-  const color = value === 0 ? "text.disabled" : (accent ?? "text.primary");
   return (
-    <Tile
-      sx={{
-        textAlign: "center" }}
-    >
-      <Typography sx={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1.15 }}>
+    <Tile sx={{ textAlign: "center" }}>
+      <Typography sx={{ fontSize: 24, fontWeight: 800, color: value === 0 ? "text.disabled" : "text.primary", lineHeight: 1.15 }}>
         {value}
       </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
+      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+        {accent && value > 0 && <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: accent, flex: "none" }} />}
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+      </Box>
     </Tile>
   );
 }

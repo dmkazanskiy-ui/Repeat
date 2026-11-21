@@ -29,8 +29,6 @@ interface Props {
   period: AnalyticsPeriod;
   metric: MetricKey;
   onMetric: (m: MetricKey) => void;
-  title: string;
-  rangeLabel: string;
   labelOf: (dateKey: string) => string;
   avgPerDay: number;
 }
@@ -45,20 +43,12 @@ export default function OverviewCard({
   period,
   metric,
   onMetric,
-  title,
-  rangeLabel,
   labelOf,
   avgPerDay,
 }: Props) {
   const t = useT();
   return (
     <Card sx={{ mb: 1.5 }}>
-      <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mb: 2, ...appear(0) }}>
-        <Typography sx={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em" }}>{title}</Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ ml: 1 }}>
-          {rangeLabel}
-        </Typography>
-      </Box>
 
       <Bars
         sessions={sessions}

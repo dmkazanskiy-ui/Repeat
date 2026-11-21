@@ -178,6 +178,7 @@ export default function SessionView({
           />
         </Box>
         <Collapse in={moodOpen}>
+          <Box sx={{ px: 1.75, pb: 1.75 }}>
           <MoodPad
             value={session.mood ?? null}
             onChange={(m) => onChange({ ...session, mood: m })}
@@ -185,6 +186,7 @@ export default function SessionView({
             xLabels={moodCfg.x}
             color={color}
           />
+          </Box>
         </Collapse>
       </Card>
 

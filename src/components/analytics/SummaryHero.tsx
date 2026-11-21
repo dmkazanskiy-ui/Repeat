@@ -1,5 +1,5 @@
 import { tr } from "../../ui";
-import { Card, IconBadge, radius } from "../../ui";
+import { Card, IconBadge, radius, text } from "../../ui";
 import { CARD_IN } from "../../theme";
 import NumberTicker from "../NumberTicker";
 import { ChartTip } from "../../ui";
@@ -237,8 +237,8 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
   return (
     <Card sx={{ mb: 2 }}>
       <Stack direction="row" sx={{ alignItems: "flex-start", mb: 1.5 }}>
-        <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flex: 1, color: "primary.main" }}>
-          <Typography variant="subtitle2">{hero.title}</Typography>
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flex: 1 }}>
+          <Typography sx={{ ...text.label }}>{hero.title}</Typography>
         </Stack>
         {hero.changePercent != null && (
           <Box sx={{ textAlign: "right" }}>

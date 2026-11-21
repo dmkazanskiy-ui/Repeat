@@ -1,10 +1,9 @@
 import { tr } from "../../ui";
-import { Card, CollapsibleSection, IconBadge } from "../../ui";
+import { Card, CollapsibleSection } from "../../ui";
 import { toUnit, unitLabel } from "../../lib/units";
 import { Box, Collapse, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { ExpandMoreRounded } from "../../ui/icons";
-import { TrendingFlatRounded } from "../../ui/icons";
 import { ArrowForwardRounded } from "../../ui/icons";
 import WeightRepsChart from "./WeightRepsChart";
 import type { WeightRepsPoint } from "./WeightRepsChart";
@@ -36,11 +35,6 @@ export default function PlateauCard({
   return (
     <CollapsibleSection
       id="plateaus"
-      icon={
-        <IconBadge color={PLATEAU_COLOR} size={32}>
-          <TrendingFlatRounded fontSize="small" />
-        </IconBadge>
-      }
       title={t("Плато", "Plateaus")}
       count={details.length}
       forceOpen={openId != null}

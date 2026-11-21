@@ -85,7 +85,7 @@ export default function GoalLensCard({
           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
             {t("Как идёшь к цели", "Progress toward")} «{meta.label.toLowerCase()}»
           </Typography>
-          <Typography sx={{ fontSize: 18, fontWeight: 800, lineHeight: 1.15, color: toneColor }}>
+          <Typography sx={{ fontSize: 18, fontWeight: 800, lineHeight: 1.15 }}>
             {verdict.headline}
           </Typography>
         </Box>

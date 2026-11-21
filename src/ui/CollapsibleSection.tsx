@@ -16,7 +16,6 @@ function load(key: string, fallback: boolean): boolean {
 export default function CollapsibleSection({
   id,
   title,
-  icon,
   count,
   defaultOpen = true,
   forceOpen = false,
@@ -24,7 +23,6 @@ export default function CollapsibleSection({
 }: {
   id: string;
   title: ReactNode;
-  icon?: ReactNode;
   count?: ReactNode;
   defaultOpen?: boolean;
   /** Раскрыть снаружи (например, переход из алерта). */
@@ -52,7 +50,6 @@ export default function CollapsibleSection({
         aria-expanded={open}
         sx={{ width: "100%", display: "flex", alignItems: "center", gap: 1, mb: open ? 1.5 : 0, py: 0.5, borderRadius: 2, justifyContent: "flex-start" }}
       >
-        {icon}
         <Typography variant="h2" sx={{ flex: 1, textAlign: "left" }}>
           {title}
         </Typography>
