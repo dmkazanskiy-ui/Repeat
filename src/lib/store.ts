@@ -16,7 +16,10 @@ import type {
   MobilityKind,
   MuscleGroup,
   Exercise,
+  InboxItem,
+  Plan,
   PlannedExercise,
+  PlannedSession,
   ProgramWorkout,
   ProgressPhoto,
   RecoveryEntry,
@@ -42,6 +45,12 @@ const KEY_PROGRAMS = "programs";
 const KEY_RECOVERY = "recovery";
 const KEY_FOCUS = "focus_goal";
 const KEY_ONBOARDED = "onboarded";
+const KEY_PLANS = "plans";
+const KEY_PLANNED = "planned_sessions";
+const KEY_INBOX = "ai_inbox";
+// Автобэкап перед импортом от ИИ: последние несколько снимков на устройстве.
+const BACKUP_PREFIX = "backup:";
+const BACKUP_KEEP = 5;
 
 export interface AppData {
   sessions: Session[];
@@ -54,6 +63,9 @@ export interface AppData {
   recovery: RecoveryEntry[];
   focusGoal: FocusGoal | null;
   onboarded: boolean;
+  plans: Plan[];
+  plannedSessions: PlannedSession[];
+  inbox: InboxItem[];
 }
 
 /**
@@ -71,7 +83,7 @@ function baseExercises(): Exercise[] {
 }
 
 export async function load(): Promise<AppData> {
-  const [sessions, custom, cardio, mobility, body, photos, programs, recovery, focusGoal, onboarded] =
+  const [sessions, custom, cardio, mobility, body, photos, programs, recovery, focusGoal, onboarded, plans, planned, inbox] =
     await Promise.all([
       db.get<Session[]>(KEY_SESSIONS),
       db.get<Exercise[]>(KEY_CUSTOM),
@@ -83,6 +95,9 @@ export async function load(): Promise<AppData> {
       db.get<RecoveryEntry[]>(KEY_RECOVERY),
       db.get<FocusGoal>(KEY_FOCUS),
       db.get<boolean>(KEY_ONBOARDED),
+      db.get<Plan[]>(KEY_PLANS),
+      db.get<PlannedSession[]>(KEY_PLANNED),
+      db.get<InboxItem[]>(KEY_INBOX),
     ]);
   return {
     sessions: sessions ?? [],
@@ -99,7 +114,31 @@ export async function load(): Promise<AppData> {
     recovery: recovery ?? [],
     focusGoal: focusGoal ?? null,
     onboarded: onboarded ?? false,
+    plans: plans ?? [],
+    plannedSessions: planned ?? [],
+    inbox: inbox ?? [],
   };
+}
+
+export function savePlans(plans: Plan[]): Promise<void> {
+  return db.set(KEY_PLANS, plans);
+}
+
+export function savePlanned(planned: PlannedSession[]): Promise<void> {
+  return db.set(KEY_PLANNED, planned);
+}
+
+export function saveInbox(items: InboxItem[]): Promise<void> {
+  return db.set(KEY_INBOX, items);
+}
+
+/** Снимок данных перед импортом. Хранится на устройстве, последние 5. */
+export async function saveLocalBackup(snapshot: unknown): Promise<string> {
+  const key = `${BACKUP_PREFIX}${new Date().toISOString()}`;
+  await db.set(key, snapshot);
+  const all = (await db.keys()).filter((k) => String(k).startsWith(BACKUP_PREFIX)).map(String).sort();
+  for (const old of all.slice(0, Math.max(0, all.length - BACKUP_KEEP))) await db.del(old);
+  return key;
 }
 
 export function saveSessions(sessions: Session[]): Promise<void> {

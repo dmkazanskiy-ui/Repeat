@@ -44,6 +44,12 @@ describe("weightIncrement", () => {
   it("ноги → +5, верх → +2.5", () => {
     expect(weightIncrement("squat", EXS)).toBe(5);
     expect(weightIncrement("bench", EXS)).toBe(2.5);
+    // Правило программы: штанга +2,5 (и ноги тоже), гантели/изоляция +2, лёгкие +1.
+    const rule = { type: "double" as const, stepKg: 2.5, dumbbellStepKg: 2, lightStepKg: 1, lightBelowKg: 15 };
+    expect(weightIncrement("squat", EXS, rule, 95)).toBe(2.5);
+    const db = [...EXS, { id: "raise", name: "Махи гантелями в стороны", muscleGroup: "shoulders" as const, custom: false }];
+    expect(weightIncrement("raise", db, rule, 14)).toBe(1);
+    expect(weightIncrement("raise", db, rule, 21)).toBe(2);
   });
 });
 

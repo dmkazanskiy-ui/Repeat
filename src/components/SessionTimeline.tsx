@@ -22,7 +22,8 @@ import {
   sessionAvgHr,
   sessionVolume,
 } from "../lib/types";
-import type { Exercise, Session } from "../lib/types";
+import type { Exercise, PlannedSession, Session } from "../lib/types";
+import { plannedIcon } from "../lib/plan";
 import {
   formatDistance,
   formatDuration,
@@ -37,6 +38,12 @@ interface Props {
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onChangeTime: (id: string, time: string | null) => void;
+  /** Карточки плана без начатой тренировки — билеты со статусом «План». */
+  planned?: PlannedSession[];
+  /** Подписи силовых карточек: id тренировки программы → «День Б · 7 упр.». */
+  workoutNames?: Record<string, string>;
+  onOpenPlanned?: (card: PlannedSession) => void;
+  onSkipPlanned?: (card: PlannedSession) => void;
 }
 
 type Status = "planned" | "running" | "done";
@@ -199,7 +206,7 @@ function SessionCard({
 }
 
 /** Лента тренировок: карточки друг под другом, время — внутри карточки. */
-export default function SessionTimeline({ sessions, exercises, onOpen, onDelete, onChangeTime }: Props) {
+export default function SessionTimeline({ sessions, exercises, onOpen, onDelete, onChangeTime, planned = [], workoutNames = {}, onOpenPlanned, onSkipPlanned }: Props) {
   // Тикаем раз в секунду, только если есть запущенная тренировка (иначе покой).
   const hasRunning = sessions.some((s) => s.startedAt && !s.endedAt);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -209,13 +216,61 @@ export default function SessionTimeline({ sessions, exercises, onOpen, onDelete,
     return () => window.clearInterval(timer);
   }, [hasRunning]);
 
+  // Тренировки и карточки плана — одной лентой по времени. Начатая из плана
+  // тренировка показывается сама, её карточка уже не нужна.
+  const items: ({ t: "s"; s: Session } | { t: "p"; p: PlannedSession })[] = [
+    ...sessions.map((s) => ({ t: "s" as const, s })),
+    ...planned.filter((p) => !p.linkedSessionId).map((p) => ({ t: "p" as const, p })),
+  ];
+  const key = (i: (typeof items)[number]) => (i.t === "s" ? (i.s.time ?? i.s.createdAt.slice(11, 16)) : (i.p.time ?? (i.p.slot === "morning" ? "06:00" : i.p.slot === "day" ? "12:00" : "18:00")));
+  items.sort((a, b) => key(a).localeCompare(key(b)));
+
   return (
     <Stack spacing={1.5}>
-      {sessions.map((session) => (
-        <SwipeToDelete key={session.id} onDelete={() => onDelete(session.id)} accent={alpha(typeColor(session.kind), 0.25)}>
-          <SessionCard session={session} exercises={exercises} onOpen={onOpen} onChangeTime={onChangeTime} nowMs={nowMs} />
-        </SwipeToDelete>
-      ))}
+      {items.map((it) =>
+        it.t === "s" ? (
+          <SwipeToDelete key={it.s.id} onDelete={() => onDelete(it.s.id)} accent={alpha(typeColor(it.s.kind), 0.25)}>
+            <SessionCard session={it.s} exercises={exercises} onOpen={onOpen} onChangeTime={onChangeTime} nowMs={nowMs} />
+          </SwipeToDelete>
+        ) : (
+          <SwipeToDelete key={it.p.id} onDelete={() => onSkipPlanned?.(it.p)} accent={alpha(typeColor(it.p.kind), 0.25)}>
+            <PlannedCard card={it.p} workoutName={it.p.programWorkoutId ? workoutNames[it.p.programWorkoutId] : undefined} onOpen={() => onOpenPlanned?.(it.p)} />
+          </SwipeToDelete>
+        ),
+      )}
     </Stack>
+  );
+}
+
+const rng = (a: number | null | undefined, b: number | null | undefined, unit = "") =>
+  a != null && b != null && a !== b ? `${a}–${b}${unit}` : a != null ? `${a}${unit}` : "";
+
+/** Карточка плана тем же билетом, что и тренировка: статус «План», цели в показателях. */
+function PlannedCard({ card, workoutName, onOpen }: { card: PlannedSession; workoutName?: string; onOpen: () => void }) {
+  const skipped = card.status === "skipped";
+  const fields: TicketField[] = [];
+  const push = (label: string, value: string) => value && fields.push({ label, value });
+  push(L("Пульс", "HR"), rng(card.hrMin, card.hrMax) || (card.hrZone != null ? `Z${card.hrZone}` : ""));
+  push(L("Каденс", "Cadence"), rng(card.cadenceMin, card.cadenceMax));
+  push(L("Наклон", "Incline"), rng(card.inclineDeg, card.inclineMaxDeg, "°"));
+  if (card.distanceKm != null) push(L("Дистанция", "Distance"), `${card.distanceKm} ${L("км", "km")}`);
+  const dur = rng(card.durationMin, card.durationMaxMin);
+  const end = card.time && card.durationMin ? addClock(card.time, card.durationMin * 60) : null;
+  const note = [workoutName, card.group, card.note, card.optional ? L("по желанию", "optional") : ""].filter(Boolean).join(" · ");
+  return (
+    <Box role="button" tabIndex={0} onClick={onOpen} sx={{ cursor: "pointer", opacity: skipped ? 0.55 : 1 }}>
+      <WorkoutTicket
+        icon={<ActivityIcon icon={plannedIcon(card)} />}
+        color={typeColor(card.kind)}
+        kind={SESSION_LABELS[card.kind]}
+        title={card.title}
+        status={{ label: skipped ? L("Пропущено", "Skipped") : L("План", "Planned"), tone: "planned" }}
+        from={{ big: card.time ?? "—:—", small: L("начало", "start") }}
+        to={{ big: end ?? "—", small: L("конец", "end") }}
+        middle={dur ? `${dur} ${L("мин", "min")}` : L("без времени", "no time")}
+        fields={fields.slice(0, 4)}
+        note={note || undefined}
+      />
+    </Box>
   );
 }

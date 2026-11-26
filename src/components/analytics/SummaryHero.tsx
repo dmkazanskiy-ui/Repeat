@@ -274,8 +274,19 @@ export default function SummaryHero({ hero }: { hero: HeroData }) {
 
       <Stack direction="row" spacing={2} sx={{ alignItems: "stretch", mb: 2 }}>
         <Box sx={{ flex: 1.4, minWidth: 0 }}>
-          <Typography sx={{ fontSize: 27, fontWeight: 800, lineHeight: 1.05, whiteSpace: "nowrap" }}>
-            {hero.workoutsText}
+          {/* Размер по ширине колонки: места хватает — крупно (до 27), мало — мельче
+              (до 16), одной строкой и никогда не на графике. ~0,62em на букву. */}
+          <Typography
+            sx={{
+              containerType: "inline-size",
+              whiteSpace: "nowrap",
+              fontWeight: 800,
+              lineHeight: 1.1,
+              "& > span": { display: "block", fontSize: `clamp(16px, calc(100cqi / ${(hero.workoutsText.length * 0.62).toFixed(2)}), 27px)` },
+            }}
+          >
+            <span>
+            {hero.workoutsText}</span>
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {hero.daysText}

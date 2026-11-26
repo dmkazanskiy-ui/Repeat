@@ -396,8 +396,99 @@ export interface TrainingProgram {
   cycleNumber: number;
   /** Волна недель (лёгкая → средняя → тяжёлая). Нет — значит все недели равны. */
   wave?: ProgramWave | null;
+  /** Шаги двойной прогрессии. Нет — прежние: +5 кг ноги, +2,5 кг остальное. */
+  progression?: ProgressionRule | null;
+  /** Разгрузка раз в N недель (напоминание). */
+  deloadEveryWeeks?: number | null;
   createdAt: string;
   archivedAt?: string | null;
+}
+
+/**
+ * Двойная прогрессия: когда во всех рабочих подходах набран верх диапазона,
+ * в следующий раз вес растёт на шаг. Гантели и изоляция — свой шаг, а лёгкие
+ * (до `lightBelowKg`) — совсем маленький.
+ */
+export interface ProgressionRule {
+  type: "double";
+  stepKg: number;
+  dumbbellStepKg?: number | null;
+  lightStepKg?: number | null;
+  lightBelowKg?: number | null;
+}
+
+/** План по датам: «что сегодня утром и днём». Приходит от ИИ или файлом. */
+export interface Plan {
+  id: string;
+  name: string;
+  timezone?: string | null;
+  start: string;
+  end: string;
+  goal?: string | null;
+  /** Программа силовых этого плана (создаётся при импорте). */
+  programId?: string | null;
+  /** Правила текстом — показываются на экране плана. */
+  rules?: Record<string, string> | null;
+  /** Откуда пришёл: «файл», «Claude», «ChatGPT»… */
+  source?: string | null;
+  createdAt: string;
+  archivedAt?: string | null;
+}
+
+/**
+ * Входящее от ИИ через API/MCP: план или тренировки, которые ждут
+ * подтверждения в приложении. Сервер кладёт, приложение показывает и удаляет.
+ */
+export interface InboxItem {
+  id: string;
+  /** «plan» или «workout» — формат payload. */
+  type: "plan" | "workout";
+  payload: unknown;
+  /** Кто прислал: «Claude», «ChatGPT», имя ключа. */
+  source?: string | null;
+  note?: string | null;
+  createdAt: string;
+}
+
+export type PlanSlot = "morning" | "day" | "evening";
+export type PlannedStatus = "planned" | "done" | "skipped" | "replaced";
+
+/**
+ * Одна карточка плана: одна активность в слоте дня. «Бассейн + баня + купель»
+ * — три карточки с общим `group`. Цели — ориентиры, факт пишется в тренировку.
+ */
+export interface PlannedSession {
+  id: string;
+  planId: string;
+  date: string;
+  slot: PlanSlot;
+  time?: string | null;
+  kind: SessionKind;
+  title: string;
+  /** Общий заголовок набора карточек слота («Бассейн + сауна + купель»). */
+  group?: string | null;
+  /** По желанию: не нужна, чтобы слот считался выполненным. */
+  optional?: boolean;
+  programWorkoutId?: string | null;
+  cardioKind?: CardioKind | null;
+  mobilityKind?: MobilityKind | null;
+  recoveryType?: RecoveryType | null;
+  customKind?: string | null;
+  durationMin?: number | null;
+  durationMaxMin?: number | null;
+  distanceKm?: number | null;
+  hrMin?: number | null;
+  hrMax?: number | null;
+  hrZone?: number | null;
+  cadenceMin?: number | null;
+  cadenceMax?: number | null;
+  inclineDeg?: number | null;
+  inclineMaxDeg?: number | null;
+  note?: string | null;
+  status: PlannedStatus;
+  /** Тренировка, которая закрыла карточку. */
+  linkedSessionId?: string | null;
+  updatedAt?: string | null;
 }
 
 /**
@@ -459,6 +550,8 @@ export interface Session {
   programId?: string | null;
   programWorkoutId?: string | null;
   programCycleNumber?: number | null;
+  /** Карточка плана, из которой начата (или которую закрыла) тренировка. */
+  plannedSessionId?: string | null;
   /** Снапшот плановых упражнений на момент старта — история не меняется
       при последующей правке шаблона программы. */
   plan?: PlannedExercise[] | null;

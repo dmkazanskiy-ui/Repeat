@@ -63,6 +63,23 @@ describe("autoFinishStale", () => {
   });
 });
 
+describe("autoFinishStale: полночь", () => {
+  it("после полуночи вчерашняя тренировка закрывается: последняя активность + 2 мин", () => {
+    const start = new Date(2026, 10, 10, 23, 0).getTime();
+    const s = strength({
+      kind: "cardio",
+      exercises: [],
+      cardio: { durationSec: null, distanceM: null, avgHr: null },
+      startedAt: new Date(start).toISOString(),
+      lastActivityAt: new Date(start + 0.5 * H).toISOString(),
+    });
+    // 00:40 — до 4-часового лимита кардио далеко, но день уже сменился.
+    const res = autoFinishStale([s], new Date(2026, 10, 11, 0, 40).getTime());
+    expect(res.closed).toBe(1);
+    expect(sessionDurationSec(res.sessions[0])).toBe(32 * 60);
+  });
+});
+
 describe("fixDurationOutliers", () => {
   it("чинит 108-часовую тренировку и сохраняет исходный финиш", () => {
     const raw = new Date(T0 + 108 * H).toISOString();

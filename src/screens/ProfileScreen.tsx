@@ -44,7 +44,8 @@ import { applyTextScale, loadTextScale } from "../lib/a11y";
 import type { TextScale } from "../lib/a11y";
 import { loadThemePref, MODE, resolveMode, saveThemePref } from "../lib/themeMode";
 import type { ThemePref } from "../lib/themeMode";
-import type { RecoveryEntry, TrainingProgram } from "../lib/types";
+import type { Plan, RecoveryEntry, TrainingProgram } from "../lib/types";
+import { CalendarMonth as CalendarMonthIcon, Bolt as BoltIcon } from "../ui/icons";
 import { ink } from "../lib/themeMode";
 
 interface Props {
@@ -52,6 +53,9 @@ interface Props {
   programs: TrainingProgram[];
   focusGoal: FocusGoal | null;
   onOpenPrograms: () => void;
+  onOpenAi: () => void;
+  activePlan: Plan | null;
+  onOpenPlan: () => void;
   onOpenAdmin: () => void;
   onOpenSocialProfile: () => void;
   onChangeRecovery: (entries: RecoveryEntry[]) => void;
@@ -65,6 +69,8 @@ interface Props {
 
 const RECOVERY_BLUE = ink("#38bdf8");
 const PROGRAM_AMBER = ink("#f59e0b");
+const PLAN_GREEN = ink("#22c55e");
+const AI_VIOLET = ink("#8b5cf6");
 
 /** EN-подписи (локально, чтобы не тянуть lang через весь lib). */
 const GOAL_EN: Record<FocusGoal, string> = {
@@ -78,6 +84,9 @@ export default function ProfileScreen({
   programs,
   focusGoal,
   onOpenPrograms,
+  onOpenAi,
+  activePlan,
+  onOpenPlan,
   onOpenAdmin,
   onOpenSocialProfile,
   onChangeRecovery,
@@ -303,7 +312,7 @@ export default function ProfileScreen({
         tabIndex={0}
         onClick={onOpenPrograms}
         sx={{
-          mb: 3,
+          mb: 1.5,
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -325,6 +334,24 @@ export default function ProfileScreen({
         </Box>
         <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
       </Card>
+
+      {/* План по датам и ИИ-помощник */}
+      {activePlan && (
+        <NavCard
+          color={PLAN_GREEN}
+          icon={<CalendarMonthIcon fontSize="small" />}
+          title={t("План", "Plan")}
+          subtitle={activePlan.name}
+          onClick={onOpenPlan}
+        />
+      )}
+      <NavCard
+        color={AI_VIOLET}
+        icon={<BoltIcon fontSize="small" />}
+        title={t("ИИ-помощник", "AI assistant")}
+        subtitle={t("План и тренировки от Claude или ChatGPT", "Plans & workouts from Claude or ChatGPT")}
+        onClick={onOpenAi}
+      />
 
       {/* Самочувствие */}
       <Typography variant="h2" sx={{ mt: 3, mb: 1.5 }}>
@@ -458,5 +485,22 @@ function RecoveryDialog({
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+function NavCard({ color, icon, title, subtitle, onClick }: { color: string; icon: React.ReactNode; title: string; subtitle: string; onClick: () => void }) {
+  return (
+    <Card role="button" tabIndex={0} onClick={onClick} sx={{ mb: 1.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 1.5 }}>
+      <IconBadge color={color}>{icon}</IconBadge>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+          {subtitle}
+        </Typography>
+      </Box>
+      <ChevronRightRoundedIcon sx={{ color: "text.secondary" }} />
+    </Card>
   );
 }

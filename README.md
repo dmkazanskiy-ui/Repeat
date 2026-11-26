@@ -9,6 +9,8 @@
 - **Программы.** Сплит A/B/C/D, волны нагрузки, готовые программы из библиотеки.
 - **Аналитика.** Итоги периода, обзор с графиком, прогресс силы по e1RM, рекорды, плато-детектор, мышечные группы, восстановление, тело (вес и замеры).
 - **Лента и профили.** Публичный профиль по желанию (фото с обрезкой, «о себе», виды спорта), лента тренировок с лайками, комментариями и подписками. По умолчанию всё закрыто.
+- **План по датам.** «Сегодня по плану»: утро/день/вечер с целями (длительность, пульс, каденс, наклон), «Начать» открывает тренировку уже заполненной, завершённая тренировка закрывает карточку; сетка неделя/месяц и итог «N из M», минуты бега/вела/дорожки план и факт.
+- **ИИ-помощник.** План и тренировки от Claude, ChatGPT и других ИИ: вставкой ответа (форматы `repeat-plan` / `repeat-workout`, `deploy/sync/ai_format.md`), через MCP-коннектор (OAuth со входом через Telegram) или по ключу API. Всё присланное ИИ попадает во «входящие» и записывается только после подтверждения; перед импортом — автобэкап, повторный импорт не создаёт дублей.
 - **Синхронизация** между устройствами через свой сервер; вход только через Telegram — в Mini App и в браузере (через бота).
 - **Админка** для владельца: люди, посещения, журнал событий, модерация.
 - Русский и английский, светлая и тёмная тема.
@@ -18,6 +20,7 @@
 - **Клиент:** React 19 + TypeScript + Vite, MUI. Данные — локально в IndexedDB, сервер — общая копия.
 - **Анимации:** свой маленький движок пружин (`src/lib/spring.ts`), компоненты пересобраны с [designbookmark.com/motion](https://designbookmark.com/motion) на тех же пружинах.
 - **Сервер:** `deploy/sync/server.py` — один файл на стандартной библиотеке Python (без зависимостей), за nginx на `/api/`. Данные — JSON-файлы в `/var/lib/repeat-sync`.
+- **ИИ:** `deploy/sync/agent.py` — MCP (Streamable HTTP) на `/api/mcp`, OAuth 2.1 (PKCE, динамическая регистрация) для коннекторов claude.ai/ChatGPT, REST `/api/v1/*` (+ OpenAPI для GPT), личные ключи `rpk_…`. Токены хранятся только хэшами.
 - **Bot API** идёт через Cloudflare Worker (`deploy/tg-relay/worker.js`): с VPS `api.telegram.org` недоступен.
 
 ## Структура
@@ -32,7 +35,7 @@ src/
   ui/                  — дизайн-система: Card, Tile, Section, Segmented, StepProgress, токены
   lib/                 — логика без UI: типы, хранилище, синк, вход, аналитика, соцчасть
 deploy/
-  sync/                — сервер синхронизации + тесты + unit systemd
+  sync/                — сервер синхронизации, agent.py (MCP/OAuth/REST для ИИ), ai_format.md, тесты, unit systemd
   tg-relay/            — прокси Bot API для Cloudflare Workers
   nginx-*.conf         — конфиги nginx
 public/                — политика, согласия (consent, share-consent)
@@ -56,7 +59,13 @@ python3 -m unittest deploy/sync/test_server.py   # тесты сервера
 
 ## Деплой
 
-`npm run deploy` (`deploy-server.sh`): сборка → тесты сервера → `server.py` на VPS и перезапуск `repeat-sync` → статика в `/var/www/repeat`.
+`npm run deploy` (`deploy-server.sh`): сборка → тесты сервера → `server.py`, `agent.py`, `ai_format.md` на VPS → nginx (только если конфиг изменился, с `nginx -t` и откатом) → перезапуск `repeat-sync` → статика в `/var/www/repeat`.
+
+### Подключить ИИ
+
+- claude.ai / Claude Desktop / ChatGPT: добавить свой коннектор с адресом `https://repeat.dm-kazanskiy.online/api/mcp`, войти через Telegram.
+- Claude Code: ключ в «Профиль → ИИ-помощник», затем `claude mcp add --transport http repeat https://repeat.dm-kazanskiy.online/api/mcp --header "Authorization: Bearer rpk_…"`.
+- Инструменты MCP: `get_context`, `list_workouts`, `get_plan`, `get_format`, `submit_plan`, `submit_workouts`.
 
 Настройки сервера — в `/etc/repeat-sync.env` (в репозитории их нет): `BOT_TOKEN`, `TG_API`, `TG_API_KEY`, `ADMIN_USERNAME`, `ALLOWED_USERS`.
 

@@ -18,6 +18,11 @@ const TAIL_MS = 2 * MIN;
 /** Длительность выше этого — заведомо зависший таймер. */
 export const OUTLIER_MS = 5 * 60 * MIN;
 
+function localDateKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function isRunning(s: Session): boolean {
   return Boolean(s.startedAt && !s.endedAt);
 }
@@ -56,7 +61,8 @@ function close(s: Session, endMs: number): Session {
 }
 
 /**
- * Закрыть брошенные тренировки. Силовая — если правок не было больше часа:
+ * Закрыть брошенные тренировки. Прошла полночь — закрываем вчерашнюю сразу:
+ * финиш = последняя активность + 2 минуты. Силовая — если правок не было больше часа:
  * финиш = последняя правка + 2 минуты. Кардио и прочие — если идут дольше
  * 4 часов: финиш = введённое время кардио или оценка. Старые записи без
  * отметки активности тоже получают оценку.
@@ -71,6 +77,13 @@ export function autoFinishStale(
     const start = Date.parse(s.startedAt!);
     if (Number.isNaN(start)) return s;
     const last = lastActivityMs(s);
+
+    // Наступила полночь, а тренировка вчерашняя — точно забыта.
+    if (s.date < localDateKey(nowMs)) {
+      closed++;
+      const end = last != null ? (s.pausedAt ? last : last + TAIL_MS) : start + (s.pausedMs ?? 0) + estimateDurationMs(s);
+      return close(s, Math.min(nowMs, end));
+    }
 
     if (isActiveKind(s) && last != null) {
       if (nowMs - last <= IDLE_LIMIT_MS) return s;

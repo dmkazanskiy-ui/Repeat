@@ -24,6 +24,9 @@ type Collection =
   | "bodyEntries"
   | "programs"
   | "recovery"
+  | "plans"
+  | "plannedSessions"
+  | "inbox"
   | "settings";
 
 interface Rec {
@@ -61,6 +64,9 @@ export function toRecords(d: BackupData): Map<string, Rec> {
   for (const b of d.bodyEntries) put("bodyEntries", b.id, b);
   for (const p of d.programs) put("programs", p.id, p);
   for (const r of d.recovery) put("recovery", r.id, r);
+  for (const p of d.plans ?? []) put("plans", p.id, p);
+  for (const p of d.plannedSessions ?? []) put("plannedSessions", p.id, p);
+  for (const i of d.inbox ?? []) put("inbox", i.id, i);
   if (d.focusGoal != null) put("settings", "focusGoal", d.focusGoal);
   if (d.consent != null) put("settings", "consent", d.consent);
   for (const [id, u] of Object.entries(d.exerciseUnits ?? {})) put("settings", `unit:${id}`, u);
@@ -94,6 +100,9 @@ export function fromRecords(recs: Map<string, Rec>, order: BackupData): BackupDa
     bodyEntries: pick("bodyEntries", order.bodyEntries, (b) => b.id),
     programs: pick("programs", order.programs, (p) => p.id),
     recovery: pick("recovery", order.recovery, (r) => r.id),
+    plans: pick("plans", order.plans ?? [], (p) => p.id),
+    plannedSessions: pick("plannedSessions", order.plannedSessions ?? [], (p) => p.id),
+    inbox: pick("inbox", order.inbox ?? [], (i) => i.id),
     focusGoal: goal ? (JSON.parse(goal.json) as BackupData["focusGoal"]) : null,
     consent: consent ? (JSON.parse(consent.json) as BackupData["consent"]) : null,
     exerciseUnits: Object.fromEntries(

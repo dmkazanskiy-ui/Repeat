@@ -15,6 +15,9 @@ function data(ids: string[]): BackupData {
     focusGoal: "strength",
     consent: { version: 1, at: "2026-11-17T10:00:00.000Z" },
     exerciseUnits: { leg_press: "lb" },
+    plans: [{ id: "plan1", name: "План", start: "2026-11-30", end: "2026-12-27", createdAt: "x" }],
+    plannedSessions: [{ id: "ps1", planId: "plan1", date: "2026-11-30", slot: "morning", kind: "cardio", title: "Бег", status: "done", linkedSessionId: ids[0] ?? null }],
+    inbox: [],
   };
 }
 const shadowOf = (d: BackupData) =>

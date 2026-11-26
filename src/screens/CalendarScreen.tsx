@@ -3,7 +3,6 @@ import { radius } from "../ui";
 import { CARD_IN } from "../theme";
 import { useMemo, useState } from "react";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
-import { formatDate, formatVolume } from "../lib/format";
 import { ChevronLeft as ChevronLeftIcon } from "../ui/icons";
 import { ChevronRight as ChevronRightIcon } from "../ui/icons";
 import { Add as AddIcon } from "../ui/icons";
@@ -11,6 +10,7 @@ import { ExpandMore as ExpandMoreIcon } from "../ui/icons";
 import { ExpandLess as ExpandLessIcon } from "../ui/icons";
 import SessionTimeline from "../components/SessionTimeline";
 import TodayGuide from "../components/TodayGuide";
+import { plannedOn } from "../lib/plan";
 import {
     weekdaysShort,
   addDays,
@@ -23,87 +23,10 @@ import {
   toDateKey,
 } from "../lib/format";
 import { datesWithSessions, sessionsOn } from "../lib/store";
-import { daySummary } from "../lib/analytics";
-import SummaryHero from "../components/analytics/SummaryHero";
-import type { HeroData } from "../components/analytics/SummaryHero";
+import DayHero from "../components/DayHero";
 import { useT } from "../lib/i18n";
-import { sessionDurationSec, sessionVolume } from "../lib/types";
-import type { Exercise, RecoveryEntry, Session, TrainingProgram } from "../lib/types";
+import type { Exercise, Plan, PlannedSession, RecoveryEntry, Session, TrainingProgram } from "../lib/types";
 
-/** Итог дня в формате hero-карточки аналитики (переиспользуем «Итоги недели»). */
-function buildDayHero(
-  dayList: Session[],
-  allSessions: Session[],
-  selected: string,
-  t: ReturnType<typeof useT>,
-): HeroData {
-  const sum = daySummary(dayList);
-
-  // Бары — неделя Пн–Вс, где лежит выбранный день. Высота = «активность» дня
-  // (тоннаж силовой / минуты кардио-мобилити / мелкий бар восстановления);
-  // подсвечен столбец выбранного дня (Пн → 1-й столбец и т.д.).
-  const week = weekGrid(selected);
-  const bars: number[] = [];
-  const rec: boolean[] = [];
-  const tips: { value: string; label: string }[] = [];
-  for (const key of week) {
-    const day = sessionsOn(allSessions, key);
-    let mag = 0;
-    let vol = 0;
-    let sec = 0;
-    for (const s of day) {
-      if (s.kind === "strength") {
-        const v = sessionVolume(s);
-        mag += v;
-        vol += v;
-      } else if (s.kind === "cardio" || s.kind === "mobility") {
-        const d = sessionDurationSec(s) ?? 0;
-        mag += d;
-        sec += d;
-      }
-    }
-    const parts: string[] = [];
-    if (vol > 0) parts.push(formatVolume(vol));
-    if (sec >= 60) parts.push(`${Math.round(sec / 60)} ${t("мин", "min")}`);
-    if (!parts.length && day.some((s) => s.kind === "recovery")) parts.push(t("восстановление", "recovery"));
-    tips.push({ value: parts.join(" · ") || t("отдых", "rest"), label: formatDate(key) });
-    bars.push(mag);
-    rec.push(mag <= 0 && day.some((s) => s.kind === "recovery"));
-  }
-  const highlightIndex = Math.max(0, week.indexOf(selected));
-
-  let volumeText = "—";
-  let volumeLabel = t("Тоннаж дня", "Day tonnage");
-  let volumeTick: { value: number; format: (v: number) => string } | undefined;
-  if (sum.tonnage > 0) {
-    volumeText = formatVolume(sum.tonnage);
-    volumeTick = { value: sum.tonnage, format: (v) => formatVolume(v) };
-  } else if (sum.durationSec >= 60) {
-    volumeText = `${Math.round(sum.durationSec / 60)} ${t("мин", "min")}`;
-    volumeTick = { value: Math.round(sum.durationSec / 60), format: (v) => `${Math.round(v)} ${t("мин", "min")}` };
-    volumeLabel = t("Активное время", "Active time");
-  }
-
-  const parts: string[] = [];
-  if (sum.sets > 0) parts.push(`${sum.sets} ${t("подх.", "sets")}`);
-  if (sum.tonnage > 0 && sum.durationSec >= 60) parts.push(`${Math.round(sum.durationSec / 60)} ${t("мин", "min")}`);
-  if (sum.distanceM > 0) parts.push(`${(Math.round(sum.distanceM / 100) / 10).toLocaleString(t("ru-RU", "en-US"))} ${t("км", "km")}`);
-
-  return {
-    title: t("Итог дня", "Day summary"),
-    changeLabel: "",
-    changePercent: null,
-    workoutsText: sum.shortHeadline,
-    daysText: parts.join(" · "),
-    volumeText,
-    volumeTick,
-    volumeLabel,
-    dailyVolume: bars,
-    barTips: tips,
-    recoveryDays: rec,
-    highlightIndex,
-  };
-}
 import type { FocusGoal } from "../lib/workoutBuilder";
 
 interface Props {
@@ -123,6 +46,13 @@ interface Props {
   onSuggest: () => void;
   onOpenLibrary: () => void;
   onRepeatLast: (session: Session) => void;
+  /** План по датам: карточки дня и действия с ними. */
+  plans?: Plan[];
+  plannedSessions?: PlannedSession[];
+  workoutNames?: Record<string, string>;
+  onStartPlanned?: (card: PlannedSession) => void;
+  onSkipPlanned?: (card: PlannedSession) => void;
+  onOpenPlan?: () => void;
   /** Сколько дней не обновлялся вес (null — свежий). Калории считаются по нему. */
   weightStaleDays?: number | null;
   onUpdateWeight?: () => void;
@@ -146,6 +76,12 @@ export default function CalendarScreen({
   onSuggest,
   onOpenLibrary,
   onRepeatLast,
+  plans = [],
+  plannedSessions = [],
+  workoutNames = {},
+  onStartPlanned,
+  onSkipPlanned,
+  onOpenPlan,
   weightStaleDays = null,
   onUpdateWeight,
   footer,
@@ -160,12 +96,14 @@ export default function CalendarScreen({
     () => (expanded ? monthGrid(cursor) : weekGrid(selected)),
     [expanded, cursor, selected],
   );
-  const marked = useMemo(() => datesWithSessions(sessions), [sessions]);
+  const marked = useMemo(() => {
+    const set = datesWithSessions(sessions);
+    const live = new Set(plans.filter((p) => !p.archivedAt).map((p) => p.id));
+    for (const p of plannedSessions) if (live.has(p.planId)) set.add(p.date);
+    return set;
+  }, [sessions, plans, plannedSessions]);
+  const dayPlan = useMemo(() => plannedOn(plannedSessions, plans, selected), [plannedSessions, plans, selected]);
   const dayList = sessionsOn(sessions, selected);
-  const dayHero = useMemo(
-    () => (dayList.length > 0 ? buildDayHero(dayList, sessions, selected, t) : null),
-    [dayList, sessions, selected, t],
-  );
   const todayKey = today();
   const cursorMonth = cursor.getMonth();
 
@@ -291,15 +229,22 @@ export default function CalendarScreen({
         sx={{ mt: 3, mb: 1.5, alignItems: "center", justifyContent: "space-between" }}
       >
         <Typography variant="h2">{formatDateFull(selected)}</Typography>
-        {selected !== todayKey && (
-          <Button size="small" onClick={goToday}>
-            {t("Сегодня", "Today")}
-          </Button>
-        )}
+        <Stack direction="row" spacing={0.5}>
+          {dayPlan.length > 0 && onOpenPlan && (
+            <Button size="small" onClick={onOpenPlan}>
+              {t("План", "Plan")}
+            </Button>
+          )}
+          {selected !== todayKey && (
+            <Button size="small" onClick={goToday}>
+              {t("Сегодня", "Today")}
+            </Button>
+          )}
+        </Stack>
       </Stack>
 
       {/* Итог дня — та же hero-карточка, что «Итоги недели» в аналитике. */}
-      {dayHero && <SummaryHero hero={dayHero} />}
+      {dayList.length > 0 && <DayHero dayList={dayList} allSessions={sessions} selected={selected} exercises={exercises} planned={dayPlan} />}
 
       {selected === todayKey && weightStaleDays != null && onUpdateWeight && (
         <Box
@@ -337,7 +282,7 @@ export default function CalendarScreen({
         </Box>
       )}
 
-      {dayList.length === 0 ? (
+      {dayList.length === 0 && dayPlan.length === 0 ? (
         selected === todayKey ? (
           // Проактивный «Сегодня»: пустой день не оставляем заглушкой, а ведём
           // пользователя к действию в один тап (что делать прямо сейчас).
@@ -362,6 +307,10 @@ export default function CalendarScreen({
       ) : (
         <SessionTimeline
           sessions={dayList}
+          planned={dayPlan}
+          workoutNames={workoutNames}
+          onOpenPlanned={onStartPlanned}
+          onSkipPlanned={onSkipPlanned}
           exercises={exercises}
           onOpen={onOpen}
           onDelete={onDelete}

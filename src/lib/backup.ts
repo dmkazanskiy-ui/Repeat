@@ -33,6 +33,9 @@ import type {
   BodyEntry,
   CustomActivity,
   Exercise,
+  InboxItem,
+  Plan,
+  PlannedSession,
   RecoveryEntry,
   Session,
   TrainingProgram,
@@ -65,6 +68,11 @@ export interface BackupData {
   consent?: Consent | null;
   /** Свои единицы веса упражнений (exerciseId → kg/lb). Вес везде в кг. */
   exerciseUnits?: ExerciseUnits;
+  /** Планы по датам и их карточки со статусами. */
+  plans?: Plan[];
+  plannedSessions?: PlannedSession[];
+  /** Входящие от ИИ (только синк, в выгрузку не идут). */
+  inbox?: InboxItem[];
 }
 
 interface BackupFile {
@@ -107,8 +115,10 @@ export function buildExport(
   const from = periodStart(period, to);
   // Справочники (программы, свои упражнения и виды, цель) — всегда целиком:
   // они маленькие и нужны, чтобы понять тренировки. Записи — по периоду.
+  const { inbox: _inbox, ...rest } = full;
+  void _inbox;
   const data: BackupData = {
-    ...full,
+    ...rest,
     sessions: full.sessions
       .filter((s) => inRange(s.date, from, to))
       .sort((a, b) => (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""))),
@@ -359,6 +369,8 @@ export function parseExport(text: string): ParseResult {
     recovery: Array.isArray(d.recovery) ? d.recovery : [],
     focusGoal: d.focusGoal ?? null,
     exerciseUnits: d.exerciseUnits && typeof d.exerciseUnits === "object" ? d.exerciseUnits : {},
+    plans: Array.isArray(d.plans) ? d.plans : [],
+    plannedSessions: Array.isArray(d.plannedSessions) ? d.plannedSessions : [],
   };
   return { ok: true, file };
 }
@@ -371,6 +383,7 @@ export interface MergePlan {
     customExercises: number;
     bodyEntries: number;
     recovery: number;
+    plannedSessions: number;
   };
   skipped: number;
 }
@@ -397,6 +410,8 @@ export function planMerge(current: BackupData, incoming: BackupData): MergePlan 
   const customExercises = mergeById(current.customExercises, incoming.customExercises);
   const bodyEntries = mergeById(current.bodyEntries, incoming.bodyEntries);
   const recovery = mergeById(current.recovery, incoming.recovery);
+  const plans = mergeById(current.plans ?? [], incoming.plans ?? []);
+  const plannedSessions = mergeById(current.plannedSessions ?? [], incoming.plannedSessions ?? []);
   return {
     next: {
       sessions: sessions.list,
@@ -408,6 +423,9 @@ export function planMerge(current: BackupData, incoming: BackupData): MergePlan 
       mobilityKinds: mergeByName(current.mobilityKinds, incoming.mobilityKinds),
       focusGoal: current.focusGoal ?? incoming.focusGoal,
       exerciseUnits: { ...(incoming.exerciseUnits ?? {}), ...(current.exerciseUnits ?? {}) },
+      plans: plans.list,
+      plannedSessions: plannedSessions.list,
+      inbox: current.inbox,
     },
     added: {
       sessions: sessions.added,
@@ -415,6 +433,7 @@ export function planMerge(current: BackupData, incoming: BackupData): MergePlan 
       customExercises: customExercises.added,
       bodyEntries: bodyEntries.added,
       recovery: recovery.added,
+      plannedSessions: plannedSessions.added,
     },
     skipped: incoming.sessions.length - sessions.added,
   };

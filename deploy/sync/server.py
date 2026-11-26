@@ -50,6 +50,10 @@ import urllib.request
 from collections import deque
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import agent  # noqa: E402  ИИ-ассистенты: ключи, OAuth, MCP, REST
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 DATA_DIR = os.environ.get("DATA_DIR", "/var/lib/repeat-sync")
@@ -81,6 +85,7 @@ EVENTS_MAX = 5 * 1024 * 1024
 COLLECTIONS = {
     "sessions", "customExercises", "cardioKinds", "mobilityKinds",
     "bodyEntries", "programs", "recovery", "settings",
+    "plans", "plannedSessions", "inbox",
 }
 
 lock = threading.Lock()
@@ -144,6 +149,9 @@ def load_meta() -> None:
         with open(meta_path(), encoding="utf-8") as f:
             data = json.load(f)
         META = {"admin": data.get("admin"), "users": data.get("users", {}), "sessions": data.get("sessions", {})}
+        for key in ("grants", "agent_tokens", "oauth_clients"):  # доступы ИИ (agent.py)
+            if isinstance(data.get(key), dict):
+                META[key] = data[key]
     except FileNotFoundError:
         pass
 
@@ -789,6 +797,7 @@ def delete_account(uid: str) -> dict:
             save_meta()
     forget_events(uid)
     forget_social(uid)
+    agent.forget_user(uid)
     log_event("account_deleted")  # без id: человек отозвал согласие
     return {"deleted": True}
 
@@ -1269,6 +1278,72 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _raw(self, code: int, body: bytes, ctype: str = "application/json; charset=utf-8", headers=None, cors: bool = False) -> None:
+        self.send_response(code)
+        if body or code not in (202, 204):
+            self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if cors:
+            self._cors()
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _cors(self) -> None:
+        # ИИ-клиенты в браузере (инспекторы MCP) ходят с чужого origin; доступ — только по токену.
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, Mcp-Protocol-Version, Mcp-Session-Id")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Expose-Headers", "WWW-Authenticate, Mcp-Session-Id")
+
+    def _json(self, code: int, payload, headers=None, cors: bool = True) -> None:
+        body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode()
+        self._raw(code, body, headers=headers, cors=cors)
+
+    def _raw_body(self) -> bytes:
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise ApiError(400, "bad request")
+        if length < 0 or length > MAX_BODY:
+            raise ApiError(413, "bad size")
+        return self.rfile.read(length) if length else b""
+
+    def _form(self) -> dict:
+        raw = self._raw_body().decode("utf-8", "replace")
+        if (self.headers.get("Content-Type") or "").startswith("application/json"):
+            try:
+                data = json.loads(raw or "{}")
+                return {k: str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+            except ValueError:
+                return {}
+        return {k: v[0] for k, v in urllib.parse.parse_qs(raw).items()}
+
+    def _agent(self) -> dict:
+        ident = agent.agent_ident(self.headers.get("Authorization", ""))
+        if not ident:
+            raise ApiError(401, "unauthorized")
+        return ident
+
+    def _handle_agent(self, fn) -> None:
+        """Ручки для ИИ: CORS и WWW-Authenticate при 401."""
+        try:
+            self._json(200, fn())
+        except ApiError as e:
+            hdr = {"WWW-Authenticate": agent.www_authenticate()} if e.code == 401 else None
+            self._json(e.code, {"error": e.error}, headers=hdr)
+        except Exception:
+            self._json(500, {"error": "server"})
+
+    def do_OPTIONS(self):
+        self._raw(204, b"", cors=True)
+
+    def do_DELETE(self):
+        self._json(405, {"error": "method not allowed"}, headers={"Allow": "POST"})
+
     def _auth(self) -> dict:
         auth = self.headers.get("Authorization", "")
         ident = None
@@ -1330,6 +1405,24 @@ class Handler(BaseHTTPRequestHandler):
         path, _, qs = self.path.partition("?")
         if path == "/api/health":
             return self._send(200, {"ok": True})
+        # ── ИИ-ассистенты (agent.py) ──
+        if path.startswith("/.well-known/oauth-protected-resource"):
+            return self._json(200, agent.protected_resource_meta())
+        if path.startswith("/.well-known/oauth-authorization-server") or path == "/.well-known/openid-configuration":
+            return self._json(200, agent.auth_server_meta())
+        if path == "/api/mcp":
+            return self._json(405, {"error": "use POST"}, headers={"Allow": "POST"})
+        if path == "/api/oauth/authorize":
+            code, page = agent.authorize_page(urllib.parse.parse_qs(qs))
+            return self._raw(code, page.encode(), "text/html; charset=utf-8", headers={"X-Frame-Options": "DENY"})
+        if path == "/api/oauth/whoami":
+            return self._handle(lambda: {"ok": bool(self._auth())})
+        if path == "/api/agent/keys":
+            return self._handle(lambda: agent.list_grants(self._auth()["uid"]))
+        if path == "/api/v1/openapi.json":
+            return self._json(200, agent.openapi())
+        if path.startswith("/api/v1/"):
+            return self._handle_agent(lambda: agent.rest_get(self._agent(), path, urllib.parse.parse_qs(qs)))
         if path == "/api/auth/config":
             return self._handle(lambda: {"bot": bot_username(), "web": bool(bot_username()) and bot_info["polling"] == "on"})
         if path.startswith("/api/social/avatar/") and path.endswith(".jpg"):
@@ -1371,6 +1464,47 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        path = self.path.partition("?")[0]
+        # ── ИИ-ассистенты (agent.py) ──
+        if path == "/api/mcp":
+            try:
+                raw = self._raw_body()
+                try:
+                    body = json.loads(raw) if raw else None
+                except (ValueError, RecursionError):
+                    return self._json(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+                code, hdr, payload = agent.handle_mcp(self.headers.get("Authorization", ""), body)
+                return self._json(code, payload, headers=hdr)
+            except ApiError as e:
+                return self._json(e.code, {"error": e.error})
+            except Exception:
+                return self._json(500, {"error": "server"})
+        if path == "/api/oauth/register":
+            try:
+                code, out = agent.register_client(self._body())
+            except ApiError as e:
+                code, out = e.code, {"error": e.error}
+            return self._json(code, out)
+        if path == "/api/oauth/token":
+            try:
+                code, out = agent.token(self._form(), self.headers.get("Authorization", ""))
+            except ApiError as e:
+                code, out = e.code, {"error": e.error}
+            return self._json(code, out)
+        if path == "/api/oauth/revoke":
+            try:
+                code, out = agent.revoke_token(self._form())
+            except ApiError as e:
+                code, out = e.code, {"error": e.error}
+            return self._json(code, out)
+        if path == "/api/oauth/approve":
+            return self._handle(lambda: agent.approve(self._auth()["uid"], self._body()))
+        if path == "/api/agent/keys":
+            return self._handle(lambda: agent.create_key(self._auth()["uid"], self._body_or_empty()))
+        if path == "/api/agent/keys/revoke":
+            return self._handle(lambda: agent.revoke(self._auth()["uid"], self._body()))
+        if path.startswith("/api/v1/"):
+            return self._handle_agent(lambda: agent.rest_post(self._agent(), path, self._body()))
         if self.path == "/api/sync":
             return self._handle(lambda: sync(self._auth()["uid"], self._body()))
         if self.path == "/api/hello":
@@ -1399,6 +1533,8 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # без IP и initData в логах
         pass
 
+
+agent.bind(sys.modules[__name__])
 
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)

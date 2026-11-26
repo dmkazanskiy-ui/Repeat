@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -49,8 +49,18 @@ import {
   savePrograms,
   saveRecovery,
   saveSessions,
+  saveInbox,
+  saveLocalBackup,
+  savePlanned,
+  savePlans,
   startProgramWorkout,
 } from "./lib/store";
+import { applyImport, type PreparedImport } from "./lib/aiFormat";
+import { activityLabel, coldAfterStrength, COLD_TYPES, goalLine, reconcilePlanned } from "./lib/plan";
+import { lastWorkingWeight } from "./lib/exerciseSuggest";
+import PlanScreen from "./screens/PlanScreen";
+import AiScreen from "./screens/AiScreen";
+import AiImportDialog from "./components/AiImportDialog";
 import { newId } from "./lib/id";
 import type { BackupData } from "./lib/backup";
 import { setTelegramBack } from "./lib/telegram";
@@ -101,10 +111,15 @@ import type {
   BodyEntry,
   CustomActivity,
   Exercise,
+  InboxItem,
   MuscleGroup,
+  Plan,
+  PlannedSession,
+  PlannedStatus,
   RecoveryEntry,
   Session,
   SessionKind,
+  TodoItem,
   TrainingProgram,
 } from "./lib/types";
 
@@ -128,6 +143,12 @@ export default function App() {
   const [bodyEntries, setBodyEntries] = useState<BodyEntry[]>([]);
   const [programs, setPrograms] = useState<TrainingProgram[]>([]);
   const [recovery, setRecovery] = useState<RecoveryEntry[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plannedSessions, setPlannedSessions] = useState<PlannedSession[]>([]);
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  const [showPlan, setShowPlan] = useState(false);
+  const [showAi, setShowAi] = useState(false);
+  const [aiImportOpen, setAiImportOpen] = useState(false);
   const [focusGoal, setFocusGoal] = useState<FocusGoal | null>(null);
   const [onboarded, setOnboarded] = useState(true);
   const [consent, setConsent] = useState<Consent | null>(null);
@@ -204,6 +225,9 @@ export default function App() {
       setPrograms(programsFixed);
       if (programsFixed.some((p, i) => p !== data.programs[i])) void savePrograms(programsFixed);
       setRecovery(data.recovery);
+      setPlans(data.plans);
+      setPlannedSessions(data.plannedSessions);
+      setInbox(data.inbox);
       setFocusGoal(data.focusGoal);
       // Онбординг — только для новых: если уже есть тренировки, не показываем.
       setOnboarded(data.onboarded || data.sessions.length > 0);
@@ -280,6 +304,9 @@ export default function App() {
   const createSession = useCallback(
     (kind: SessionKind, options: CreateOptions) => {
       const session = newSession(selected, kind, options);
+      if (session.recovery && COLD_TYPES.has(session.recovery.type) && coldAfterStrength(selected, sessions, plannedRef.current)) {
+        setToast(L("В день силовой холодную купель лучше пропустить — она гасит адаптацию", "Skip the cold plunge on a strength day — it blunts adaptation"));
+      }
       commit([...sessions, session]);
       setOpenId(session.id);
       setEditing(true);
@@ -459,6 +486,24 @@ export default function App() {
     void savePrograms(next);
   }, []);
 
+  const commitPlans = useCallback((next: Plan[]) => {
+    setPlans(next);
+    void savePlans(next);
+  }, []);
+
+  const plannedRef = useRef<PlannedSession[]>([]);
+  plannedRef.current = plannedSessions;
+  const commitPlanned = useCallback((next: PlannedSession[]) => {
+    plannedRef.current = next;
+    setPlannedSessions(next);
+    void savePlanned(next);
+  }, []);
+
+  const commitInbox = useCallback((next: InboxItem[]) => {
+    setInbox(next);
+    void saveInbox(next);
+  }, []);
+
   // Снимок для выгрузки истории (без фото) и восстановление из вставки.
   const backupData: BackupData = {
     sessions,
@@ -471,6 +516,9 @@ export default function App() {
     focusGoal,
     consent,
     exerciseUnits,
+    plans,
+    plannedSessions,
+    inbox,
   };
   // Синхронизация между устройствами (только в Telegram, см. lib/sync).
   // Пришедшие с сервера данные кладём напрямую, минуя commit: он ставит
@@ -501,6 +549,12 @@ export default function App() {
     void saveFocusGoal(next.focusGoal);
     setExerciseUnits(next.exerciseUnits ?? {});
     void dbSet(EXERCISE_UNITS_KEY, next.exerciseUnits ?? {});
+    setPlans(next.plans ?? []);
+    void savePlans(next.plans ?? []);
+    setPlannedSessions(next.plannedSessions ?? []);
+    void savePlanned(next.plannedSessions ?? []);
+    setInbox(next.inbox ?? []);
+    void saveInbox(next.inbox ?? []);
     if (next.sessions.length > 0) {
       setOnboarded(true);
       void saveOnboarded(true);
@@ -517,7 +571,7 @@ export default function App() {
     if (!ready) return;
     const id = window.setTimeout(() => void doSync(), 1500);
     return () => window.clearTimeout(id);
-  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent, exerciseUnits]);
+  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent, exerciseUnits, plans, plannedSessions, inbox]);
 
   /** Единица для упражнения: совпадает с общей — снимаем свою, иначе запоминаем. */
   const changeExerciseUnit = useCallback((exerciseId: string, unit: WeightUnit) => {
@@ -584,6 +638,14 @@ export default function App() {
         setExerciseUnits(next.exerciseUnits);
         void dbSet(EXERCISE_UNITS_KEY, next.exerciseUnits);
       }
+      if (next.plans) {
+        setPlans(next.plans);
+        void savePlans(next.plans);
+      }
+      if (next.plannedSessions) {
+        setPlannedSessions(next.plannedSessions);
+        void savePlanned(next.plannedSessions);
+      }
       // Восстановили историю — онбординг больше не нужен.
       setOnboarded(true);
       void saveOnboarded(true);
@@ -645,10 +707,26 @@ export default function App() {
   );
 
   const startProgramDay = useCallback(
-    (program: TrainingProgram, index: number, deload: boolean, date = today()) => {
-      const workout = [...program.workouts].sort((a, b) => a.order - b.order)[index];
+    (
+      program: TrainingProgram,
+      index: number,
+      deload: boolean,
+      date = today(),
+      fromPlan?: { plannedSessionId: string; time?: string | null },
+    ) => {
+      let workout = [...program.workouts].sort((a, b) => a.order - b.order)[index];
       if (!workout) return;
       const last = lastSessionOfWorkout(sessions, workout.id);
+      // Первый раз по плану: где у плана нет стартового веса — последний
+      // рабочий вес этого упражнения из истории.
+      if (!last && fromPlan) {
+        workout = {
+          ...workout,
+          exercises: workout.exercises.map((pe) =>
+            pe.targetWeight != null ? pe : { ...pe, targetWeight: lastWorkingWeight(sessions, pe.exerciseId) },
+          ),
+        };
+      }
       const ready = readiness(sessions, recovery, date);
       const acwr = acuteChronicLoad(sessions, date);
       // Готовность и нагрузка дают модификатор дня; он одинаково подчиняет себе
@@ -679,6 +757,7 @@ export default function App() {
               readinessScore: ready.score,
               readinessHasSignal: ready.hasSignal,
               acwrLevel: acwr.level,
+              progression: program.progression,
             });
       const session = startProgramWorkout(
         { ...program, currentWorkoutIndex: index },
@@ -690,6 +769,15 @@ export default function App() {
       // Лёгкая неделя — это разгрузка: в плато и базовую нагрузку не идёт.
       session.deload = deload || Boolean(weekType?.light);
       session.weekType = weekType ? { id: weekType.id, name: weekType.name } : null;
+      if (fromPlan) {
+        session.plannedSessionId = fromPlan.plannedSessionId;
+        if (fromPlan.time) session.time = fromPlan.time;
+        commitPlanned(
+          plannedRef.current.map((p) =>
+            p.id === fromPlan.plannedSessionId ? { ...p, linkedSessionId: session.id, updatedAt: new Date().toISOString() } : p,
+          ),
+        );
+      }
       commit([...sessions, session]);
       if (wave?.hasSignal) setToast(waveToast(wave, exercises));
       else if (plan?.hasSignal) setToast(autoregToast(plan, exercises));
@@ -709,9 +797,116 @@ export default function App() {
       setOpenId(session.id);
       setEditing(true);
     },
-    [sessions, programs, recovery, exercises, commit, commitPrograms],
+    [sessions, programs, recovery, exercises, commit, commitPrograms, commitPlanned],
   );
 
+  // ───── План по датам ─────
+
+  // Названия тренировок программ — подпись силовой карточки плана («День Б: квадрицепс / руки»).
+  const workoutNames = useMemo(
+    () => Object.fromEntries(programs.flatMap((p) => p.workouts.map((w) => [w.id, `${w.name} · ${w.exercises.length} ${L("упр.", "ex.")}`]))),
+    [programs],
+  );
+
+  // Тренировку закрыли/удалили — карточки плана сверяются сами.
+  useEffect(() => {
+    if (!ready) return;
+    const next = reconcilePlanned(plannedSessions, sessions);
+    if (next !== plannedSessions) commitPlanned(next);
+  }, [ready, sessions, plannedSessions, commitPlanned]);
+
+  const setPlannedStatus = useCallback(
+    (card: PlannedSession, status: PlannedStatus, linkedSessionId?: string | null) => {
+      commitPlanned(
+        plannedRef.current.map((p) =>
+          p.id === card.id
+            ? { ...p, status, linkedSessionId: linkedSessionId !== undefined ? linkedSessionId : p.linkedSessionId, updatedAt: new Date().toISOString() }
+            : p,
+        ),
+      );
+    },
+    [commitPlanned],
+  );
+
+  /** «Начать» на карточке плана: силовая — из программы, остальное — нужного вида. */
+  const startPlanned = useCallback(
+    (card: PlannedSession) => {
+      const linked = card.linkedSessionId ? sessions.find((s) => s.id === card.linkedSessionId) : undefined;
+      if (card.status === "skipped") setPlannedStatus(card, "planned");
+      if (linked) {
+        setOpenId(linked.id);
+        setEditing(!isDone(linked));
+        return;
+      }
+      if (card.kind === "strength" && card.programWorkoutId) {
+        const program = programs.find((p) => p.workouts.some((w) => w.id === card.programWorkoutId));
+        if (program) {
+          const index = [...program.workouts].sort((a, b) => a.order - b.order).findIndex((w) => w.id === card.programWorkoutId);
+          startProgramDay(program, index, false, card.date, { plannedSessionId: card.id, time: card.time });
+          return;
+        }
+      }
+      const session = newSession(card.date, card.kind, {
+        cardioKind: card.cardioKind ?? null,
+        mobilityKind: card.mobilityKind ?? null,
+        recoveryType: card.recoveryType ?? null,
+        customKind: card.customKind ?? null,
+      });
+      session.plannedSessionId = card.id;
+      if (card.time) session.time = card.time;
+      // Свой заголовок плана («Бег с клубом») — это обычная тренировка вида «Бег» с названием.
+      if (card.title && card.title !== activityLabel(card)) session.title = card.title;
+      if (session.cardio && card.inclineDeg != null) session.cardio.inclineDeg = card.inclineDeg;
+      // Цели плана — чек-листом в тренировке (у восстановления — в заметке).
+      const goals = [goalLine({ ...card, optional: false }), card.note].filter(Boolean) as string[];
+      if (session.recovery) {
+        session.recovery.note = goals.join(" · ") || null;
+      } else {
+        const todos: TodoItem[] = goals
+          .flatMap((g) => g.split(" · "))
+          .map((text) => ({ id: newId(), text, done: false }));
+        if (todos.length) session.todos = todos;
+      }
+      if (session.recovery && COLD_TYPES.has(session.recovery.type) && coldAfterStrength(card.date, sessions, plannedSessions)) {
+        setToast(L("В день силовой холодную купель лучше пропустить — она гасит адаптацию", "Skip the cold plunge on a strength day — it blunts adaptation"));
+      }
+      commitPlanned(
+        plannedRef.current.map((p) => (p.id === card.id ? { ...p, linkedSessionId: session.id, updatedAt: new Date().toISOString() } : p)),
+      );
+      commit([...sessions, session]);
+      setSelected(card.date);
+      setOpenId(session.id);
+      setEditing(true);
+    },
+    [sessions, programs, plannedSessions, startProgramDay, commit, commitPlanned, setPlannedStatus],
+  );
+
+  const archivePlan = useCallback(
+    (id: string) => {
+      commitPlans(plans.map((p) => (p.id === id ? { ...p, archivedAt: new Date().toISOString() } : p)));
+      setShowPlan(false);
+    },
+    [plans, commitPlans],
+  );
+
+  /** Применить импорт от ИИ/файла: сначала автобэкап, потом только добавление. */
+  const applyAiImport = useCallback(
+    async (prep: PreparedImport, archiveProgramIds: string[]) => {
+      await saveLocalBackup(backupRef.current);
+      const next = applyImport(prep, { exercises, programs, plans, plannedSessions, sessions }, archiveProgramIds);
+      if (next.exercises !== exercises) {
+        setExercises(next.exercises);
+        void saveCustomExercises(next.exercises);
+      }
+      commitPrograms(next.programs);
+      commitPlans(next.plans);
+      commitPlanned(next.plannedSessions);
+      if (next.sessions.length !== sessions.length) commit(next.sessions);
+      if (prep.range && prep.kind === "plan") setSelected(prep.range.start <= today() && today() <= prep.range.end ? today() : prep.range.start);
+      setTab("calendar");
+    },
+    [exercises, programs, plans, plannedSessions, sessions, commit, commitPrograms, commitPlans, commitPlanned],
+  );
 
   // Открыть лист «Новая тренировка»: обычный выбор или сразу мастер «Тренер».
   const openCreate = useCallback((step: "kind" | "goal" = "kind") => {
@@ -789,6 +984,10 @@ export default function App() {
           ? popSocial
           : showAdmin && account.admin
           ? () => setShowAdmin(false)
+          : showAi
+          ? () => setShowAi(false)
+          : showPlan
+          ? () => setShowPlan(false)
           : showPrograms
             ? () => setShowPrograms(false)
             : open
@@ -879,6 +1078,33 @@ export default function App() {
           </Suspense>
         ) : showAdmin && account.admin ? (
           <AdminScreen onBack={() => setShowAdmin(false)} />
+        ) : showAi ? (
+          <AiScreen
+            authed={account.authed}
+            sessions={sessions}
+            exercises={exercises}
+            programs={programs}
+            plans={plans}
+            plannedSessions={plannedSessions}
+            bodyEntries={bodyEntries}
+            onBack={() => setShowAi(false)}
+            onImport={() => setAiImportOpen(true)}
+          />
+        ) : showPlan ? (
+          <PlanScreen
+            plans={plans}
+            plannedSessions={plannedSessions}
+            sessions={sessions}
+            programs={programs}
+            selected={selected}
+            onBack={() => setShowPlan(false)}
+            onOpenDay={(date) => {
+              setSelected(date);
+              setShowPlan(false);
+              setTab("calendar");
+            }}
+            onArchive={archivePlan}
+          />
         ) : showPrograms ? (
           <ProgramsScreen
             programs={programs}
@@ -996,6 +1222,12 @@ export default function App() {
                   onSuggest={() => openCreate("goal")}
                   onOpenLibrary={() => setShowPrograms(true)}
                   onRepeatLast={repeatSession}
+                  plans={plans}
+                  plannedSessions={plannedSessions}
+                  workoutNames={workoutNames}
+                  onStartPlanned={startPlanned}
+                  onSkipPlanned={(card) => setPlannedStatus(card, card.status === "skipped" ? "planned" : "skipped")}
+                  onOpenPlan={() => setShowPlan(true)}
                   weightStaleDays={weightStaleDays}
                   onUpdateWeight={() => {
                     // Форма веса живёт в «Прогресс → Тело» — открываем её сразу.
@@ -1063,6 +1295,9 @@ export default function App() {
                 programs={programs}
                 focusGoal={focusGoal}
                 onOpenPrograms={() => setShowPrograms(true)}
+                onOpenAi={() => setShowAi(true)}
+                activePlan={plans.find((p) => !p.archivedAt && p.end >= today()) ?? null}
+                onOpenPlan={() => setShowPlan(true)}
                 onOpenAdmin={() => setShowAdmin(true)}
                 onOpenSocialProfile={() => pushSocial({ v: "edit" })}
                 onChangeRecovery={changeRecovery}
@@ -1125,7 +1360,7 @@ export default function App() {
 
       {/* Плавающий стеклянный таб-бар поверх контента (в духе iOS 26).
           По ширине совпадает с контентом (maxWidth sm), с подписями. */}
-      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !(showAdmin && account.admin) && !socialTop && (
+      {ready && !open && !programBeingEdited && !programBeingViewed && !showPrograms && !showPlan && !showAi && !(showAdmin && account.admin) && !socialTop && (
         <Box
           sx={{
             position: "fixed",
@@ -1189,6 +1424,19 @@ export default function App() {
             />
           </Box>
         </Box>
+      )}
+      {/* Вставка от ИИ: вручную или пришедшее через API/MCP во «входящие». */}
+      {ready && (aiImportOpen || (inbox.length > 0 && isConsentValid(consent))) && (
+        <AiImportDialog
+          key={aiImportOpen ? "manual" : inbox[0]?.id}
+          inboxItem={aiImportOpen ? null : inbox[0]}
+          ctx={{ exercises, programs, plans, plannedSessions, sessions }}
+          onApply={applyAiImport}
+          onClose={() => {
+            if (aiImportOpen) setAiImportOpen(false);
+            else commitInbox(inbox.slice(1));
+          }}
+        />
       )}
     </ThemeProvider>
     </LangContext.Provider>

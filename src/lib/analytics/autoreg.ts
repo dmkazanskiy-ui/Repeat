@@ -9,7 +9,7 @@ import { fmtWeight, unitLabel } from "../units";
 // Всё это ПРЕДЛОЖЕНИЕ: значения предзаполняются, но редактируемы и пропускаемы.
 
 import { countedSession } from "../types";
-import type { Exercise, ProgramWorkout, Session, SessionExercise } from "../types";
+import type { Exercise, ProgramWorkout, ProgressionRule, Session, SessionExercise } from "../types";
 import { classifyExercise } from "./muscles";
 import type { AcwrLevel } from "./sessionLoad";
 import { isWorkingSet } from "./metrics";
@@ -20,9 +20,29 @@ export type DayModifier = "easy" | "normal" | "push";
 
 const LOWER_BODY = new Set(["quads", "hamstrings", "glutes"]);
 
-/** Шаг прибавки веса: ноги/крупные компаунды +5, остальное +2.5. */
-export function weightIncrement(exerciseId: string, exercises: Exercise[]): number {
+// Гантели и изоляция (одна мышца, один сустав) прибавляют мельче штанги.
+const DUMBBELL = /гантел|dumbbell/i;
+const ISOLATION = /мах|развед|свед|бабочк|разгибан|сгибан|молот|бицепс|француз|носк|подъ[её]м ног|скруч|канат|lateral|fly|curl|extension|raise/i;
+
+/**
+ * Шаг прибавки веса. Без правила программы: ноги/крупные компаунды +5,
+ * остальное +2.5. С правилом двойной прогрессии: штанга и тренажёры —
+ * `stepKg`, гантели и изоляция — `dumbbellStepKg`, лёгкие (до `lightBelowKg`)
+ * — `lightStepKg`.
+ */
+export function weightIncrement(
+  exerciseId: string,
+  exercises: Exercise[],
+  rule?: ProgressionRule | null,
+  currentWeight?: number | null,
+): number {
   const ex = exercises.find((e) => e.id === exerciseId);
+  if (rule) {
+    const small = ex ? DUMBBELL.test(ex.name) || ISOLATION.test(ex.name) : false;
+    if (!small) return rule.stepKg;
+    const light = rule.lightBelowKg != null && currentWeight != null && currentWeight < rule.lightBelowKg;
+    return light && rule.lightStepKg ? rule.lightStepKg : (rule.dumbbellStepKg ?? rule.stepKg);
+  }
   if (!ex) return 2.5;
   const primary = classifyExercise(ex).muscles[0];
   return primary && LOWER_BODY.has(primary.muscle) ? 5 : 2.5;
@@ -94,6 +114,8 @@ export interface AutoregInput {
   readinessScore: number | null; // 0–1 или null
   readinessHasSignal: boolean;
   acwrLevel: AcwrLevel;
+  /** Правило прогрессии программы (шаги прибавки). */
+  progression?: ProgressionRule | null;
 }
 
 /** Построить план авторегуляции для дня программы. */
@@ -114,7 +136,7 @@ export function autoregPlan(input: AutoregInput): AutoregPlan {
       const { baseWeight, reps } = prevPerformance(prev);
       const repMin = pe.targetRepMin ?? null;
       const repMax = pe.targetRepMax ?? repMin;
-      const inc = weightIncrement(pe.exerciseId, exercises);
+      const inc = weightIncrement(pe.exerciseId, exercises, input.progression, baseWeight);
       let sets = Math.max(1, pe.targetSets || 1);
 
       let action: ProgressAction = "hold";
