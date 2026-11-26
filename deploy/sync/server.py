@@ -54,6 +54,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent  # noqa: E402  ИИ-ассистенты: ключи, OAuth, MCP, REST
+import morning  # noqa: E402  утренняя сводка из Garmin
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 DATA_DIR = os.environ.get("DATA_DIR", "/var/lib/repeat-sync")
@@ -149,7 +150,7 @@ def load_meta() -> None:
         with open(meta_path(), encoding="utf-8") as f:
             data = json.load(f)
         META = {"admin": data.get("admin"), "users": data.get("users", {}), "sessions": data.get("sessions", {})}
-        for key in ("grants", "agent_tokens", "oauth_clients", "agent_idem"):  # доступы ИИ (agent.py)
+        for key in ("grants", "agent_tokens", "oauth_clients", "agent_idem", "morning"):  # доступы ИИ, утренняя сводка
             if isinstance(data.get(key), dict):
                 META[key] = data[key]
     except FileNotFoundError:
@@ -1265,6 +1266,19 @@ def forget_social(uid: str) -> None:
             pass
 
 
+def morning_status(uid: str) -> dict:
+    """Утренняя сводка доступна владельцу ключа Garmin (админу)."""
+    mine = uid == morning.owner()
+    rec = META.get("morning", {}).get(uid, {}) if mine else {}
+    return {"available": mine and morning.configured(), "lastDate": rec.get("date"), "sent": rec.get("sent")}
+
+
+def morning_run(uid: str) -> dict:
+    if uid != morning.owner():
+        raise ApiError(403, "forbidden")
+    return morning.run(uid, force=True)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "repeat-sync"
     sys_version = ""
@@ -1421,6 +1435,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._handle(lambda: {"ok": bool(self._auth())})
         if path == "/api/agent/keys":
             return self._handle(lambda: agent.list_grants(self._auth()["uid"]))
+        if path == "/api/morning/status":
+            return self._handle(lambda: morning_status(self._auth()["uid"]))
         if path == "/api/v1/openapi.json":
             return self._json(200, agent.openapi())
         if path.startswith("/api/v1/"):
@@ -1503,6 +1519,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._handle(lambda: agent.approve(self._auth()["uid"], self._body()))
         if path == "/api/agent/keys":
             return self._handle(lambda: agent.create_key(self._auth()["uid"], self._body_or_empty()))
+        if path == "/api/morning/run":
+            return self._handle(lambda: morning_run(self._auth()["uid"]))
         if path == "/api/agent/keys/revoke":
             return self._handle(lambda: agent.revoke(self._auth()["uid"], self._body()))
         if path.startswith("/api/v1/"):
@@ -1537,6 +1555,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 agent.bind(sys.modules[__name__])
+morning.bind(sys.modules[__name__], agent)
 
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -1545,4 +1564,6 @@ if __name__ == "__main__":
     threading.Thread(target=flusher, daemon=True).start()
     if BOT_TOKEN and BOT_POLL:
         threading.Thread(target=bot_loop, daemon=True).start()
+    if morning.configured():
+        threading.Thread(target=morning.loop, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

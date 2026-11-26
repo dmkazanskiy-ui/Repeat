@@ -69,6 +69,7 @@ export function toRecords(d: BackupData): Map<string, Rec> {
   for (const i of d.inbox ?? []) put("inbox", i.id, i);
   if (d.focusGoal != null) put("settings", "focusGoal", d.focusGoal);
   if (d.consent != null) put("settings", "consent", d.consent);
+  if (d.morning != null) put("settings", "morning", d.morning);
   for (const [id, u] of Object.entries(d.exerciseUnits ?? {})) put("settings", `unit:${id}`, u);
   return out;
 }
@@ -92,6 +93,7 @@ export function fromRecords(recs: Map<string, Rec>, order: BackupData): BackupDa
   };
   const goal = recs.get(k("settings", "focusGoal"));
   const consent = recs.get(k("settings", "consent"));
+  const morning = recs.get(k("settings", "morning"));
   return {
     sessions: pick("sessions", order.sessions, (s) => s.id),
     customExercises: pick("customExercises", order.customExercises, (e) => e.id),
@@ -105,6 +107,7 @@ export function fromRecords(recs: Map<string, Rec>, order: BackupData): BackupDa
     inbox: pick("inbox", order.inbox ?? [], (i) => i.id),
     focusGoal: goal ? (JSON.parse(goal.json) as BackupData["focusGoal"]) : null,
     consent: consent ? (JSON.parse(consent.json) as BackupData["consent"]) : null,
+    morning: morning ? (JSON.parse(morning.json) as BackupData["morning"]) : null,
     exerciseUnits: Object.fromEntries(
       [...recs.values()]
         .filter((r) => r.c === "settings" && r.id.startsWith("unit:"))

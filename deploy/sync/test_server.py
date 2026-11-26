@@ -291,6 +291,41 @@ class ServerTest(unittest.TestCase):
         server.delete_account("111")
         self.assertEqual(agent.handle_mcp("Bearer " + tok2["access_token"], {"jsonrpc": "2.0", "id": 3, "method": "ping"})[0], 401)
 
+    def test_morning_summary(self):
+        morning = server.morning
+        server.hello(self.ident(ADMIN), {})
+        day = morning.local_now().date()
+        days = {}
+        for i in range(1, 21):
+            d = (day - __import__("datetime").timedelta(days=i)).isoformat()
+            days[d] = {"date": d, "hrvMs": 60, "restingHr": 48, "sleepMin": 450}
+        y = (day - __import__("datetime").timedelta(days=1)).isoformat()
+        days[y]["hrvMs"] = 50
+        days[day.isoformat()] = {"date": day.isoformat(), "hrvMs": 51, "restingHr": 49, "sleepMin": 400, "sleepScore": 70}
+        morning.collect = lambda d, back=30: {"days": days, "garmin": {"status": "LOW"}}
+        morning.configured = lambda: True
+        server.sync("111", {"since": 0, "changes": [
+            {"c": "plans", "id": "p", "ts": 1, "data": {"id": "p", "name": "План", "start": "2026-01-01", "end": "2027-01-01"}},
+            {"c": "plannedSessions", "id": "c", "ts": 1, "data": {"id": "c", "planId": "p", "date": day.isoformat(), "time": "05:45", "kind": "strength", "title": "Зал Б", "status": "planned"}},
+        ]})
+        sent = []
+        server.bot_api = lambda m, p, timeout=10: sent.append(p) or {}
+        r = morning.run("111")
+        self.assertEqual(r["status"], "sent")
+        self.assertTrue(r["summary"]["overreach"])
+        text = sent[0]["text"]
+        self.assertIn("день полегче", text)
+        self.assertIn("05:45 Зал Б", text)
+        self.assertIn("заменить дорожкой", text)
+        # Второй запуск в тот же день — без повтора; без цифр — цифр нет.
+        self.assertEqual(morning.run("111")["status"], "already_sent")
+        server.sync("111", {"since": 0, "changes": [{"c": "settings", "id": "morning", "ts": 2, "data": {"telegram": True, "hideNumbers": True}}]})
+        morning.run("111", force=True)
+        self.assertNotIn("HRV", sent[-1]["text"])
+        inbox = [c for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["data"]]
+        self.assertEqual(inbox[0]["data"]["type"], "checkin")
+        self.assertEqual(len(inbox[0]["data"]["payload"]["days"]), 21)  # первый раз — месяц для нормы
+
 
 if __name__ == "__main__":
     unittest.main()

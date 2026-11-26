@@ -38,6 +38,21 @@ export const listGrants = () => call<{ grants: AgentGrant[] }>("keys").then((r) 
 export const createKey = (name: string, scope: AgentScope) => call<{ token: string; grant: AgentGrant }>("keys", { name, scope });
 export const revokeGrant = (id: string) => call<{ ok: boolean }>("keys/revoke", { id });
 
+/** Утренняя сводка из Garmin (только владелец ключа на сервере). */
+export async function morningStatus(): Promise<{ available: boolean; lastDate: string | null; sent: boolean | null }> {
+  const auth = authHeader();
+  if (!auth) return { available: false, lastDate: null, sent: null };
+  const res = await fetch("/api/morning/status", { headers: { Authorization: auth } });
+  return res.ok ? res.json() : { available: false, lastDate: null, sent: null };
+}
+
+export async function morningRunNow(): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const auth = authHeader();
+  if (!auth) return { ok: false, error: "auth" };
+  const res = await fetch("/api/morning/run", { method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" }, body: "{}" });
+  return res.ok ? res.json() : { ok: false, error: `http ${res.status}` };
+}
+
 /** Адрес MCP-сервера для коннекторов Claude/ChatGPT. */
 export function mcpUrl(): string {
   const origin = typeof location !== "undefined" && location.origin.startsWith("http") ? location.origin : "https://repeat.dm-kazanskiy.online";

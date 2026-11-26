@@ -12,6 +12,7 @@ import SessionTimeline from "../components/SessionTimeline";
 import TodayGuide from "../components/TodayGuide";
 import { plannedOn } from "../lib/plan";
 import type { BodySignals } from "../lib/bodySignals";
+import MorningCard from "../components/MorningCard";
 import {
     weekdaysShort,
   addDays,
@@ -120,6 +121,7 @@ export default function CalendarScreen({
   });
   const strengthToday = selected === todayKey ? dayPlan.find((c) => c.kind === "strength" && c.status === "planned" && !c.linkedSessionId) : undefined;
   const showOverreach = Boolean(body?.overreach && strengthToday && hiddenTip !== todayKey && onSwapToTreadmill);
+  const todayRecovery = body?.date ? recovery.find((e) => e.date === body.date) : undefined;
   const cursorMonth = cursor.getMonth();
 
   /** Свёрнутый календарь листается неделями, развёрнутый — месяцами. */
@@ -297,41 +299,23 @@ export default function CalendarScreen({
         </Box>
       )}
 
-      {showOverreach && body && strengthToday && (
-        <Box sx={{ mb: 1.5, p: 2, borderRadius: radius.card, border: "1px solid", borderColor: "divider", bgcolor: "background.paper", animation: CARD_IN }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-            {t("Организм просит день полегче", "Your body asks for an easier day")}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {[
-              body.lowHrvDays >= 2 ? t(`HRV ниже нормы ${body.lowHrvDays} дн. подряд (${body.hrv} мс${body.hrvBase ? `, норма ${Math.round(body.hrvBase)}` : ""})`, `HRV below normal ${body.lowHrvDays} days in a row (${body.hrv} ms${body.hrvBase ? `, normal ${Math.round(body.hrvBase)}` : ""})`) : "",
-              body.rhrHigh ? t(`пульс покоя ${body.rhr}${body.rhrBase ? ` при норме ${Math.round(body.rhrBase)}` : ""}`, `resting HR ${body.rhr}${body.rhrBase ? ` vs normal ${Math.round(body.rhrBase)}` : ""}`) : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-            . {t(`По правилу плана «${strengthToday.title}» лучше заменить дорожкой.`, `Per your plan's rule, swap "${strengthToday.title}" for the treadmill.`)}
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
-            <Button size="small" variant="contained" onClick={() => onSwapToTreadmill?.(strengthToday)}>
-              {t("Заменить на дорожку", "Swap to treadmill")}
-            </Button>
-            <Button
-              size="small"
-              color="inherit"
-              sx={{ color: "text.secondary" }}
-              onClick={() => {
-                setHiddenTip(todayKey);
-                try {
-                  localStorage.setItem("repeat_overreach_tip", todayKey);
-                } catch {
-                  /* без хранилища — просто скроем до перезапуска */
-                }
-              }}
-            >
-              {t("Оставить зал", "Keep gym")}
-            </Button>
-          </Stack>
-        </Box>
+      {selected === todayKey && body && body.date && (body.hrv != null || body.rhr != null || body.sleepMin != null) && (
+        <MorningCard
+          body={body}
+          sleepScore={todayRecovery?.sleepScore ?? null}
+          device={todayRecovery?.device ?? null}
+          strengthCard={strengthToday}
+          onSwap={onSwapToTreadmill}
+          swapHidden={!showOverreach}
+          onKeep={() => {
+            setHiddenTip(todayKey);
+            try {
+              localStorage.setItem("repeat_overreach_tip", todayKey);
+            } catch {
+              /* без хранилища — скроем до перезапуска */
+            }
+          }}
+        />
       )}
 
       {dayList.length === 0 && dayPlan.length === 0 ? (

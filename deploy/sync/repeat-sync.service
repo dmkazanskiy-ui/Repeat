@@ -5,6 +5,8 @@ After=network.target
 [Service]
 EnvironmentFile=/etc/repeat-sync.env
 Environment=DATA_DIR=/var/lib/repeat-sync
+# Личный ключ Garmin владельца для утренней сводки (morning.py). Файл — вне репозитория.
+LoadCredential=garmin:/etc/repeat-sync/garmin-api-key
 ExecStart=/usr/bin/python3 /opt/repeat-sync/server.py
 DynamicUser=yes
 StateDirectory=repeat-sync

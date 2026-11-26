@@ -66,7 +66,7 @@ import PlanScreen from "./screens/PlanScreen";
 import AiScreen from "./screens/AiScreen";
 import AiImportDialog from "./components/AiImportDialog";
 import { newId } from "./lib/id";
-import type { BackupData } from "./lib/backup";
+import type { BackupData, MorningSettings } from "./lib/backup";
 import { setTelegramBack } from "./lib/telegram";
 import { today } from "./lib/format";
 import { diffDays } from "./lib/analytics/period";
@@ -154,6 +154,14 @@ export default function App() {
   const [showAi, setShowAi] = useState(false);
   const [aiImportOpen, setAiImportOpen] = useState(false);
   const [imports, setImports] = useState<ImportRecord[]>([]);
+  const [morningCfg, setMorningCfg] = useState<MorningSettings | null>(null);
+  useEffect(() => {
+    void dbGet<MorningSettings>("morning_settings").then((v) => v && setMorningCfg(v));
+  }, []);
+  const changeMorning = useCallback((next: MorningSettings) => {
+    setMorningCfg(next);
+    void dbSet("morning_settings", next);
+  }, []);
   useEffect(() => {
     void loadImports<ImportRecord>().then(setImports);
   }, []);
@@ -555,6 +563,7 @@ export default function App() {
     plans,
     plannedSessions,
     inbox,
+    morning: morningCfg,
   };
   // Синхронизация между устройствами (только в Telegram, см. lib/sync).
   // Пришедшие с сервера данные кладём напрямую, минуя commit: он ставит
@@ -591,6 +600,10 @@ export default function App() {
     void savePlanned(next.plannedSessions ?? []);
     setInbox(next.inbox ?? []);
     void saveInbox(next.inbox ?? []);
+    if (next.morning) {
+      setMorningCfg(next.morning);
+      void dbSet("morning_settings", next.morning);
+    }
     if (next.sessions.length > 0) {
       setOnboarded(true);
       void saveOnboarded(true);
@@ -607,7 +620,7 @@ export default function App() {
     if (!ready) return;
     const id = window.setTimeout(() => void doSync(), 1500);
     return () => window.clearTimeout(id);
-  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent, exerciseUnits, plans, plannedSessions, inbox]);
+  }, [ready, doSync, sessions, exercises, cardioKinds, mobilityKinds, bodyEntries, programs, recovery, focusGoal, consent, exerciseUnits, plans, plannedSessions, inbox, morningCfg]);
 
   /** Единица для упражнения: совпадает с общей — снимаем свою, иначе запоминаем. */
   const changeExerciseUnit = useCallback((exerciseId: string, unit: WeightUnit) => {
@@ -1218,6 +1231,8 @@ export default function App() {
             onImport={() => setAiImportOpen(true)}
             imports={imports}
             onUndoImport={undoAiImport}
+            morning={morningCfg ?? { telegram: true, hideNumbers: false }}
+            onChangeMorning={changeMorning}
           />
         ) : showPlan ? (
           <PlanScreen

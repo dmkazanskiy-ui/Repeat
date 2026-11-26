@@ -7,7 +7,9 @@ import { Alert, Box, Button, IconButton, Stack, TextField, Typography } from "@m
 import { Card, Section } from "../ui";
 import Segmented from "../ui/Segmented";
 import { ArrowBack, ContentCopy } from "../ui/icons";
-import { buildAiPrompt, createKey, listGrants, mcpUrl, revokeGrant, type AgentGrant, type AgentScope } from "../lib/agent";
+import { buildAiPrompt, createKey, listGrants, mcpUrl, morningRunNow, morningStatus, revokeGrant, type AgentGrant, type AgentScope } from "../lib/agent";
+import type { MorningSettings } from "../lib/backup";
+import { FormControlLabel, Switch } from "@mui/material";
 import { haptic } from "../lib/telegram";
 import { useT } from "../lib/i18n";
 import type { BodyEntry, Exercise, Plan, PlannedSession, Session, TrainingProgram } from "../lib/types";
@@ -25,6 +27,8 @@ interface Props {
   onImport: () => void;
   imports?: ImportRecord[];
   onUndoImport?: (rec: ImportRecord) => void;
+  morning?: MorningSettings;
+  onChangeMorning?: (next: MorningSettings) => void;
 }
 
 async function copy(text: string): Promise<boolean> {
@@ -37,7 +41,7 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-export default function AiScreen({ authed, sessions, exercises, programs, plans, plannedSessions, bodyEntries, onBack, onImport, imports = [], onUndoImport }: Props) {
+export default function AiScreen({ authed, sessions, exercises, programs, plans, plannedSessions, bodyEntries, onBack, onImport, imports = [], onUndoImport, morning, onChangeMorning }: Props) {
   const t = useT();
   const [copied, setCopied] = useState<string | null>(null);
   const [manual, setManual] = useState<string | null>(null);
@@ -90,6 +94,8 @@ export default function AiScreen({ authed, sessions, exercises, programs, plans,
           </Button>
         </Card>
       </Section>
+
+      {authed && morning && onChangeMorning && <Morning value={morning} onChange={onChangeMorning} />}
 
       {imports.length > 0 && (
         <Section title={t("Последние импорты", "Recent imports")}>
@@ -296,5 +302,70 @@ function Grants({ url, onCopy, copied }: { url: string; onCopy: (key: string, te
         )}
       </Card>
     </Box>
+  );
+}
+
+/** Утренняя сводка из Garmin: сервер сам забирает данные в 06:15–10:00 и пишет в Telegram. */
+function Morning({ value, onChange }: { value: MorningSettings; onChange: (v: MorningSettings) => void }) {
+  const t = useT();
+  const [st, setSt] = useState<{ available: boolean; lastDate: string | null; sent: boolean | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    void morningStatus().then(setSt);
+  }, []);
+  if (!st?.available) return null;
+  return (
+    <Section title={t("Утренняя сводка", "Morning summary")}>
+      <Card sx={{ display: "grid", gap: 0.5 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+          {t(
+            "Каждое утро сервер сам забирает из Garmin сон, HRV и пульс покоя, сравнивает с твоей нормой и показывает карточку «Утро» на экране дня.",
+            "Every morning the server pulls sleep, HRV and resting HR from Garmin, compares them with your normal and shows a Morning card on the day screen.",
+          )}
+        </Typography>
+        <FormControlLabel
+          control={<Switch checked={value.telegram} onChange={(e) => onChange({ ...value, telegram: e.target.checked })} />}
+          label={<Typography variant="body2">{t("Сообщение от бота в Telegram", "Telegram message from the bot")}</Typography>}
+        />
+        <FormControlLabel
+          control={<Switch checked={value.hideNumbers} disabled={!value.telegram} onChange={(e) => onChange({ ...value, hideNumbers: e.target.checked })} />}
+          label={<Typography variant="body2">{t("Без цифр здоровья в сообщении", "No health numbers in the message")}</Typography>}
+        />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+            {st.lastDate ? t(`Последняя: ${st.lastDate}${st.sent ? " · отправлена" : ""}`, `Last: ${st.lastDate}${st.sent ? " · sent" : ""}`) : t("Ещё не приходила", "Not sent yet")}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setMsg(null);
+              const r = await morningRunNow();
+              setBusy(false);
+              setMsg(
+                r.ok
+                  ? r.status === "sent"
+                    ? t("Готово — данные записаны, сообщение отправлено", "Done — data saved, message sent")
+                    : t("Данные записаны", "Data saved")
+                  : r.error === "garmin_key_rejected"
+                    ? t("Garmin отклонил ключ — создай новый и положи на сервер", "Garmin rejected the key — create a new one")
+                    : t(`Не получилось: ${r.error}`, `Failed: ${r.error}`),
+              );
+              void morningStatus().then(setSt);
+            }}
+          >
+            {t("Прислать сейчас", "Send now")}
+          </Button>
+        </Box>
+        {msg && (
+          <Typography variant="caption" color="text.secondary">
+            {msg}
+          </Typography>
+        )}
+      </Card>
+    </Section>
   );
 }

@@ -73,6 +73,13 @@ export interface BackupData {
   plannedSessions?: PlannedSession[];
   /** Входящие от ИИ (только синк, в выгрузку не идут). */
   inbox?: InboxItem[];
+  /** Утренняя сводка: сообщение в Telegram и скрывать ли в нём цифры. */
+  morning?: MorningSettings | null;
+}
+
+export interface MorningSettings {
+  telegram: boolean;
+  hideNumbers: boolean;
 }
 
 interface BackupFile {

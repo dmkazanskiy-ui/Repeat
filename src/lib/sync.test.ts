@@ -18,6 +18,7 @@ function data(ids: string[]): BackupData {
     plans: [{ id: "plan1", name: "План", start: "2026-11-30", end: "2026-12-27", createdAt: "x" }],
     plannedSessions: [{ id: "ps1", planId: "plan1", date: "2026-11-30", slot: "morning", kind: "cardio", title: "Бег", status: "done", linkedSessionId: ids[0] ?? null }],
     inbox: [],
+    morning: { telegram: true, hideNumbers: false },
   };
 }
 const shadowOf = (d: BackupData) =>
