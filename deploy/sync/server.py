@@ -407,6 +407,8 @@ def web_login_poll(body) -> dict:
     touch_user(uid, user, "web")
     token = new_session(uid, clean_text(body.get("platform"), 24) or "web")
     log_event("login_web", uid, "web")
+    if body.get("platform") == "oauth":
+        agent.trace("telegram_confirmed", "вход для коннектора подтверждён ботом")
     return {"status": "ok", "token": token}
 
 

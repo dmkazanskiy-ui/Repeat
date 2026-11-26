@@ -53,6 +53,17 @@ PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 FORMAT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai_format.md")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+def trace(step: str, detail: str = "") -> None:
+    """Шаги OAuth/MCP в журнал сервиса (journalctl -u repeat-sync) и в журнал админки. Без токенов и кодов."""
+    try:
+        import sys
+
+        print(json.dumps({"t": int(time.time()), "oauth": step, "d": str(detail)[:120]}, ensure_ascii=False), file=sys.stderr, flush=True)
+        srv.log_event("oauth_" + step, None, "", str(detail)[:120])
+    except Exception:
+        pass
+
+
 codes: dict = {}  # одноразовые коды OAuth: code → {...}, живут 10 минут в памяти
 
 
@@ -650,7 +661,10 @@ def handle_mcp(auth_header: str, body):
     """→ (status, extra_headers, payload|None)."""
     ident = agent_ident(auth_header)
     if not ident:
+        trace("mcp_401", "с токеном" if auth_header.startswith("Bearer ") else "без токена")
         return 401, {"WWW-Authenticate": www_authenticate()}, {"error": "unauthorized"}
+    if isinstance(body, dict) and body.get("method") == "initialize":
+        trace("mcp_initialize", ident["name"])
     if isinstance(body, list):
         out = [r for r in (mcp_message(ident, m) for m in body) if r is not None]
         return (200, {}, out) if out else (202, {}, None)
@@ -707,6 +721,7 @@ def register_client(body) -> tuple:
         return 400, {"error": "invalid_client_metadata"}
     uris = body.get("redirect_uris")
     if not isinstance(uris, list) or not uris or len(uris) > 10 or not all(_redirect_ok(u) for u in uris):
+        trace("register_bad_redirect", str(uris)[:120])
         return 400, {"error": "invalid_redirect_uri"}
     method = body.get("token_endpoint_auth_method") or "none"
     if method not in ("none", "client_secret_post", "client_secret_basic"):
@@ -736,6 +751,7 @@ def register_client(body) -> tuple:
                 clients.pop(cid, None)
         clients[client_id] = rec
         srv.save_meta()
+    trace("register", f"{name} {method} {uris[0]}")
     return 201, out
 
 
@@ -764,9 +780,11 @@ def approve(uid: str, body) -> dict:
     body = body if isinstance(body, dict) else {}
     client, p = check_authorize({k: body.get(k) for k in ("client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "state", "scope", "resource")})
     if not client:
+        trace("approve_bad", p)
         raise srv.ApiError(400, p)
     sep = "&" if "?" in p["redirect_uri"] else "?"
     if body.get("deny"):
+        trace("approve_denied", client["name"])
         q = {"error": "access_denied"}
         if p.get("state"):
             q["state"] = p["state"]
@@ -783,6 +801,7 @@ def approve(uid: str, body) -> dict:
     if p.get("state"):
         q["state"] = p["state"]
     srv.log_event("agent_oauth", uid, scope, client["name"])
+    trace("approve_code", f"{client['name']} {scope} → {urllib.parse.urlsplit(p['redirect_uri']).netloc}")
     return {"redirect": p["redirect_uri"] + sep + urllib.parse.urlencode(q)}
 
 
@@ -811,18 +830,22 @@ def _issue(gid: str, scope: str) -> dict:
 
 def token(form: dict, basic: str) -> tuple:
     cid, client = _client_auth(form, basic)
-    if not client:
-        return 401, {"error": "invalid_client"}
     gt = form.get("grant_type")
+    if not client:
+        trace("token_bad_client", f"{gt} basic={basic.startswith('Basic ')} secret={'client_secret' in form}")
+        return 401, {"error": "invalid_client"}
     if gt == "authorization_code":
         rec = codes.pop(form.get("code") or "", None)
         if not rec or time.time() - rec["t"] > CODE_TTL or rec["client"] != cid:
+            trace("token_bad_code", "нет кода / истёк / чужой клиент")
             return 400, {"error": "invalid_grant"}
         if form.get("redirect_uri") and form["redirect_uri"] != rec["redirect"]:
+            trace("token_bad_redirect", form["redirect_uri"][:80])
             return 400, {"error": "invalid_grant"}
         verifier = form.get("code_verifier") or ""
         digest = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         if not verifier or digest != rec["challenge"]:
+            trace("token_bad_pkce", client["name"])
             return 400, {"error": "invalid_grant", "error_description": "PKCE"}
         with srv.meta_lock:
             mine = [gid for gid, g in _m("grants").items() if g.get("uid") == rec["uid"]]
@@ -835,6 +858,7 @@ def token(form: dict, basic: str) -> tuple:
             _m("grants")[gid] = {"uid": rec["uid"], "kind": "oauth", "name": client["name"], "scope": rec["scope"], "created": _now(), "used": None, "client": cid}
             out = _issue(gid, rec["scope"])
             srv.save_meta()
+        trace("token_issued", f"{client['name']} {rec['scope']}")
         return 200, out
     if gt == "refresh_token":
         h = srv.token_hash(form.get("refresh_token") or "")
@@ -842,13 +866,16 @@ def token(form: dict, basic: str) -> tuple:
             t = _m("agent_tokens").get(h)
             g = _m("grants").get(t["gid"]) if t else None
             if not t or t.get("type") != "refresh" or not g or g.get("client") != cid or (t.get("exp") and t["exp"] < _now()):
+                trace("refresh_bad", client["name"])
                 return 400, {"error": "invalid_grant"}
             _m("agent_tokens").pop(h, None)  # refresh одноразовый (ротация)
             for oh in [oh for oh, ot in _m("agent_tokens").items() if ot.get("gid") == t["gid"] and ot.get("type") == "access"]:
                 _m("agent_tokens").pop(oh, None)
             out = _issue(t["gid"], g["scope"])
             srv.save_meta()
+        trace("token_refreshed", client["name"])
         return 200, out
+    trace("token_bad_grant_type", str(gt))
     return 400, {"error": "unsupported_grant_type"}
 
 
@@ -865,10 +892,21 @@ def revoke_token(form: dict) -> tuple:
 
 
 def authorize_page(q: dict) -> tuple:
-    """Страница входа и согласия для коннектора. → (status, html)."""
+    """Страница входа и согласия для коннектора. → (status, html).
+
+    Вход через Telegram должен пережить уход в приложение Telegram: на iPhone
+    окно авторизации (Claude, ChatGPT) уходит в фон, а прежний window.open
+    уводил саму страницу на t.me — опрос обрывался, и Claude так и не получал
+    code. Теперь: ссылка — обычная кнопка tg:// (страница остаётся на месте),
+    код входа помнится в sessionStorage, опрос переживает ошибки сети и
+    возобновляется при возврате, а после подтверждения страница сама
+    разрешает доступ и уходит на redirect_uri с code и тем же state.
+    """
     client, p = check_authorize(q)
     if not client:
+        trace("authorize_bad", p)
         return 400, _page("Repeat", f"<p class=err>{html.escape(p)}</p>")
+    trace("authorize_view", client["name"])
     params = json.dumps({k: p.get(k) for k in ("client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "state", "scope", "resource")})
     want_write = _scope_of(p.get("scope") or "read write") == "write"
     name = html.escape(client["name"])
@@ -880,53 +918,90 @@ def authorize_page(q: dict) -> tuple:
 <li>присылать планы и тренировки во «входящие» — записываются только после твоего подтверждения в приложении.</li>
 </ul>
 <p class=muted>Заметки, самочувствие и фото не передаются. Доступ отзывается в Repeat → Профиль → ИИ-помощник.</p>
-<div id=login>
-  <button id=tg class=primary>Войти через Telegram</button>
-  <p id=wait class=muted hidden>Открой Telegram и нажми «Войти» в чате с ботом. <a id=tglink target=_blank rel=noopener>Открыть ещё раз</a></p>
+<label class=check><input type=checkbox id=write {"checked" if want_write else ""}> Разрешить присылать планы и тренировки</label>
+<div id=login hidden>
+  <a id=tg class="btn primary">Войти через Telegram</a>
+  <p id=wait class=muted hidden>Нажми «Войти» в чате с ботом и вернись сюда — дальше всё само.</p>
+  <p class=muted small>Telegram не открылся? <a id=tgweb target=_blank rel=noopener>Открыть через t.me</a></p>
 </div>
 <div id=consent hidden>
-  <label class=check><input type=checkbox id=write {"checked" if want_write else ""}> Разрешить присылать планы и тренировки</label>
   <button id=allow class=primary>Разрешить</button>
-  <button id=deny>Отказать</button>
 </div>
+<p id=status class=muted hidden></p>
+<button id=deny>Отказать</button>
 <p id=err class=err hidden></p>
 <script>
 const P = {params};
-let token = null;
+const KEY = "repeat_oauth_login:" + P.client_id + ":" + (P.state || "");
 const $ = (id) => document.getElementById(id);
-const fail = (t) => {{ $("err").textContent = t; $("err").hidden = false; }};
+const show = (id, on) => {{ $(id).hidden = !on; }};
+const say = (t) => {{ $("status").textContent = t; show("status", Boolean(t)); }};
+const fail = (t) => {{ $("err").textContent = t; show("err", true); }};
+let code = null, done = false, timer = null;
 async function post(path, body, auth) {{
   const r = await fetch(path, {{ method: "POST", headers: Object.assign({{ "Content-Type": "application/json" }}, auth ? {{ Authorization: "Bearer " + auth }} : {{}}), body: JSON.stringify(body || {{}}) }});
   const j = await r.json().catch(() => ({{}}));
-  if (!r.ok) throw new Error(j.error || r.status);
+  if (!r.ok) throw new Error(j.error || String(r.status));
   return j;
 }}
-function ready(t) {{ token = t; $("login").hidden = true; $("consent").hidden = false; }}
-// Уже вошёл на сайте Repeat в этом браузере — второй раз логиниться не нужно.
-try {{ const t = localStorage.getItem("repeat_session"); if (t) fetch("/api/oauth/whoami", {{ headers: {{ Authorization: "Bearer " + t }} }}).then((r) => r.ok && ready(t)); }} catch (e) {{}}
-$("tg").onclick = async () => {{
+async function finish(token, temp) {{
+  if (done) return; done = true;
+  clearInterval(timer);
+  say("Вход подтверждён — возвращаемся в {name}…");
+  show("login", false); show("consent", false);
   try {{
-    const s = await post("/api/auth/web/start");
-    $("tglink").href = s.url; $("wait").hidden = false; window.open(s.url, "_blank");
-    const until = Date.now() + 9 * 60 * 1000;
-    while (Date.now() < until) {{
-      await new Promise((r) => setTimeout(r, 2000));
-      const r = await post("/api/auth/web/poll", {{ code: s.code, platform: "oauth" }});
-      if (r.status === "ok") {{ ready(r.token); window.__temp = true; return; }}
-      if (r.status === "denied" || r.status === "expired") return fail("Вход отменён — попробуй ещё раз.");
-    }}
-    fail("Время вышло — попробуй ещё раз.");
-  }} catch (e) {{ fail("Вход через Telegram сейчас недоступен."); }}
-}};
-async function finish(deny) {{
-  try {{
-    const r = await post("/api/oauth/approve", Object.assign({{}}, P, {{ deny, write: $("write").checked }}), token);
-    if (window.__temp) post("/api/auth/logout", {{}}, token).catch(() => {{}});
-    location.href = r.redirect;
-  }} catch (e) {{ fail("Не получилось: " + e.message); }}
+    const r = await post("/api/oauth/approve", Object.assign({{}}, P, {{ write: $("write").checked }}), token);
+    try {{ sessionStorage.removeItem(KEY); }} catch (e) {{}}
+    if (temp) post("/api/auth/logout", {{}}, token).catch(() => {{}});
+    location.replace(r.redirect);
+  }} catch (e) {{ done = false; fail("Не получилось разрешить доступ: " + e.message + ". Обнови страницу."); }}
 }}
-$("allow").onclick = () => finish(false);
-$("deny").onclick = () => finish(true);
+async function poll() {{
+  if (!code || done) return;
+  try {{
+    const r = await post("/api/auth/web/poll", {{ code, platform: "oauth" }});
+    if (r.status === "ok") return finish(r.token, true);
+    if (r.status === "denied" || r.status === "expired") {{
+      try {{ sessionStorage.removeItem(KEY); }} catch (e) {{}}
+      code = null; fail("Вход отменён или устарел — нажми «Войти через Telegram» ещё раз."); start();
+    }}
+  }} catch (e) {{ /* сеть могла пропасть, пока были в Telegram — попробуем снова */ }}
+}}
+function links(url) {{
+  $("tgweb").href = url;
+  // tg:// открывает приложение, не уводя эту страницу (иначе опрос обрывается).
+  $("tg").href = url.replace("https://t.me/", "tg://resolve?domain=").replace("?start=", "&start=");
+}}
+async function start() {{
+  try {{
+    let saved = null;
+    try {{ saved = JSON.parse(sessionStorage.getItem(KEY) || "null"); }} catch (e) {{}}
+    if (saved && Date.now() - saved.t < 9 * 60 * 1000) {{ code = saved.code; links(saved.url); }}
+    else {{
+      const s = await post("/api/auth/web/start");
+      code = s.code; links(s.url);
+      try {{ sessionStorage.setItem(KEY, JSON.stringify({{ code, url: s.url, t: Date.now() }})); }} catch (e) {{}}
+    }}
+    show("login", true);
+    clearInterval(timer); timer = setInterval(poll, 1500); poll();
+  }} catch (e) {{ fail("Вход через Telegram сейчас недоступен — попробуй позже."); }}
+}}
+$("tg").addEventListener("click", () => show("wait", true));
+document.addEventListener("visibilitychange", () => {{ if (document.visibilityState === "visible") poll(); }});
+window.addEventListener("focus", poll);
+window.addEventListener("pageshow", poll);
+$("deny").onclick = () => {{
+  const sep = P.redirect_uri.includes("?") ? "&" : "?";
+  location.replace(P.redirect_uri + sep + "error=access_denied" + (P.state ? "&state=" + encodeURIComponent(P.state) : ""));
+}};
+// Уже вошёл на сайте Repeat в этом браузере — хватит одной кнопки.
+let site = null;
+try {{ site = localStorage.getItem("repeat_session"); }} catch (e) {{}}
+if (site) {{
+  fetch("/api/oauth/whoami", {{ headers: {{ Authorization: "Bearer " + site }} }})
+    .then((r) => {{ if (r.ok) {{ show("consent", true); $("allow").onclick = () => finish(site, false); }} else start(); }})
+    .catch(start);
+}} else start();
 </script>"""
     return 200, _page(f"Repeat — доступ для {name}", body)
 
@@ -940,7 +1015,9 @@ body{{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-syste
 main{{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:24px;max-width:420px;width:100%;box-sizing:border-box}}
 h1{{font-size:20px;margin:0 0 12px}} .muted{{color:var(--muted)}} .err{{color:#dc2626}} ul{{padding-left:20px}}
 button{{display:block;width:100%;margin-top:10px;padding:12px;border-radius:14px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-weight:600;cursor:pointer}}
-button.primary{{background:var(--accent);border-color:var(--accent);color:#fff}} a{{color:var(--accent)}}
+button.primary,a.btn.primary{{background:var(--accent);border-color:var(--accent);color:#fff}} a{{color:var(--accent)}}
+a.btn{{display:block;box-sizing:border-box;text-align:center;text-decoration:none;width:100%;margin-top:10px;padding:12px;border-radius:14px;border:1px solid var(--line);font-weight:600}}
+.small{{font-size:13px}}
 .check{{display:flex;gap:8px;align-items:center;margin:8px 0}}
 </style></head><body><main>{body}</main></body></html>"""
 
