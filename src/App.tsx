@@ -647,10 +647,10 @@ export default function App() {
   useEffect(() => {
     if (!ready || !consentOk || !account.authed || !myProfile?.public) return;
     const id = window.setTimeout(() => {
-      void syncFeed(sessions, exercises).then((changed) => changed && setFeedKey((k) => k + 1));
+      void syncFeed(sessions, exercises, exerciseUnits).then((changed) => changed && setFeedKey((k) => k + 1));
     }, 3000);
     return () => window.clearTimeout(id);
-  }, [ready, consentOk, account.authed, myProfile?.public, sessions, exercises]);
+  }, [ready, consentOk, account.authed, myProfile?.public, sessions, exercises, exerciseUnits]);
   // И при возврате в приложение, и раз в минуту — чтобы подтянуть чужие правки.
   useEffect(() => {
     if (!ready) return;

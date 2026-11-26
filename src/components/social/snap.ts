@@ -1,6 +1,7 @@
 // Подписи и цифры для слепка тренировки в ленте.
 import { typeColor } from "../../lib/activityColors";
 import { formatVolume } from "../../lib/format";
+import { getLang } from "../../lib/i18n";
 import type { Snap } from "../../lib/social";
 import type { WorkoutPhoto } from "../../lib/types";
 
@@ -23,12 +24,27 @@ export function snapStats(snap: Snap, t: (ru: string, en: string) => string): { 
   return out.slice(0, 3);
 }
 
-export function setLine(sets: Snap["exercises"][number]["sets"]): string {
+const LB = 0.45359237;
+
+/**
+ * Вес подхода для ленты: в фунтах — если автор ведёт упражнение в lb (до 0,5),
+ * в кг — не больше одного знака после запятой. Хранится всегда кг.
+ */
+export function setWeight(w: number | null, u?: "lb"): string {
+  if (w == null) return "—";
+  const v = u === "lb" ? Math.round((w / LB) * 2) / 2 : Math.round(w * 10) / 10;
+  return dec(v);
+}
+
+const dec = (v: number) => (getLang() === "ru" ? String(v).replace(".", ",") : String(v));
+
+export function setLine(sets: Snap["exercises"][number]["sets"], u?: "lb"): string {
   const work = sets.filter((s) => !s.wu);
   if (work.length === 0) return "";
   const same = work.every((s) => s.w === work[0].w && s.r === work[0].r);
-  const one = (s: (typeof work)[number]) => `${s.w ?? "—"}×${s.r ?? "—"}`;
-  return same ? `${one(work[0])} · ${work.length}` : work.map(one).join(" · ");
+  const one = (s: (typeof work)[number]) => `${setWeight(s.w, u)}×${s.r ?? "—"}`;
+  const line = same ? `${one(work[0])} · ${work.length}` : work.map(one).join(" · ");
+  return u === "lb" ? `${line} lb` : line;
 }
 
 export function kindColor(kind: Snap["kind"]): string {

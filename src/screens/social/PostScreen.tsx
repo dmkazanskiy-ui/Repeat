@@ -8,7 +8,7 @@ import PhotoCarousel from "../../components/social/PhotoCarousel";
 import { ArrowBack as ArrowBackIcon, DeleteOutlined as DeleteOutlineIcon } from "../../ui/icons";
 import Avatar from "../../components/social/Avatar";
 import LikeButton from "../../components/social/LikeButton";
-import { kindColor, snapStats } from "../../components/social/snap";
+import { kindColor, setWeight, snapStats } from "../../components/social/snap";
 import { ActivityIcon } from "../../lib/icons";
 import type { IconKey } from "../../lib/icons";
 import { formatDateFull } from "../../lib/format";
@@ -134,12 +134,19 @@ export default function PostScreen({
           <Stack spacing={1}>
             {snap.exercises.map((ex, i) => (
               <Card key={i} sx={{ p: 1.75 }}>
-                <Typography sx={{ fontSize: 14, fontWeight: 600, mb: 0.75 }}>{ex.name}</Typography>
+                <Typography sx={{ fontSize: 14, fontWeight: 600, mb: 0.75 }}>
+                  {ex.name}
+                  {ex.u === "lb" && (
+                    <Box component="span" sx={{ fontWeight: 500, color: "text.secondary" }}>
+                      {" · lb"}
+                    </Box>
+                  )}
+                </Typography>
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
                   {ex.sets.map((s, j) => (
                     <Box key={j} sx={{ px: 1, py: 0.5, borderRadius: "10px", bgcolor: "action.hover", fontSize: 13, fontVariantNumeric: "tabular-nums", color: s.wu ? "text.secondary" : "text.primary" }}>
                       {s.wu ? `${t("Р", "W")} ` : ""}
-                      {s.w ?? "—"} × {s.r ?? "—"}
+                      {setWeight(s.w, ex.u)} × {s.r ?? "—"}
                     </Box>
                   ))}
                 </Box>

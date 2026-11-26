@@ -2,11 +2,13 @@
 Утренняя сводка: каждое утро сервер сам забирает из Garmin ночной HRV, пульс
 покоя и сон, кладёт их в Repeat и присылает короткое сообщение от бота.
 
-Без ИИ: перенос цифр — детерминированная загрузка (ingestion job). Расписание —
-поток внутри сервиса: раз в 10 минут проверяет, наступило ли окно 06:15–10:00
-по местному времени (MORNING_TZ, по умолчанию Asia/Makassar) и пришли ли
-данные за ночь. Отправка — один раз в день (дата пишется в meta.json), повтор
-до 10:00, если часы ещё не синхронизировались.
+Без ИИ: перенос цифр — детерминированная загрузка (ingestion job). Garmin не
+даёт личному ключу push-уведомлений о синхронизации (они только у партнёров
+Health API), поэтому «сразу после синхронизации» делаем частой лёгкой
+проверкой: с 04:30 до 11:00 по местному времени (MORNING_TZ, по умолчанию
+Asia/Makassar) раз в 3 минуты — два коротких запроса «есть ли сон и HRV за
+эту ночь». Как только часы отдали ночь в Garmin Connect, сводка уходит в
+течение ~3 минут; после отправки до завтра проверок нет.
 
 Ключ Garmin Personal API — личный ключ владельца, лежит вне репозитория:
 systemd LoadCredential (CREDENTIALS_DIRECTORY/garmin) или GARMIN_KEY_FILE.
@@ -31,7 +33,8 @@ agent = None
 GARMIN = "https://personal.connectapi.garmin.com"
 TOKEN_PATH = "/personalapitoken-service/personal-api/personal-api-key/token"
 TZ = os.environ.get("MORNING_TZ", "Asia/Makassar")
-START_HOUR, START_MIN, END_HOUR = 6, 15, 10
+START_HOUR, START_MIN, END_HOUR = 4, 30, 11
+POLL_S = 180
 UA = "repeat-sync/1.0"
 
 state_lock = threading.Lock()
@@ -115,6 +118,15 @@ def garmin_get(path: str, params=None):
                 continue
             raise
     return None
+
+
+def night_ready(day: str) -> bool:
+    """Лёгкая проверка: за эту ночь в Garmin уже есть сон и HRV."""
+    sleep = garmin_get("/sleep-service/sleep/dailySleepSummariesByDate", {"startDate": day, "endDate": day}) or []
+    if not any(s.get("calendarDate") == day and s.get("sleepTimeSeconds") for s in sleep):
+        return False
+    hrv = (garmin_get(f"/hrv-service/hrv/daily/{day}/{day}") or {}).get("hrvSummaries") or []
+    return any(h.get("calendarDate") == day and h.get("lastNightAvg") for h in hrv)
 
 
 def collect(day: str, back: int = 30) -> dict:
@@ -259,6 +271,9 @@ def run(uid: str, force: bool = False) -> dict:
             return {"ok": True, "status": "already_sent"}
         first = not rec.get("backfilled")
     try:
+        if not force and not night_ready(day):
+            return {"ok": True, "status": "waiting"}
+        log("night_synced", day)
         got = collect(day, 30)
     except RuntimeError as e:
         log("garmin_error", str(e))
@@ -315,4 +330,4 @@ def loop() -> None:
             tick()
         except Exception as e:
             log("tick_error", type(e).__name__)
-        time.sleep(600)
+        time.sleep(POLL_S)

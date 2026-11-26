@@ -1030,7 +1030,7 @@ def clean_snap(snap, uid: str = "") -> dict:
         for st in (ex.get("sets") or [])[:30]:
             if isinstance(st, dict):
                 sets.append({"w": num(st.get("w"), 0, 2000), "r": num(st.get("r"), 0, 1000), **({"wu": True} if st.get("wu") else {})})
-        out["exercises"].append({"name": clean_text(ex.get("name"), 80), "sets": sets})
+        out["exercises"].append({"name": clean_text(ex.get("name"), 80), "sets": sets, **({"u": "lb"} if ex.get("u") == "lb" else {})})
     out["photos"] = []
     for ph in (snap.get("photos") or [])[:10]:
         if isinstance(ph, dict) and isinstance(ph.get("id"), str):

@@ -17,6 +17,7 @@ import {
   sessionVolume,
 } from "./types";
 import type { Exercise, Session, SessionKind, WorkoutPhoto } from "./types";
+import { globalUnit, type ExerciseUnits } from "./units";
 
 export const ACTIVITIES = [
   { id: "strength", ru: "Силовые", en: "Strength" },
@@ -59,7 +60,8 @@ export interface Snap {
   volume: number | null;
   distanceM: number | null;
   sets: number | null;
-  exercises: { name: string; sets: { w: number | null; r: number | null; wu?: boolean }[] }[];
+  /** w — всегда кг; u: "lb" — автор ведёт это упражнение в фунтах, показываем в lb. */
+  exercises: { name: string; u?: "lb"; sets: { w: number | null; r: number | null; wu?: boolean }[] }[];
   photos?: WorkoutPhoto[];
 }
 
@@ -177,7 +179,7 @@ const SHARE_DAYS = 90;
 const SHARE_MAX = 60;
 
 /** Обезличенный слепок для ленты — только то, что про сами тренировки. */
-export function toSnap(s: Session, exercises: Exercise[]): Snap {
+export function toSnap(s: Session, exercises: Exercise[], units: ExerciseUnits = {}): Snap {
   const byId = new Map(exercises.map((e) => [e.id, e]));
   const dist = s.kind === "cardio" ? (s.cardio?.distanceM ?? null) : null;
   return {
@@ -194,9 +196,11 @@ export function toSnap(s: Session, exercises: Exercise[]): Snap {
       s.kind === "strength"
         ? s.exercises.map((ex) => ({
             name: exerciseName(byId.get(ex.exerciseId)),
+            ...((units[ex.exerciseId] ?? globalUnit()) === "lb" ? { u: "lb" as const } : {}),
             sets: ex.sets
               .filter((st) => st.done || st.weight != null || st.reps != null)
-              .map((st) => ({ w: st.weight, r: st.reps, ...(st.warmup ? { wu: true } : {}) })),
+              // Вес в кг до сотых: из фунтов получаются длинные дроби (22,6796…).
+              .map((st) => ({ w: st.weight == null ? null : Math.round(st.weight * 100) / 100, r: st.reps, ...(st.warmup ? { wu: true } : {}) })),
           }))
         : [],
     photos: (s.photos ?? []).slice(0, 10),
@@ -220,13 +224,13 @@ export function shareable(sessions: Session[]): Session[] {
 
 let syncing = false;
 /** Привести ленту в соответствие с тренировками: добавить новые/изменённые, убрать лишние. */
-export async function syncFeed(sessions: Session[], exercises: Exercise[]): Promise<boolean> {
+export async function syncFeed(sessions: Session[], exercises: Exercise[], units: ExerciseUnits = {}): Promise<boolean> {
   if (syncing || !me?.public) return false;
   syncing = true;
   try {
     const { posts } = await api<{ posts: Record<string, string> }>("published");
     const want = new Map(shareable(sessions).map((s) => {
-      const snap = toSnap(s, exercises);
+      const snap = toSnap(s, exercises, units);
       return [s.id, { snap, hash: hash(JSON.stringify(snap)) }];
     }));
     const upsert = [...want.entries()]

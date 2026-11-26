@@ -304,6 +304,7 @@ class ServerTest(unittest.TestCase):
         days[day.isoformat()] = {"date": day.isoformat(), "hrvMs": 51, "restingHr": 49, "sleepMin": 400, "sleepScore": 70}
         morning.collect = lambda d, back=30: {"days": days, "garmin": {"status": "LOW"}}
         morning.configured = lambda: True
+        morning.night_ready = lambda d: True
         server.sync("111", {"since": 0, "changes": [
             {"c": "plans", "id": "p", "ts": 1, "data": {"id": "p", "name": "План", "start": "2026-01-01", "end": "2027-01-01"}},
             {"c": "plannedSessions", "id": "c", "ts": 1, "data": {"id": "c", "planId": "p", "date": day.isoformat(), "time": "05:45", "kind": "strength", "title": "Зал Б", "status": "planned"}},

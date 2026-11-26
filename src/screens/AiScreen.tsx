@@ -305,7 +305,7 @@ function Grants({ url, onCopy, copied }: { url: string; onCopy: (key: string, te
   );
 }
 
-/** Утренняя сводка из Garmin: сервер сам забирает данные в 06:15–10:00 и пишет в Telegram. */
+/** Утренняя сводка из Garmin: сервер ловит синхронизацию ночи (с 04:30, раз в 3 мин) и пишет в Telegram. */
 function Morning({ value, onChange }: { value: MorningSettings; onChange: (v: MorningSettings) => void }) {
   const t = useT();
   const [st, setSt] = useState<{ available: boolean; lastDate: string | null; sent: boolean | null } | null>(null);
@@ -320,8 +320,8 @@ function Morning({ value, onChange }: { value: MorningSettings; onChange: (v: Mo
       <Card sx={{ display: "grid", gap: 0.5 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
           {t(
-            "Каждое утро сервер сам забирает из Garmin сон, HRV и пульс покоя, сравнивает с твоей нормой и показывает карточку «Утро» на экране дня.",
-            "Every morning the server pulls sleep, HRV and resting HR from Garmin, compares them with your normal and shows a Morning card on the day screen.",
+            "Как только часы утром отдадут ночь в Garmin Connect (с 04:30, проверка раз в 3 минуты), сервер заберёт сон, HRV и пульс покоя, сравнит с твоей нормой и покажет карточку «Утро» на экране дня.",
+            "As soon as your watch syncs the night to Garmin Connect (from 04:30, checked every 3 minutes), the server pulls sleep, HRV and resting HR, compares them with your normal and shows a Morning card on the day screen.",
           )}
         </Typography>
         <FormControlLabel

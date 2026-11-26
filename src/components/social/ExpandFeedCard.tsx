@@ -165,7 +165,7 @@ export default function ExpandFeedCard({ post, onOpen, onAuthor }: { post: Post;
         {snap.exercises.slice(0, 3).map((ex, i) => (
           <Box key={i} sx={{ display: "flex", gap: 1, py: 0.25, alignItems: "baseline" }}>
             <Typography noWrap sx={{ fontSize: 13, flex: 1, minWidth: 0 }}>{ex.name}</Typography>
-            <Typography noWrap sx={{ fontSize: 12, color: "text.secondary", flex: "none", fontVariantNumeric: "tabular-nums" }}>{setLine(ex.sets)}</Typography>
+            <Typography noWrap sx={{ fontSize: 12, color: "text.secondary", flex: "none", fontVariantNumeric: "tabular-nums" }}>{setLine(ex.sets, ex.u)}</Typography>
           </Box>
         ))}
 

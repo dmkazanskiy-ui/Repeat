@@ -1,3 +1,4 @@
+import { today } from "./format";
 // Подбор упражнений для быстрой замены. Смысл: когда меняешь упражнение прямо
 // в тренировке, общий список на 200+ позиций не помогает — нужны те, что
 // закрывают ту же работу. Считаем близость по основным мышцам и паттерну
@@ -62,8 +63,11 @@ export function recentExercises(
 ): Exercise[] {
   const exclude = new Set(options.exclude ?? []);
   const seen: string[] = [];
+  // Только сделанное: будущие и незавершённые тренировки (веса из плана,
+  // подставленные заранее) рабочими весами не считаются.
+  const todayKey = today();
   const sorted = [...sessions]
-    .filter((s) => s.kind === "strength")
+    .filter((s) => s.kind === "strength" && s.date <= todayKey)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 
   for (const session of sorted) {
@@ -88,8 +92,11 @@ export function lastWorkingWeight(
   sessions: Session[],
   exerciseId: string,
 ): number | null {
+  // Только сделанное: будущие и незавершённые тренировки (веса из плана,
+  // подставленные заранее) рабочими весами не считаются.
+  const todayKey = today();
   const sorted = [...sessions]
-    .filter((s) => s.kind === "strength")
+    .filter((s) => s.kind === "strength" && s.date <= todayKey)
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 
   for (const session of sorted) {
@@ -97,7 +104,7 @@ export function lastWorkingWeight(
     for (const item of session.exercises) {
       if (item.exerciseId !== exerciseId) continue;
       for (const set of item.sets) {
-        if (set.warmup || set.weight == null) continue;
+        if (set.warmup || set.weight == null || !set.done) continue;
         if (best == null || set.weight > best) best = set.weight;
       }
     }

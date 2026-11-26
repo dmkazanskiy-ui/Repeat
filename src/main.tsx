@@ -15,6 +15,26 @@ applyTextScale(loadTextScale());
 document.documentElement.classList.add("rp-intro");
 window.setTimeout(() => document.documentElement.classList.remove("rp-intro"), 1200);
 
+// Приложение открыли посреди выкладки (или со старым кэшем): старая сборка
+// просит уже удалённый кусок (лента, пост) — один раз перезагружаемся на новую.
+window.addEventListener("vite:preloadError", (e) => {
+  try {
+    if (sessionStorage.getItem("repeat_reloaded_for_update")) return;
+    sessionStorage.setItem("repeat_reloaded_for_update", "1");
+  } catch {
+    /* без хранилища — всё равно попробуем перезагрузиться */
+  }
+  e.preventDefault();
+  window.location.reload();
+});
+window.setTimeout(() => {
+  try {
+    sessionStorage.removeItem("repeat_reloaded_for_update");
+  } catch {
+    /* нечего чистить */
+  }
+}, 15000);
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

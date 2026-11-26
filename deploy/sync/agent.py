@@ -368,10 +368,11 @@ def context_view(uid: str) -> dict:
     since = _shift(today, -90)
     weights: dict = {}
     for s in sessions:
-        if s.get("kind") != "strength" or (s.get("date") or "") < since:
+        if s.get("kind") != "strength" or not (since <= (s.get("date") or "") <= today):
             continue
+        # Только сделанные подходы: веса будущих/незавершённых тренировок — это план, а не факт.
         for e in s.get("exercises") or []:
-            ws = [x.get("weight") for x in e.get("sets") or [] if not x.get("warmup") and isinstance(x.get("weight"), (int, float))]
+            ws = [x.get("weight") for x in e.get("sets") or [] if x.get("done") and not x.get("warmup") and isinstance(x.get("weight"), (int, float))]
             if ws:
                 weights[_ex_name(e.get("exerciseId"), names)] = {"weightKg": max(ws), "date": s.get("date")}
     body = sorted(
