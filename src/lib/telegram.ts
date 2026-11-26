@@ -57,10 +57,11 @@ export function isTelegram(): boolean {
 }
 
 /** Короткая вибрация (в Telegram на iPhone). Вне Telegram — ничего. */
-export function haptic(style: "light" | "medium" | "success" = "light"): void {
+export function haptic(style: "light" | "medium" | "success" | "selection" = "light"): void {
   const h = window.Telegram?.WebApp?.HapticFeedback;
   if (!h) return;
   if (style === "success") h.notificationOccurred("success");
+  else if (style === "selection") h.selectionChanged();
   else h.impactOccurred(style);
 }
 

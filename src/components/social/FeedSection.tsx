@@ -1,11 +1,17 @@
-// Лента на главной. Под «Сегодня» — «магнит»: дотянул страницу до конца и
-// тянешь дальше — низ растягивается с сопротивлением, из ручки вытягивается
-// капля (как в Pull to refresh), а отпустишь раньше порога — пружина тянет
-// обратно к тренировкам. Дотянул — капля отрывается, лента открывается и
-// страница пружиной съезжает к ней. Дальше — тренировки людей с открытым
-// профилем, подгружаются по мере прокрутки.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+// Лента на главной. Вход — pull-to-reveal у нижнего края «Сегодня» (как в
+// Bybit): дотянул страницу до конца и тянешь вверх — снизу поднимается ракета.
+//  • Первые ~60 px идут почти 1:1, дальше мягкое сопротивление (rubber band):
+//    не нужно тянуть через весь экран.
+//  • Решение — по проекции скорости (WWDC18 «Designing Fluid Interfaces»):
+//    короткий быстрый свайп тоже открывает, медленный — по порогу.
+//  • Ракета привязана к прогрессу: выезжает, выпрямляется, разгорается пламя;
+//    на пороге — вибро-щелчок (selectionChanged, и при возврате ниже тоже) и
+//    подпись «Отпусти». Сработало — impact medium, ракета улетает, страница
+//    прерываемой пружиной съезжает к ленте.
+//  • «Уменьшение движения» — без полёта. Подпись — ещё и кнопка «Открыть».
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { Card } from "../../ui";
 import ExpandFeedCard from "./ExpandFeedCard";
 import Avatar from "./Avatar";
@@ -13,33 +19,44 @@ import { fetchFeed, useMyProfile } from "../../lib/social";
 import type { Post } from "../../lib/social";
 import { useAccount } from "../../lib/auth";
 import { haptic } from "../../lib/telegram";
-import { MODE } from "../../lib/themeMode";
 import { useT } from "../../lib/i18n";
 import { clamp, spring, springLoop, tune } from "../../lib/spring";
 
-// Пружины из Pull to refresh (tokens.css): возврат 260/18, под пальцем 900/50.
+// Пружины: возврат 260/18, под пальцем 900/50, ракета 380/20, улёт 220/22.
 const RETURN: [number, number] = [260, 18];
 const FOLLOW: [number, number] = [900, 50];
-const DROP: [number, number] = [380, 20];
-const DROP_SCALE: [number, number] = [420, 18];
+const ROCKET: [number, number] = [380, 20];
+const LAUNCH: [number, number] = [220, 22];
 const SCROLL: [number, number] = [260, 24];
-const GATE = 132; // высота «шлюза» в покое: лента начинается заметно ниже
-const THRESHOLD = 110; // сколько протянуть, чтобы открыть
-const REST_S = 0.3;
+const GATE = 120; // высота «шлюза» в покое
+const THRESHOLD = 64; // сколько вытянуть шлюз, чтобы открыть
+const PROJECT_S = 0.18; // на сколько секунд вперёд проецируем бросок пальца
 
 /** Открыта ли лента в этом запуске и где стояла страница — чтобы вернуться из поста туда же. */
 let opened = false;
 let savedScroll = 0;
 
+/** Сопротивление за краем: почти 1:1 до 60 px пальца, дальше мягко к потолку ~150. */
 function rubber(d: number): number {
   d = Math.max(0, d);
-  return d <= 200 ? d * 0.55 : 110 + 60 * (1 - 1 / (((d - 200) * 0.55) / 60 + 1));
+  if (d <= 60) return d * 0.9;
+  return 54 + 96 * (1 - 1 / (1 + (d - 60) / 140));
 }
 
-// Goo-фильтр режет полупрозрачное — капле и ручке нужен сплошной цвет.
-const GOO = MODE === "light" ? "#c3c9d2" : "#3b4352";
-
 const atBottom = () => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/** Ракета: корпус, окно, стабилизаторы и пламя (пламя растёт отдельно). */
+function Rocket({ color, flame }: { color: string; flame: string }) {
+  return (
+    <svg viewBox="0 0 40 56" width={40} height={56} aria-hidden style={{ overflow: "visible" }}>
+      <path data-flame d="M14 40 Q20 62 26 40 Z" fill={flame} style={{ transformOrigin: "20px 40px", transformBox: "view-box" }} />
+      <path d="M20 2 C29 10 31 22 29 38 L11 38 C9 22 11 10 20 2 Z" fill={color} />
+      <path d="M11 28 L4 38 L11 38 Z M29 28 L36 38 L29 38 Z" fill={color} opacity={0.75} />
+      <circle cx={20} cy={18} r={4.5} fill="none" stroke="currentColor" strokeWidth={2.5} opacity={0.9} />
+    </svg>
+  );
+}
 
 interface Props {
   onOpenPost: (id: string) => void;
@@ -62,35 +79,46 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
   const [armed, setArmed] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const gateRef = useRef<HTMLDivElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const filterId = `feedgoo-${useId().replace(/:/g, "")}`;
+  const rocketRef = useRef<HTMLDivElement>(null);
+  const flameRef = useRef<HTMLDivElement>(null);
+  const theme = useTheme();
 
-  // ── «Магнит»: тянешь за край страницы, отпустил раньше — пружина вернёт.
+  // ── Pull-to-reveal: тянешь за нижний край, отпустил раньше — пружина вернёт.
   useEffect(() => {
     if (open) return;
-    const P = spring(0, ...RETURN); // насколько растянут шлюз
-    const D = spring(14, ...DROP); // центр капли
-    const DS = spring(REST_S, ...DROP_SCALE); // размер капли
+    const P = spring(0, ...RETURN); // насколько вытянут шлюз
+    const R = spring(0, ...ROCKET); // подъём ракеты 0…1 (+ улёт)
     let pulling = false;
     let y0: number | null = null;
     let isArmed = false;
     let done = false;
     let wheelAcc = 0;
     let wheelTimer = 0;
+    // Последние точки пальца — для скорости броска.
+    let trail: { y: number; t: number }[] = [];
 
     const loop = springLoop(
       () => {
-        const p = clamp(P.x / THRESHOLD, 0, 1);
-        D.t = done ? GATE + P.x : 14 + P.x * 0.5;
-        DS.t = done ? 1.6 : REST_S + (1 - REST_S) * p;
-        return [P, D, DS];
+        if (!done) R.t = clamp(P.x / THRESHOLD, 0, 1.25);
+        return [P, R];
       },
       () => {
         if (gateRef.current) gateRef.current.style.height = `${GATE + P.x}px`;
-        if (dropRef.current) {
-          const st = 1 + clamp(Math.abs(D.v) / 1600, 0, 0.35);
-          dropRef.current.style.transform = `translateY(${(D.x - 16).toFixed(2)}px) scale(${(DS.x / st).toFixed(3)},${(DS.x * st).toFixed(3)})`;
-          dropRef.current.style.opacity = done ? String(clamp(1 - (DS.x - 1) / 0.6, 0, 1).toFixed(3)) : "1";
+        const r = R.x;
+        const el = rocketRef.current;
+        if (el) {
+          // До порога: выезжает снизу и выпрямляется. Улёт: r → 4, уходит вверх.
+          const rise = Math.min(r, 1);
+          const fly = Math.max(0, r - 1.25);
+          const y = 26 - 26 * rise - fly * 90;
+          const tilt = (1 - Math.min(rise, 1)) * -28;
+          const sc = 0.7 + 0.3 * Math.min(rise, 1);
+          el.style.transform = `translateY(${y.toFixed(2)}px) rotate(${tilt.toFixed(2)}deg) scale(${sc.toFixed(3)})`;
+          el.style.opacity = done ? clamp(1 - fly / 2.5, 0, 1).toFixed(3) : clamp(0.35 + rise, 0, 1).toFixed(3);
+        }
+        if (flameRef.current) {
+          const f = clamp((r - 0.55) / 0.45, 0, 1.6);
+          flameRef.current.style.setProperty("--flame", f.toFixed(3));
         }
         // Низ страницы держим прижатым: растёт шлюз — контент едет вверх.
         if (P.x > 0.5 && !done) window.scrollTo(0, document.documentElement.scrollHeight);
@@ -101,28 +129,37 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
       if (on === isArmed) return;
       isArmed = on;
       setArmed(on);
-      if (on) {
-        DS.v += 4; // «щелчок» капли на пороге
-        haptic("light");
-      }
+      haptic("selection"); // щелчок на пороге — и туда, и обратно
+      if (on) R.v += 3;
     };
     const pull = (d: number) => {
       P.t = rubber(d);
       arm(P.t >= THRESHOLD);
       loop.kick();
     };
-    const release = () => {
+    const launch = () => {
+      done = true;
+      setArmed(true);
+      haptic("medium");
+      tune(R, LAUNCH);
+      R.t = reducedMotion() ? 1 : 4;
+      R.v = reducedMotion() ? 0 : 6;
+      tune(P, RETURN);
+      P.t = THRESHOLD;
+      loop.kick();
+      window.setTimeout(() => {
+        opened = true;
+        setOpen(true);
+      }, reducedMotion() ? 60 : 260);
+    };
+    const release = (velocity = 0) => {
       pulling = false;
       y0 = null;
-      if (P.t >= THRESHOLD) {
-        done = true;
-        haptic("success");
-        loop.kick();
-        window.setTimeout(() => {
-          opened = true;
-          setOpen(true);
-        }, 160);
-      } else {
+      // Проекция: где окажется шлюз, если палец продолжит с той же скоростью.
+      // Медленное ведение (< 350 px/с) — не бросок: решает только порог.
+      const projected = velocity > 350 ? P.t + rubber(velocity * PROJECT_S) * 0.6 : P.t;
+      if (P.t >= THRESHOLD || projected >= THRESHOLD) launch();
+      else {
         tune(P, RETURN);
         P.t = 0;
         arm(false);
@@ -133,6 +170,13 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
     const onStart = (e: TouchEvent) => {
       y0 = e.touches[0].clientY;
       pulling = false;
+      trail = [];
+      // Палец коснулся во время отката — продолжаем с текущей позиции (прерываемая пружина).
+      if (P.x > 1 && !done) {
+        y0 = e.touches[0].clientY + P.x / 0.9;
+        pulling = true;
+        tune(P, FOLLOW);
+      }
     };
     const onMove = (e: TouchEvent) => {
       if (y0 == null || done) return;
@@ -143,15 +187,23 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
           y0 = y;
           return;
         }
-        if (y0 - y < 4) return;
+        if (y0 - y < 3) return;
         pulling = true;
         tune(P, FOLLOW);
       }
       if (e.cancelable) e.preventDefault();
+      const now = performance.now();
+      trail.push({ y, t: now });
+      while (trail.length > 2 && now - trail[0].t > 90) trail.shift();
       pull(y0 - y);
     };
     const onEnd = () => {
-      if (pulling) release();
+      if (pulling) {
+        const a = trail[0];
+        const b = trail[trail.length - 1];
+        const v = a && b && b.t > a.t ? ((a.y - b.y) / (b.t - a.t)) * 1000 : 0; // px/s вверх
+        release(v);
+      }
       y0 = null;
     };
     // Колесо/тачпад на компьютере: копим прокрутку у низа, пауза — «отпустил».
@@ -165,9 +217,13 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
       wheelAcc += e.deltaY;
       pull(wheelAcc);
       window.clearTimeout(wheelTimer);
-      wheelTimer = window.setTimeout(release, 180);
+      wheelTimer = window.setTimeout(() => release(0), 180);
     };
 
+    // Системный bounce и «потяни, чтобы обновить» не должны спорить с жестом.
+    const html = document.documentElement;
+    const prevOverscroll = html.style.overscrollBehaviorY;
+    html.style.overscrollBehaviorY = "none";
     window.addEventListener("touchstart", onStart, { passive: true });
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onEnd);
@@ -176,6 +232,7 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
     return () => {
       loop.stop();
       window.clearTimeout(wheelTimer);
+      html.style.overscrollBehaviorY = prevOverscroll;
       window.removeEventListener("touchstart", onStart);
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
@@ -252,32 +309,34 @@ export default function FeedSection({ onOpenPost, onOpenProfile, onEditProfile, 
   }, [more, loading, load, posts]);
 
   if (!open) {
+    const ink = theme.palette.text.primary;
     return (
-      <Box ref={gateRef} sx={{ position: "relative", height: GATE, mt: 3, mb: -2, userSelect: "none" }} aria-hidden={false}>
-        <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
-          <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b" />
-            <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="g" />
-            <feComposite in="SourceGraphic" in2="g" operator="atop" />
-          </filter>
-        </svg>
-        <Box sx={{ position: "absolute", inset: 0, filter: `url(#${filterId})`, pointerEvents: "none" }}>
-          <Box sx={{ position: "absolute", left: "50%", top: 12, width: 44, height: 6, ml: "-22px", borderRadius: "3px", bgcolor: GOO }} />
-          <Box ref={dropRef} sx={{ position: "absolute", left: "50%", top: 0, width: 32, height: 32, ml: "-16px", borderRadius: "50%", bgcolor: GOO, willChange: "transform" }} />
+      <Box ref={gateRef} sx={{ position: "relative", height: GATE, mt: 3, mb: -2, userSelect: "none", overflow: "hidden" }}>
+        {/* Ракета — знак жеста: выезжает и разгорается по мере протяжки. */}
+        <Box sx={{ position: "absolute", left: "50%", top: 6, width: 40, height: 56, ml: "-20px", pointerEvents: "none" }}>
+          <Box ref={rocketRef} sx={{ width: 40, height: 56, color: theme.palette.background.paper, transformOrigin: "50% 70%", willChange: "transform, opacity", opacity: 0.35, transform: "translateY(26px) rotate(-28deg) scale(0.7)" }}>
+            <Box
+              ref={flameRef}
+              sx={{
+                "--flame": 0,
+                "& [data-flame]": { transform: "scaleY(var(--flame))", opacity: "min(1, calc(var(--flame) * 1.5))" },
+              }}
+            >
+              <Rocket color={armed ? theme.palette.primary.main : alpha(ink, 0.55)} flame="#fb923c" />
+            </Box>
+          </Box>
         </Box>
-        {/* Ручка поверх: тонкую полоску goo-фильтр размывает в ноль, а она должна быть видна всегда. */}
-        <Box sx={{ position: "absolute", left: "50%", top: 12, width: 44, height: 6, ml: "-22px", borderRadius: "3px", bgcolor: GOO, pointerEvents: "none" }} />
         <Box
           component="button"
           onClick={() => {
             opened = true;
             setOpen(true);
           }}
-          sx={{ position: "absolute", left: 0, right: 0, bottom: 28, border: 0, bgcolor: "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "center", color: "text.secondary" }}
+          sx={{ position: "absolute", left: 0, right: 0, bottom: 22, border: 0, bgcolor: "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "center", color: "text.secondary" }}
         >
           <Typography sx={{ fontSize: 15, fontWeight: 700, color: "text.primary" }}>{t("Лента", "Feed")}</Typography>
-          <Typography sx={{ fontSize: 12, color: "text.secondary", transition: "opacity .2s" }}>
-            {armed ? t("Отпусти — откроется", "Release to open") : t("Потяни вверх, чтобы открыть", "Pull up to open")}
+          <Typography sx={{ fontSize: 12, color: armed ? "primary.main" : "text.secondary", fontWeight: armed ? 700 : 400, transition: "color .2s" }}>
+            {armed ? t("Отпусти — взлетаем", "Release to launch") : t("Потяни вверх или нажми", "Pull up or tap")}
           </Typography>
         </Box>
       </Box>
