@@ -389,6 +389,18 @@ export default function ProfileScreen({
             </Typography>
           </Stack>
         )}
+        {todayCheckin && (todayCheckin.hrvMs != null || todayCheckin.restingHr != null || todayCheckin.sleepMin != null) && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, fontVariantNumeric: "tabular-nums" }}>
+            {todayCheckin.device ?? t("Часы", "Watch")}:{" "}
+            {[
+              todayCheckin.hrvMs != null ? `HRV ${todayCheckin.hrvMs} ${t("мс", "ms")}` : "",
+              todayCheckin.restingHr != null ? t(`пульс покоя ${todayCheckin.restingHr}`, `resting HR ${todayCheckin.restingHr}`) : "",
+              todayCheckin.sleepMin != null ? t(`сон ${Math.floor(todayCheckin.sleepMin / 60)} ч ${todayCheckin.sleepMin % 60} мин`, `sleep ${Math.floor(todayCheckin.sleepMin / 60)}h ${todayCheckin.sleepMin % 60}m`) : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Typography>
+        )}
       </Card>
 
       {/* Настройки — шторка с вложенными страницами (Stack Panel) */}

@@ -441,8 +441,9 @@ export interface Plan {
  */
 export interface InboxItem {
   id: string;
-  /** «plan», «workout» — документ для импорта; «archive_plan» — просьба убрать план в архив ({ planId }). */
-  type: "plan" | "workout" | "archive_plan";
+  /** «plan», «workout» — документ для импорта; «archive_plan» — просьба убрать план в архив ({ planId });
+      «checkin» — утренние данные с часов ({ days: [...] }), применяются сразу. */
+  type: "plan" | "workout" | "archive_plan" | "checkin";
   payload: unknown;
   /** Кто прислал: «Claude», «ChatGPT», имя ключа. */
   source?: string | null;
@@ -996,6 +997,13 @@ export interface RecoveryEntry {
   motivation: number | null; // желание тренироваться
   /** Точка на mood-карте (энергия × настроение, 0–1). Новый способ ввода. */
   mood?: { x: number; y: number } | null;
+  /** Объективные данные с часов (Garmin и т. п., приходят через ИИ). */
+  hrvMs?: number | null; // ночной HRV, мс
+  restingHr?: number | null; // пульс покоя, уд/мин
+  sleepMin?: number | null; // сон, минут
+  sleepScore?: number | null; // оценка сна 0–100
+  bodyBattery?: number | null; // Body Battery утром 0–100
+  device?: string | null; // откуда: «Garmin»
 }
 
 /** Поля чек-ина в порядке показа. */

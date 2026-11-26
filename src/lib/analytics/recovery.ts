@@ -6,6 +6,7 @@ import { today } from "../format";
 import { perceivedFeel, recoveryAverage } from "../types";
 import type { RecoveryEntry, Session } from "../types";
 import { loadBaseline } from "./load";
+import { bodySignals } from "../bodySignals";
 import { diffDays } from "./period";
 import type { Confidence } from "./types";
 
@@ -49,10 +50,13 @@ export function readiness(
   const feel01 = feels.length ? feels.reduce((a, b) => a + b, 0) / feels.length : null;
 
   // Чек-ин весит больше (осознанная отметка), но самочувствие после тоже двигает.
-  const score =
+  const subjective01 =
     checkin01 != null && feel01 != null
       ? 0.6 * checkin01 + 0.4 * feel01
       : (checkin01 ?? feel01);
+  // Данные с часов (HRV, пульс покоя к своей норме) — пополам с ощущениями.
+  const body = bodySignals(recovery, asOf).score;
+  const score = body != null && subjective01 != null ? 0.5 * body + 0.5 * subjective01 : (body ?? subjective01);
   const score5 = score == null ? null : score * 4 + 1;
 
   const lastStrength = sessions

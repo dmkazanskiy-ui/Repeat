@@ -388,6 +388,10 @@ def context_view(uid: str) -> dict:
         "recentWorkouts": [_workout_view(s, names) for s in sessions if (s.get("date") or "") >= _shift(today, -14)][-40:],
         "lastWorkingWeights": weights,
         "bodyWeight": [{"date": b["date"], "kg": b["weightKg"]} for b in body[-5:]],
+        "watch": [
+            {k: e.get(k) for k in ("date", "hrvMs", "restingHr", "sleepMin", "sleepScore", "bodyBattery") if e.get(k) is not None}
+            for e in sorted((e for e in recs.get("recovery", []) if isinstance(e, dict) and (e.get("hrvMs") is not None or e.get("restingHr") is not None)), key=lambda e: e.get("date") or "")[-14:]
+        ],
         "customExercises": sorted(names.values()),
     }
 
@@ -533,6 +537,64 @@ def submit(ident: dict, kind: str, doc, note=None, idem_key=None) -> dict:
     }
 
 
+CHECKIN_RANGE = {"hrvMs": (5, 250), "restingHr": (25, 130), "sleepMin": (0, 1000), "sleepScore": (0, 100), "bodyBattery": (0, 100)}
+
+
+def submit_checkin(ident: dict, days, device=None) -> dict:
+    """Утренние данные с часов (HRV, пульс покоя, сон) — во «входящие»; приложение
+    записывает их в самочувствие сразу (только дополняет, ничего не удаляет)."""
+    if ident.get("scope") != "write":
+        raise srv.ApiError(403, "read-only key")
+    if not isinstance(days, list) or not days:
+        return {"ok": False, "errors": ["days — непустой список {date, hrvMs?, restingHr?, sleepMin?, sleepScore?, bodyBattery?}"]}
+    clean, errs = [], []
+    for i, d in enumerate(days[:62]):
+        if not isinstance(d, dict) or not (isinstance(d.get("date"), str) and DATE_RE.match(d["date"])):
+            errs.append(f"days[{i}].date — дата YYYY-MM-DD")
+            continue
+        row = {"date": d["date"]}
+        for k, (lo, hi) in CHECKIN_RANGE.items():
+            v = d.get(k)
+            if v is None:
+                continue
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not (lo <= v <= hi):
+                errs.append(f"{d['date']}: {k} вне диапазона {lo}–{hi}")
+                continue
+            row[k] = round(v)
+        if len(row) > 1:
+            clean.append(row)
+    if errs and not clean:
+        return {"ok": False, "errors": errs[:20]}
+    uid = ident["uid"]
+    item_id = "in_" + secrets.token_hex(8)
+    item = {
+        "id": item_id,
+        "type": "checkin",
+        "payload": {"days": clean, "device": srv.clean_text(device, 30) or "Garmin"},
+        "source": srv.clean_text(ident.get("name"), 40) or "ИИ",
+        "note": None,
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "digest": hashlib.sha256(json.dumps(clean, sort_keys=True).encode()).hexdigest()[:24],
+    }
+    with srv.lock:
+        state = srv.load_state(uid)
+        if state is None:
+            return {"ok": False, "errors": ["у пользователя ещё нет данных"]}
+        pending = [r for r in state["records"].values() if r["c"] == "inbox" and r.get("data") is not None]
+        if any(isinstance(r["data"], dict) and r["data"].get("digest") == item["digest"] for r in pending):
+            return {"ok": True, "duplicate": True, "message": "Эти же данные уже ждут во «входящих»."}
+        if len(pending) >= MAX_INBOX:
+            return {"ok": False, "errors": ["во «входящих» уже 20 неразобранных — попроси человека открыть Repeat"]}
+        state["rev"] += 1
+        state["records"][f"inbox\u0000{item_id}"] = {"c": "inbox", "id": item_id, "ts": int(time.time() * 1000), "rev": state["rev"], "data": item}
+        srv.save_state(uid, state, json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode())
+    srv.log_event("agent_submit", uid, "checkin", item["source"])
+    out = {"ok": True, "inboxId": item_id, "days": len(clean), "message": "Записано: при открытии Repeat данные попадут в самочувствие и в готовность."}
+    if errs:
+        out["skipped"] = errs[:20]
+    return out
+
+
 def submit_archive(ident: dict, plan_id=None, name=None, note=None) -> dict:
     """Просьба убрать план в архив (вместе с его программой) — во «входящие», с подтверждением."""
     if ident.get("scope") != "write":
@@ -636,6 +698,34 @@ TOOLS = [
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
     {
+        "name": "submit_checkin",
+        "title": "Утренние данные с часов",
+        "description": "Записать в самочувствие Repeat объективные данные по дням: ночной HRV (мс), пульс покоя, сон (минуты, оценка 0–100), Body Battery. Возьми их из Garmin (garmin_hrv, garmin_sleep, garmin_daily_summaries). Repeat сравнит с личной нормой: HRV ниже нормы 2 дня или пульс покоя +5 — предложит облегчить силовую по плану. Применяется без подтверждения, только дополняет.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "date": {"type": "string", "description": "YYYY-MM-DD"},
+                            "hrvMs": {"type": "number"},
+                            "restingHr": {"type": "number"},
+                            "sleepMin": {"type": "number"},
+                            "sleepScore": {"type": "number"},
+                            "bodyBattery": {"type": "number"},
+                        },
+                        "required": ["date"],
+                    },
+                },
+                "device": {"type": "string", "description": "Например «Garmin»"},
+            },
+            "required": ["days"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
         "name": "archive_plan",
         "title": "Убрать план в архив",
         "description": "Попросить убрать план в архив вместе с созданной им программой (например, дубль на те же даты). Попадает во «входящие» Repeat и выполняется после подтверждения; тренировки и история остаются. Укажи planId из get_plan (или точное name).",
@@ -688,6 +778,14 @@ def call_tool(ident: dict, name: str, args: dict) -> dict:
         return _text(plan_view(uid, args))
     if name == "get_format":
         return _text(format_doc())
+    if name == "submit_checkin":
+        if ident.get("scope") != "write":
+            return {**_text("Доступ только на чтение: попроси пользователя выдать доступ с записью."), "isError": True}
+        res = submit_checkin(ident, args.get("days"), args.get("device"))
+        out = _text(res)
+        if not res.get("ok"):
+            out["isError"] = True
+        return out
     if name == "archive_plan":
         if ident.get("scope") != "write":
             return {**_text("Доступ только на чтение: попроси пользователя выдать доступ с записью."), "isError": True}
@@ -1134,6 +1232,8 @@ def rest_post(ident: dict, path: str, body):
     body = body if isinstance(body, dict) else {}
     if path == "/api/v1/plan":
         return submit(ident, "plan", body.get("plan", body), body.get("note") if "plan" in body else None, body.get("idempotencyKey"))
+    if path == "/api/v1/checkin":
+        return submit_checkin(ident, body.get("days"), body.get("device"))
     if path == "/api/v1/plan/archive":
         return submit_archive(ident, body.get("planId"), body.get("name"), body.get("note"))
     if path == "/api/v1/workouts":

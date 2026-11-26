@@ -60,6 +60,7 @@ import {
 import { applyImport, importRecord, undoImport, type ImportRecord, type PreparedImport } from "./lib/aiFormat";
 import { activityLabel, archivePlans, coldAfterStrength, COLD_TYPES, goalLine, reconcilePlanned } from "./lib/plan";
 import ArchivePlanDialog from "./components/ArchivePlanDialog";
+import { applyCheckins, bodySignals, parseCheckinDays } from "./lib/bodySignals";
 import { lastWorkingWeight } from "./lib/exerciseSuggest";
 import PlanScreen from "./screens/PlanScreen";
 import AiScreen from "./screens/AiScreen";
@@ -511,6 +512,34 @@ export default function App() {
     void saveInbox(next);
   }, []);
 
+  // Утренние данные с часов (HRV, пульс покоя, сон) от ИИ — записываем сразу:
+  // они только дополняют самочувствие и ничего не удаляют.
+  useEffect(() => {
+    if (!ready) return;
+    const items = inbox.filter((i) => i.type === "checkin");
+    if (!items.length) return;
+    let next = recovery;
+    let changed = 0;
+    for (const it of items) {
+      const device = (it.payload as { device?: unknown } | null)?.device;
+      const res = applyCheckins(next, parseCheckinDays(it.payload), typeof device === "string" ? device.slice(0, 30) : "Garmin");
+      next = res.next;
+      changed += res.changed;
+    }
+    if (changed) {
+      setRecovery(next);
+      void saveRecovery(next);
+      const sig = bodySignals(next, today());
+      const parts = [
+        sig.hrv != null ? `HRV ${sig.hrv}` : "",
+        sig.rhr != null ? L(`пульс покоя ${sig.rhr}`, `resting HR ${sig.rhr}`) : "",
+        sig.sleepMin != null ? L(`сон ${Math.floor(sig.sleepMin / 60)} ч ${sig.sleepMin % 60} мин`, `sleep ${Math.floor(sig.sleepMin / 60)}h ${sig.sleepMin % 60}m`) : "",
+      ].filter(Boolean);
+      setToast(L(`Данные с часов записаны${parts.length ? `: ${parts.join(" · ")}` : ""}`, `Watch data saved${parts.length ? `: ${parts.join(" · ")}` : ""}`));
+    }
+    commitInbox(inbox.filter((i) => i.type !== "checkin"));
+  }, [ready, inbox, recovery, commitInbox]);
+
   // Снимок для выгрузки истории (без фото) и восстановление из вставки.
   const backupData: BackupData = {
     sessions,
@@ -831,6 +860,37 @@ export default function App() {
             : p,
         ),
       );
+    },
+    [commitPlanned],
+  );
+
+  /** Перегруз по HRV/пульсу: силовую карточку дня — на дорожку (как велит правило плана). */
+  const swapToTreadmill = useCallback(
+    (card: PlannedSession) => {
+      const swap: PlannedSession = {
+        id: `${card.id}_swap`,
+        planId: card.planId,
+        date: card.date,
+        slot: card.slot,
+        time: card.time,
+        kind: "cardio",
+        cardioKind: "treadmill",
+        title: L("Дорожка вместо зала", "Treadmill instead of gym"),
+        durationMin: 45,
+        hrMin: 110,
+        hrMax: 130,
+        inclineDeg: 5,
+        inclineMaxDeg: 8,
+        note: L("HRV или пульс покоя вне нормы — день полегче", "HRV or resting HR off — easier day"),
+        status: "planned",
+        updatedAt: new Date().toISOString(),
+      };
+      const now = new Date().toISOString();
+      commitPlanned([
+        ...plannedRef.current.filter((p) => p.id !== swap.id).map((p) => (p.id === card.id ? { ...p, status: "skipped" as const, updatedAt: now } : p)),
+        swap,
+      ]);
+      setToast(L("Зал заменён дорожкой", "Gym swapped for treadmill"));
     },
     [commitPlanned],
   );
@@ -1297,6 +1357,8 @@ export default function App() {
                   onStartPlanned={startPlanned}
                   onSkipPlanned={(card) => setPlannedStatus(card, card.status === "skipped" ? "planned" : "skipped")}
                   onOpenPlan={() => setShowPlan(true)}
+                  body={bodySignals(recovery, today())}
+                  onSwapToTreadmill={swapToTreadmill}
                   weightStaleDays={weightStaleDays}
                   onUpdateWeight={() => {
                     // Форма веса живёт в «Прогресс → Тело» — открываем её сразу.

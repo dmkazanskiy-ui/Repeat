@@ -238,6 +238,12 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(agent.submit_archive(w, "p1")["duplicate"])
         item = [c for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["id"] == ok["inboxId"]][0]["data"]
         self.assertEqual((item["type"], item["payload"]["planId"]), ("archive_plan", "p1"))
+        # submit_checkin: числа вне диапазона отбрасываются, повтор не плодится.
+        ck = agent.submit_checkin(w, [{"date": "2026-11-26", "hrvMs": 44, "restingHr": 55, "sleepMin": 412}, {"date": "2026-11-25", "hrvMs": 999}])
+        self.assertEqual((ck["ok"], ck["days"]), (True, 1))
+        self.assertIn("skipped", ck)
+        self.assertTrue(agent.submit_checkin(w, [{"date": "2026-11-26", "hrvMs": 44, "restingHr": 55, "sleepMin": 412}])["duplicate"])
+        self.assertFalse(agent.submit_checkin(w, [])["ok"])
         # Отзыв ключа — сразу без доступа.
         gid = [g["id"] for g in agent.list_grants("111")["grants"] if g["name"] == "Claude Code"][0]
         agent.revoke("111", {"id": gid})
