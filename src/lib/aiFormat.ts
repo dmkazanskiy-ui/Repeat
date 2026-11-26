@@ -707,3 +707,71 @@ export function applyImport(prep: PreparedImport, cur: ImportTarget, archiveProg
   const sessions = [...cur.sessions, ...prep.sessions.filter((s) => !sIds.has(s.id))];
   return { exercises, programs, plans, plannedSessions, sessions };
 }
+
+// ───────────── Отмена импорта ─────────────
+
+/** Что добавил и что поменял один импорт — чтобы откатить ровно его. */
+export interface ImportRecord {
+  id: string;
+  at: string;
+  title: string;
+  kind: "plan" | "workout";
+  source?: string | null;
+  exerciseIds: string[];
+  programIds: string[];
+  planIds: string[];
+  plannedIds: string[];
+  sessionIds: string[];
+  /** Карточки, которые импорт обновил или закрыл, — в прежнем виде. */
+  prevPlanned: PlannedSession[];
+  archivedProgramIds: string[];
+  /** Планы, которые импорт заменил (убрал в архив). */
+  archivedPlanIds?: string[];
+}
+
+export function importRecord(prep: PreparedImport, before: ImportTarget, after: ImportTarget, archived: string[], now = new Date(), archivedPlanIds: string[] = []): ImportRecord {
+  const had = <T extends { id: string }>(list: T[]) => new Set(list.map((x) => x.id));
+  const newIds = <T extends { id: string }>(b: T[], a: T[]) => {
+    const h = had(b);
+    return a.filter((x) => !h.has(x.id)).map((x) => x.id);
+  };
+  const beforePlanned = new Map(before.plannedSessions.map((p) => [p.id, p]));
+  const prevPlanned = after.plannedSessions.filter((p) => beforePlanned.has(p.id) && beforePlanned.get(p.id) !== p).map((p) => beforePlanned.get(p.id)!);
+  return {
+    id: newId(),
+    at: now.toISOString(),
+    title: prep.title,
+    kind: prep.kind,
+    source: prep.plan?.source ?? null,
+    exerciseIds: newIds(before.exercises, after.exercises),
+    programIds: newIds(before.programs, after.programs),
+    planIds: newIds(before.plans, after.plans),
+    plannedIds: newIds(before.plannedSessions, after.plannedSessions),
+    sessionIds: newIds(before.sessions, after.sessions),
+    prevPlanned,
+    archivedProgramIds: archived.filter((id) => before.programs.some((p) => p.id === id && !p.archivedAt)),
+    archivedPlanIds: archivedPlanIds.filter((id) => before.plans.some((p) => p.id === id && !p.archivedAt)),
+  };
+}
+
+/**
+ * Откатить импорт: убрать добавленное, вернуть прежние карточки и программы
+ * из архива. Своё упражнение остаётся, если им уже пользуются в другой тренировке.
+ */
+export function undoImport(rec: ImportRecord, cur: ImportTarget): ImportTarget {
+  const drop = <T extends { id: string }>(list: T[], ids: string[]) => {
+    const set = new Set(ids);
+    return list.filter((x) => !set.has(x.id));
+  };
+  const sessions = drop(cur.sessions, rec.sessionIds);
+  const programs = drop(cur.programs, rec.programIds).map((p) => (rec.archivedProgramIds.includes(p.id) ? { ...p, archivedAt: null } : p));
+  const prev = new Map(rec.prevPlanned.map((p) => [p.id, p]));
+  const plannedSessions = drop(cur.plannedSessions, rec.plannedIds).map((p) => prev.get(p.id) ?? p);
+  const used = new Set([
+    ...sessions.flatMap((s) => s.exercises.map((e) => e.exerciseId)),
+    ...programs.flatMap((p) => p.workouts.flatMap((w) => w.exercises.map((e) => e.exerciseId))),
+  ]);
+  const exercises = cur.exercises.filter((e) => !rec.exerciseIds.includes(e.id) || used.has(e.id));
+  const plans = drop(cur.plans, rec.planIds).map((p) => (rec.archivedPlanIds?.includes(p.id) ? { ...p, archivedAt: null } : p));
+  return { exercises, programs, plans, plannedSessions, sessions };
+}

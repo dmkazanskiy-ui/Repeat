@@ -441,8 +441,8 @@ export interface Plan {
  */
 export interface InboxItem {
   id: string;
-  /** «plan» или «workout» — формат payload. */
-  type: "plan" | "workout";
+  /** «plan», «workout» — документ для импорта; «archive_plan» — просьба убрать план в архив ({ planId }). */
+  type: "plan" | "workout" | "archive_plan";
   payload: unknown;
   /** Кто прислал: «Claude», «ChatGPT», имя ключа. */
   source?: string | null;
@@ -488,6 +488,8 @@ export interface PlannedSession {
   status: PlannedStatus;
   /** Тренировка, которая закрыла карточку. */
   linkedSessionId?: string | null;
+  /** Точность выполнения, 0–100: время к цели, пульс в коридоре, доля подходов. */
+  compliance?: number | null;
   updatedAt?: string | null;
 }
 

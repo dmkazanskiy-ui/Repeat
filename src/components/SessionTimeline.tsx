@@ -154,7 +154,9 @@ function SessionCard({
   onOpen,
   onChangeTime,
   nowMs,
+  planPct = null,
 }: {
+  planPct?: number | null;
   session: Session;
   exercises: Exercise[];
   onOpen: (id: string) => void;
@@ -196,7 +198,7 @@ function SessionCard({
           // Общее время тренировки — между началом и концом у всех видов.
           running ? L("идёт", "live") : !dur ? L("без времени", "no time") : dur < 60 ? L("< 1 мин", "< 1 min") : formatDuration(dur)
         }
-        fields={ticketFields(session)}
+        fields={planPct != null ? [{ label: L("План", "Plan"), value: `${planPct}%` }, ...ticketFields(session)].slice(0, 4) : ticketFields(session)}
         note={description(session, exercises) || undefined}
         timeValue={session.time ?? null}
         onTimeChange={(t) => onChangeTime(session.id, t)}
@@ -224,13 +226,15 @@ export default function SessionTimeline({ sessions, exercises, onOpen, onDelete,
   ];
   const key = (i: (typeof items)[number]) => (i.t === "s" ? (i.s.time ?? i.s.createdAt.slice(11, 16)) : (i.p.time ?? (i.p.slot === "morning" ? "06:00" : i.p.slot === "day" ? "12:00" : "18:00")));
   items.sort((a, b) => key(a).localeCompare(key(b)));
+  // Точность выполнения плана — на билете тренировки, которая закрыла карточку.
+  const pct = new Map(planned.filter((p) => p.linkedSessionId && p.compliance != null).map((p) => [p.linkedSessionId!, p.compliance!]));
 
   return (
     <Stack spacing={1.5}>
       {items.map((it) =>
         it.t === "s" ? (
           <SwipeToDelete key={it.s.id} onDelete={() => onDelete(it.s.id)} accent={alpha(typeColor(it.s.kind), 0.25)}>
-            <SessionCard session={it.s} exercises={exercises} onOpen={onOpen} onChangeTime={onChangeTime} nowMs={nowMs} />
+            <SessionCard session={it.s} exercises={exercises} onOpen={onOpen} onChangeTime={onChangeTime} nowMs={nowMs} planPct={pct.get(it.s.id) ?? null} />
           </SwipeToDelete>
         ) : (
           <SwipeToDelete key={it.p.id} onDelete={() => onSkipPlanned?.(it.p)} accent={alpha(typeColor(it.p.kind), 0.25)}>

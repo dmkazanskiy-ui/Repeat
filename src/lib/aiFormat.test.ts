@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyImport, extractJson, prepareImport, type ImportTarget } from "./aiFormat";
-import { creditCandidates, goalLine, periodSummary, plannedOn, reconcilePlanned, slotState } from "./plan";
+import { applyImport, extractJson, importRecord, prepareImport, undoImport, type ImportTarget } from "./aiFormat";
+import { archivePlans, cardCompliance, creditCandidates, goalLine, overlappingPlans, periodSummary, plannedOn, reconcilePlanned, slotState } from "./plan";
 import { CATALOG } from "./catalog";
 import { newSession, newSessionExercise } from "./store";
 import { sessionVolume } from "./types";
@@ -116,6 +116,44 @@ describe("импорт плана", () => {
     expect(twice.sessions.reduce((a, s) => a + sessionVolume(s), 0)).toBe(before.vol);
   });
 
+  it("отмена импорта убирает ровно добавленное и возвращает программу из архива", () => {
+    const old: TrainingProgram = { id: "old", name: "Цикл сплит", workouts: [], currentWorkoutIndex: 0, cycleNumber: 1, createdAt: "2026-01-01" };
+    const history = [benchSession("2026-11-20")];
+    const before = { ...empty(), programs: [old], sessions: history };
+    const res = prepareImport(MINI, before);
+    if (!res.ok) throw new Error(res.error);
+    const after = applyImport(res.prep, before, ["old"]);
+    const rec = importRecord(res.prep, before, after, ["old"]);
+    expect([rec.programIds.length, rec.planIds.length, rec.plannedIds.length, rec.exerciseIds.length]).toEqual([1, 1, 6, 1]);
+    const back = undoImport(rec, after);
+    expect(back.programs).toEqual([{ ...old, archivedAt: null }]);
+    expect(back.plans).toHaveLength(0);
+    expect(back.plannedSessions).toHaveLength(0);
+    expect(back.sessions).toEqual(history);
+    expect(back.exercises.filter((e) => e.custom)).toHaveLength(0);
+  });
+
+  it("второй план на те же даты: видно пересечение, замена архивирует старый с программой, отмена возвращает", () => {
+    const first = prepareImport(MINI, empty());
+    if (!first.ok) throw new Error(first.error);
+    const one = applyImport(first.prep, empty());
+    const v2 = { ...MINI, name: "Тест-план (v2)", program: { ...MINI.program, name: "Тест А/Б v2" } };
+    const second = prepareImport(v2, one);
+    if (!second.ok) throw new Error(second.error);
+    const over = overlappingPlans(one.plans, second.prep.range!.start, second.prep.range!.end, second.prep.plan!.id);
+    expect(over.map((p) => p.name)).toEqual(["Тест-план"]);
+    let two = applyImport(second.prep, one);
+    const res = archivePlans(over.map((p) => p.id), two);
+    two = { ...two, plans: res.plans, programs: res.programs };
+    expect(res.archivedProgramIds).toEqual([over[0].programId]);
+    // Карточки старого плана пропали с экрана дня, новые на месте.
+    expect(plannedOn(two.plannedSessions, two.plans, "2026-11-30").every((c) => c.planId === second.prep.plan!.id)).toBe(true);
+    const rec = importRecord(second.prep, one, two, res.archivedProgramIds, new Date(), over.map((p) => p.id));
+    const back = undoImport(rec, two);
+    expect(back.plans.map((p) => [p.name, p.archivedAt ?? null])).toEqual([["Тест-план", null]]);
+    expect(back.programs.map((p) => [p.name, p.archivedAt ?? null])).toEqual([["Тест А/Б", null]]);
+  });
+
   it("старая программа уходит в архив только по просьбе", () => {
     const old: TrainingProgram = { id: "old", name: "Цикл сплит", workouts: [], currentWorkoutIndex: 0, cycleNumber: 1, createdAt: "2026-01-01" };
     const res = prepareImport(MINI, { ...empty(), programs: [old] });
@@ -185,6 +223,21 @@ describe("план ⇄ тренировки", () => {
     // Другой вид сам не засчитывается; силовая без тренировки так и ждёт.
     expect(next.filter((c) => c.linkedSessionId === bike.id)).toHaveLength(0);
     expect(next.find((c) => c.title === "Зал Б")?.status).toBe("planned");
+  });
+
+  it("точность выполнения: время к цели и пульс в коридоре", () => {
+    const t = imported();
+    const card = t.plannedSessions.find((c) => c.title === "Бег с клубом")!; // 30 мин, пульс 135–145
+    const run = newSession("2026-12-01", "cardio", { cardioKind: "run" });
+    run.cardio = { durationSec: 30 * 60, distanceM: 5000, avgHr: 140 };
+    run.endedAt = "2026-12-01T07:00:00.000Z";
+    expect(cardCompliance(card, run)).toBe(100);
+    run.cardio = { durationSec: 24 * 60, distanceM: 4000, avgHr: 150 }; // 80% времени, пульс на 5 выше коридора шириной 10
+    expect(cardCompliance(card, run)).toBe(65);
+    run.plannedSessionId = card.id;
+    const next = reconcilePlanned(t.plannedSessions, [run]);
+    expect(next.find((c) => c.id === card.id)).toMatchObject({ status: "done", compliance: 65 });
+    expect(periodSummary(next, [run], ["2026-12-01"]).accuracy).toBe(65);
   });
 
   it("записанная от ИИ тренировка закрывает карточку дня", () => {

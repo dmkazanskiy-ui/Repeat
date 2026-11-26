@@ -149,7 +149,7 @@ def load_meta() -> None:
         with open(meta_path(), encoding="utf-8") as f:
             data = json.load(f)
         META = {"admin": data.get("admin"), "users": data.get("users", {}), "sessions": data.get("sessions", {})}
-        for key in ("grants", "agent_tokens", "oauth_clients"):  # доступы ИИ (agent.py)
+        for key in ("grants", "agent_tokens", "oauth_clients", "agent_idem"):  # доступы ИИ (agent.py)
             if isinstance(data.get(key), dict):
                 META[key] = data[key]
     except FileNotFoundError:

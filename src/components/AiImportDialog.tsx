@@ -2,7 +2,8 @@
 // импорт. Тот же диалог показывает то, что ИИ прислал через API/MCP во
 // «входящие»: ничего не записывается без подтверждения человека.
 import { useMemo, useRef, useState } from "react";
-import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Typography } from "@mui/material";
+import { Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Radio, RadioGroup, Typography } from "@mui/material";
+import { overlappingPlans } from "../lib/plan";
 import { ContentPasteRounded } from "../ui/icons";
 import { radius } from "../ui";
 import { prepareImport, type ImportTarget, type PreparedImport } from "../lib/aiFormat";
@@ -14,7 +15,8 @@ import type { InboxItem } from "../lib/types";
 interface Props {
   inboxItem: InboxItem | null;
   ctx: ImportTarget;
-  onApply: (prep: PreparedImport, archiveProgramIds: string[]) => Promise<void> | void;
+  /** replacePlanIds — пересекающиеся по датам планы, которые человек решил заменить. */
+  onApply: (prep: PreparedImport, archiveProgramIds: string[], replacePlanIds: string[]) => Promise<void> | void;
   onClose: () => void;
 }
 
@@ -22,6 +24,7 @@ export default function AiImportDialog({ inboxItem, ctx, onApply, onClose }: Pro
   const t = useT();
   const [text, setText] = useState("");
   const [archive, setArchive] = useState<string[]>([]);
+  const [mode, setMode] = useState<"replace" | "add">("replace");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<PreparedImport | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -37,7 +40,11 @@ export default function AiImportDialog({ inboxItem, ctx, onApply, onClose }: Pro
   const prep = result?.ok ? result.prep : null;
   const nothingNew =
     prep != null && !prep.program && !prep.plan && prep.planned.length === 0 && prep.sessions.length === 0 && prep.links.length === 0;
-  const oldPrograms = prep?.program ? ctxRef.current.programs.filter((p) => !p.archivedAt) : [];
+  // Новый план на те же даты, что и активный, — спросить: заменить или рядом.
+  const overlaps = prep?.kind === "plan" && prep.plan && prep.range ? overlappingPlans(ctxRef.current.plans, prep.range.start, prep.range.end, prep.plan.id) : [];
+  const replaced = mode === "replace" ? overlaps : [];
+  const replacedPrograms = new Set(replaced.map((p) => p.programId).filter(Boolean) as string[]);
+  const oldPrograms = prep?.program ? ctxRef.current.programs.filter((p) => !p.archivedAt && !replacedPrograms.has(p.id)) : [];
 
   async function paste() {
     try {
@@ -55,7 +62,7 @@ export default function AiImportDialog({ inboxItem, ctx, onApply, onClose }: Pro
     if (!prep) return;
     setBusy(true);
     try {
-      await onApply(prep, archive);
+      await onApply(prep, archive.filter((id) => !replacedPrograms.has(id)), replaced.map((p) => p.id));
       haptic("success");
       setDone(prep);
     } finally {
@@ -184,6 +191,29 @@ export default function AiImportDialog({ inboxItem, ctx, onApply, onClose }: Pro
                     {w}
                   </Typography>
                 ))}
+              </Box>
+            )}
+
+            {overlaps.length > 0 && (
+              <Box sx={{ mt: 1.5, p: 1.5, borderRadius: radius.tile, bgcolor: "action.hover" }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {t(
+                    `Даты пересекаются с планом «${overlaps.map((p) => p.name).join("», «")}». Заменить существующий план или добавить рядом?`,
+                    `Dates overlap with "${overlaps.map((p) => p.name).join('", "')}". Replace the existing plan or add alongside?`,
+                  )}
+                </Typography>
+                <RadioGroup value={mode} onChange={(e) => setMode(e.target.value as "replace" | "add")}>
+                  <FormControlLabel
+                    value="replace"
+                    control={<Radio size="small" />}
+                    label={<Typography variant="body2">{t("Заменить — старый план и его программа уйдут в архив", "Replace — the old plan and its program are archived")}</Typography>}
+                  />
+                  <FormControlLabel
+                    value="add"
+                    control={<Radio size="small" />}
+                    label={<Typography variant="body2">{t("Добавить рядом — карточки обоих планов будут в календаре", "Add alongside — both plans' cards stay in the calendar")}</Typography>}
+                  />
+                </RadioGroup>
               </Box>
             )}
 

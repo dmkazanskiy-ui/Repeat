@@ -128,6 +128,15 @@ export function savePlanned(planned: PlannedSession[]): Promise<void> {
   return db.set(KEY_PLANNED, planned);
 }
 
+/** Последние импорты от ИИ — для «Отменить». Только на этом устройстве. */
+export async function loadImports<T>(): Promise<T[]> {
+  return (await db.get<T[]>("ai_imports")) ?? [];
+}
+
+export function saveImports<T>(items: T[]): Promise<void> {
+  return db.set("ai_imports", items.slice(0, 10));
+}
+
 export function saveInbox(items: InboxItem[]): Promise<void> {
   return db.set(KEY_INBOX, items);
 }

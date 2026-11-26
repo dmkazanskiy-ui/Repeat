@@ -51,12 +51,15 @@ import {
   saveSessions,
   saveInbox,
   saveLocalBackup,
+  loadImports,
+  saveImports,
   savePlanned,
   savePlans,
   startProgramWorkout,
 } from "./lib/store";
-import { applyImport, type PreparedImport } from "./lib/aiFormat";
-import { activityLabel, coldAfterStrength, COLD_TYPES, goalLine, reconcilePlanned } from "./lib/plan";
+import { applyImport, importRecord, undoImport, type ImportRecord, type PreparedImport } from "./lib/aiFormat";
+import { activityLabel, archivePlans, coldAfterStrength, COLD_TYPES, goalLine, reconcilePlanned } from "./lib/plan";
+import ArchivePlanDialog from "./components/ArchivePlanDialog";
 import { lastWorkingWeight } from "./lib/exerciseSuggest";
 import PlanScreen from "./screens/PlanScreen";
 import AiScreen from "./screens/AiScreen";
@@ -149,6 +152,10 @@ export default function App() {
   const [showPlan, setShowPlan] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [imports, setImports] = useState<ImportRecord[]>([]);
+  useEffect(() => {
+    void loadImports<ImportRecord>().then(setImports);
+  }, []);
   const [focusGoal, setFocusGoal] = useState<FocusGoal | null>(null);
   const [onboarded, setOnboarded] = useState(true);
   const [consent, setConsent] = useState<Consent | null>(null);
@@ -881,32 +888,92 @@ export default function App() {
     [sessions, programs, plannedSessions, startProgramDay, commit, commitPlanned, setPlannedStatus],
   );
 
+  /** План в архив вместе с его программой; в тосте — «Вернуть». */
   const archivePlan = useCallback(
     (id: string) => {
-      commitPlans(plans.map((p) => (p.id === id ? { ...p, archivedAt: new Date().toISOString() } : p)));
-      setShowPlan(false);
+      const plan = plans.find((p) => p.id === id);
+      if (!plan) return;
+      const res = archivePlans([id], { plans, programs });
+      commitPlans(res.plans);
+      commitPrograms(res.programs);
+      if (!res.plans.some((p) => !p.archivedAt && p.end >= today())) setShowPlan(false);
+      setToast(L(`План «${plan.name}» в архиве`, `Plan "${plan.name}" archived`));
+      setToastAction({
+        label: L("Вернуть", "Restore"),
+        run: () => {
+          setPlans((cur) => {
+            const next = cur.map((p) => (p.id === id ? { ...p, archivedAt: null } : p));
+            void savePlans(next);
+            return next;
+          });
+          setPrograms((cur) => {
+            const next = cur.map((p) => (res.archivedProgramIds.includes(p.id) ? { ...p, archivedAt: null } : p));
+            void savePrograms(next);
+            return next;
+          });
+        },
+      });
     },
-    [plans, commitPlans],
+    [plans, programs, commitPlans, commitPrograms],
+  );
+
+  /** Записать результат импорта или его отмены во все коллекции. */
+  const applyTarget = useCallback(
+    (next: { exercises: Exercise[]; programs: TrainingProgram[]; plans: Plan[]; plannedSessions: PlannedSession[]; sessions: Session[] }) => {
+      setExercises(next.exercises);
+      void saveCustomExercises(next.exercises);
+      commitPrograms(next.programs);
+      commitPlans(next.plans);
+      commitPlanned(next.plannedSessions);
+      commit(next.sessions);
+    },
+    [commit, commitPrograms, commitPlans, commitPlanned],
   );
 
   /** Применить импорт от ИИ/файла: сначала автобэкап, потом только добавление. */
   const applyAiImport = useCallback(
-    async (prep: PreparedImport, archiveProgramIds: string[]) => {
+    async (prep: PreparedImport, archiveProgramIds: string[], replacePlanIds: string[] = []) => {
       await saveLocalBackup(backupRef.current);
-      const next = applyImport(prep, { exercises, programs, plans, plannedSessions, sessions }, archiveProgramIds);
-      if (next.exercises !== exercises) {
-        setExercises(next.exercises);
-        void saveCustomExercises(next.exercises);
+      const before = { exercises, programs, plans, plannedSessions, sessions };
+      let next = applyImport(prep, before, archiveProgramIds);
+      // «Заменить существующий план»: старые планы на те же даты — в архив с их программами.
+      let archived = archiveProgramIds;
+      if (replacePlanIds.length) {
+        const res = archivePlans(replacePlanIds, next);
+        next = { ...next, plans: res.plans, programs: res.programs };
+        archived = [...archiveProgramIds, ...res.archivedProgramIds];
       }
-      commitPrograms(next.programs);
-      commitPlans(next.plans);
-      commitPlanned(next.plannedSessions);
-      if (next.sessions.length !== sessions.length) commit(next.sessions);
+      applyTarget(next);
+      const rec = importRecord(prep, before, next, archived, new Date(), replacePlanIds);
+      setImports((list) => {
+        const out = [rec, ...list].slice(0, 10);
+        void saveImports(out);
+        return out;
+      });
+      setToast(prep.kind === "plan" ? L(`План «${prep.title}» добавлен`, `Plan "${prep.title}" added`) : L(`Добавлено тренировок: ${prep.sessions.length}`, `Workouts added: ${prep.sessions.length}`));
+      setToastAction({ label: L("Отменить", "Undo"), run: () => undoAiImportRef.current(rec) });
       if (prep.range && prep.kind === "plan") setSelected(prep.range.start <= today() && today() <= prep.range.end ? today() : prep.range.start);
       setTab("calendar");
     },
-    [exercises, programs, plans, plannedSessions, sessions, commit, commitPrograms, commitPlans, commitPlanned],
+    [exercises, programs, plans, plannedSessions, sessions, applyTarget],
   );
+
+  /** Отменить импорт от ИИ: удаляется ровно то, что он добавил. */
+  const undoAiImport = useCallback(
+    (rec: ImportRecord) => {
+      applyTarget(undoImport(rec, { exercises, programs, plans, plannedSessions, sessions }));
+      setImports((list) => {
+        const out = list.filter((x) => x.id !== rec.id);
+        void saveImports(out);
+        return out;
+      });
+      setToast(L("Импорт отменён", "Import undone"));
+      setToastAction(null);
+    },
+    [exercises, programs, plans, plannedSessions, sessions, applyTarget],
+  );
+  const undoAiImportRef = useRef(undoAiImport);
+  undoAiImportRef.current = undoAiImport;
 
   // Открыть лист «Новая тренировка»: обычный выбор или сразу мастер «Тренер».
   const openCreate = useCallback((step: "kind" | "goal" = "kind") => {
@@ -1089,6 +1156,8 @@ export default function App() {
             bodyEntries={bodyEntries}
             onBack={() => setShowAi(false)}
             onImport={() => setAiImportOpen(true)}
+            imports={imports}
+            onUndoImport={undoAiImport}
           />
         ) : showPlan ? (
           <PlanScreen
@@ -1426,7 +1495,18 @@ export default function App() {
         </Box>
       )}
       {/* Вставка от ИИ: вручную или пришедшее через API/MCP во «входящие». */}
-      {ready && (aiImportOpen || (inbox.length > 0 && isConsentValid(consent))) && (
+      {ready && !aiImportOpen && inbox[0]?.type === "archive_plan" && isConsentValid(consent) && (
+        <ArchivePlanDialog
+          key={inbox[0].id}
+          item={inbox[0]}
+          plans={plans}
+          programs={programs}
+          plannedSessions={plannedSessions}
+          onArchive={archivePlan}
+          onClose={() => commitInbox(inbox.slice(1))}
+        />
+      )}
+      {ready && (aiImportOpen || (inbox.length > 0 && inbox[0].type !== "archive_plan" && isConsentValid(consent))) && (
         <AiImportDialog
           key={aiImportOpen ? "manual" : inbox[0]?.id}
           inboxItem={aiImportOpen ? null : inbox[0]}

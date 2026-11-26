@@ -11,6 +11,7 @@ import { buildAiPrompt, createKey, listGrants, mcpUrl, revokeGrant, type AgentGr
 import { haptic } from "../lib/telegram";
 import { useT } from "../lib/i18n";
 import type { BodyEntry, Exercise, Plan, PlannedSession, Session, TrainingProgram } from "../lib/types";
+import type { ImportRecord } from "../lib/aiFormat";
 
 interface Props {
   authed: boolean;
@@ -22,6 +23,8 @@ interface Props {
   bodyEntries: BodyEntry[];
   onBack: () => void;
   onImport: () => void;
+  imports?: ImportRecord[];
+  onUndoImport?: (rec: ImportRecord) => void;
 }
 
 async function copy(text: string): Promise<boolean> {
@@ -34,7 +37,7 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-export default function AiScreen({ authed, sessions, exercises, programs, plans, plannedSessions, bodyEntries, onBack, onImport }: Props) {
+export default function AiScreen({ authed, sessions, exercises, programs, plans, plannedSessions, bodyEntries, onBack, onImport, imports = [], onUndoImport }: Props) {
   const t = useT();
   const [copied, setCopied] = useState<string | null>(null);
   const [manual, setManual] = useState<string | null>(null);
@@ -87,6 +90,33 @@ export default function AiScreen({ authed, sessions, exercises, programs, plans,
           </Button>
         </Card>
       </Section>
+
+      {imports.length > 0 && (
+        <Section title={t("Последние импорты", "Recent imports")}>
+          <Card sx={{ display: "grid", gap: 1.25 }}>
+            {imports.slice(0, 5).map((r) => (
+              <Box key={r.id} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
+                    {r.title}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(r.at).toLocaleString(t("ru-RU", "en-US"), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {" · "}
+                    {r.kind === "plan" ? t(`карточек ${r.plannedIds.length}`, `${r.plannedIds.length} cards`) : t(`тренировок ${r.sessionIds.length}`, `${r.sessionIds.length} workouts`)}
+                  </Typography>
+                </Box>
+                <Button size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => onUndoImport?.(r)}>
+                  {t("Отменить", "Undo")}
+                </Button>
+              </Box>
+            ))}
+          </Card>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            {t("Отмена убирает ровно то, что добавил импорт. Тренировки, начатые по плану, остаются.", "Undo removes exactly what the import added. Workouts you started from the plan stay.")}
+          </Typography>
+        </Section>
+      )}
 
       <Section title={t("Подключить напрямую", "Connect directly")}>
         <Card sx={{ display: "grid", gap: 1.5 }}>

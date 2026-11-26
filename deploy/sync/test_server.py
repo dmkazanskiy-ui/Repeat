@@ -214,6 +214,30 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((inbox[0]["data"]["type"], inbox[0]["data"]["source"], inbox[0]["data"]["note"]), ("plan", "Claude Code", "на декабрь"))
         with self.assertRaises(server.ApiError):
             agent.submit({"uid": "111", "scope": "read", "name": "x"}, "plan", plan)
+        # Повтор того же документа и повтор по idempotencyKey — без второго «входящего».
+        w = {"uid": "111", "scope": "write", "name": "Claude Code"}
+        again = agent.submit(w, "plan", plan, "на декабрь")
+        self.assertTrue(again["duplicate"])
+        wk = [{"date": "2026-12-01", "kind": "cardio", "cardioKind": "run", "done": True, "durationMin": 30}]
+        first = agent.submit(w, "workout", wk, None, "run-1")
+        server.sync("111", {"since": 0, "changes": [{"c": "inbox", "id": first["inboxId"], "ts": 10**13, "data": None}]})
+        repeat = agent.submit(w, "workout", wk, None, "run-1")
+        self.assertEqual((repeat["inboxId"], repeat.get("duplicate")), (first["inboxId"], True))
+        pending = [c for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["data"]]
+        self.assertEqual(len(pending), 1)
+        # archive_plan: только активный план, по id или точному названию; дубль просьбы не создаётся.
+        server.sync("111", {"since": 0, "changes": [
+            {"c": "plans", "id": "p1", "ts": 1, "data": {"id": "p1", "name": "Гибрид: декабрь 2026", "start": "2026-11-30", "end": "2026-12-27"}},
+            {"c": "plans", "id": "p2", "ts": 1, "data": {"id": "p2", "name": "Гибрид: декабрь 2026 (v2)", "start": "2026-11-30", "end": "2026-12-27"}},
+        ]})
+        miss = agent.submit_archive(w, None, "нет такого")
+        self.assertFalse(miss["ok"])
+        self.assertEqual(len(miss["activePlans"]), 2)
+        ok = agent.submit_archive(w, None, "гибрид: декабрь 2026", "дубль")
+        self.assertTrue(ok["ok"])
+        self.assertTrue(agent.submit_archive(w, "p1")["duplicate"])
+        item = [c for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["id"] == ok["inboxId"]][0]["data"]
+        self.assertEqual((item["type"], item["payload"]["planId"]), ("archive_plan", "p1"))
         # Отзыв ключа — сразу без доступа.
         gid = [g["id"] for g in agent.list_grants("111")["grants"] if g["name"] == "Claude Code"][0]
         agent.revoke("111", {"id": gid})

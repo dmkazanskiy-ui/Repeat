@@ -1,7 +1,7 @@
 // План по датам: сетка неделя/месяц (7 дней × слоты) с цветом по статусу,
 // итог «выполнено N из M», минуты бега/вела/дорожки план и факт, правила плана.
 import { useEffect, useMemo, useState } from "react";
-import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import { Card, Section, Tile } from "../ui";
 import Segmented from "../ui/Segmented";
@@ -32,7 +32,11 @@ const RULE_LABELS: Record<string, [string, string]> = {
 
 export default function PlanScreen({ plans, plannedSessions, sessions, programs, selected, onBack, onOpenDay, onArchive }: Props) {
   const t = useT();
-  const plan = activePlan(plans, selected) ?? activePlan(plans, today());
+  // Несколько активных планов (например, два на одни даты) — выбор вверху.
+  const live = plans.filter((p) => !p.archivedAt).sort((a, b) => a.start.localeCompare(b.start) || a.createdAt.localeCompare(b.createdAt));
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const plan = live.find((p) => p.id === pickedId) ?? activePlan(plans, selected) ?? activePlan(plans, today());
   const [view, setView] = useState<"week" | "month">("week");
   const [weekStart, setWeekStart] = useState(() => weekGrid(plan && (selected < plan.start || selected > plan.end) ? plan.start : selected)[0]);
   const cards = useMemo(() => (plan ? plannedSessions.filter((p) => p.planId === plan.id) : []), [plan, plannedSessions]);
@@ -62,6 +66,17 @@ export default function PlanScreen({ plans, plannedSessions, sessions, programs,
   return (
     <Box sx={{ pb: 10 }}>
       <Header title={plan.name} onBack={onBack} />
+      {live.length > 1 && (
+        <Box sx={{ mb: 1.5 }}>
+          <Segmented
+            fit="content"
+            size="small"
+            value={plan.id}
+            onChange={setPickedId}
+            options={live.map((p) => ({ value: p.id, label: p.name }))}
+          />
+        </Box>
+      )}
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {formatDate(plan.start)} – {formatDate(plan.end)}
         {plan.goal ? ` · ${plan.goal}` : ""}
@@ -112,9 +127,16 @@ export default function PlanScreen({ plans, plannedSessions, sessions, programs,
 
       <Section title={view === "week" ? t("Итог недели", "Week total") : t("Итог плана", "Plan total")}>
         <Card sx={{ display: "grid", gap: 1 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-            {t("Выполнено", "Done")} {sum.slotsDone} {t("из", "of")} {sum.slots}
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+              {t("Выполнено", "Done")} {sum.slotsDone} {t("из", "of")} {sum.slots}
+            </Typography>
+            {sum.accuracy != null && (
+              <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                {t("точность", "accuracy")} <b>{sum.accuracy}%</b>
+              </Typography>
+            )}
+          </Box>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 1 }}>
             {(
               [
@@ -151,11 +173,37 @@ export default function PlanScreen({ plans, plannedSessions, sessions, programs,
         </Section>
       )}
 
-      <Button fullWidth variant="outlined" color="inherit" sx={{ mt: 3, color: "text.secondary" }} onClick={() => onArchive(plan.id)}>
+      <Dialog open={confirm} onClose={() => setConfirm(false)}>
+        <DialogTitle>{t(`Убрать «${plan.name}» в архив?`, `Archive "${plan.name}"?`)}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {t(
+              `Карточки плана пропадут из календаря${program && !program.archivedAt ? `, программа «${program.name}» тоже уйдёт в архив` : ""}. Сделанные тренировки останутся.`,
+              `The plan's cards leave the calendar${program && !program.archivedAt ? `, and program "${program.name}" is archived too` : ""}. Completed workouts stay.`,
+            )}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setConfirm(false)}>
+            {t("Отмена", "Cancel")}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setConfirm(false);
+              setPickedId(null);
+              onArchive(plan.id);
+            }}
+          >
+            {t("Убрать в архив", "Archive")}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Button fullWidth variant="outlined" color="inherit" sx={{ mt: 3, color: "text.secondary" }} onClick={() => setConfirm(true)}>
         {t("Убрать план в архив", "Archive plan")}
       </Button>
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, textAlign: "center" }}>
-        {t("Тренировки и программа останутся.", "Workouts and the program stay.")}
+        {t("Вместе с программой плана. Сделанные тренировки останутся.", "Together with the plan's program. Completed workouts stay.")}
       </Typography>
     </Box>
   );

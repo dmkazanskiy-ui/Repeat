@@ -324,7 +324,7 @@ def _program_view(p: dict, names: dict) -> dict:
 
 PLANNED_KEYS = ("id", "date", "slot", "time", "kind", "title", "group", "optional", "cardioKind", "recoveryType",
                 "mobilityKind", "durationMin", "durationMaxMin", "distanceKm", "hrMin", "hrMax", "hrZone",
-                "cadenceMin", "cadenceMax", "inclineDeg", "inclineMaxDeg", "note", "status", "linkedSessionId")
+                "cadenceMin", "cadenceMax", "inclineDeg", "inclineMaxDeg", "note", "status", "linkedSessionId", "compliance")
 
 
 def plan_view(uid: str, args: dict) -> dict:
@@ -465,7 +465,10 @@ def validate(kind: str, doc) -> list:
     return errs[:20]
 
 
-def submit(ident: dict, kind: str, doc, note=None) -> dict:
+IDEM_TTL = 24 * 3600
+
+
+def submit(ident: dict, kind: str, doc, note=None, idem_key=None) -> dict:
     """Положить план/тренировки во «входящие» человека."""
     if ident.get("scope") != "write":
         raise srv.ApiError(403, "read-only key")
@@ -479,6 +482,19 @@ def submit(ident: dict, kind: str, doc, note=None) -> dict:
     if len(raw.encode()) > MAX_PAYLOAD:
         return {"ok": False, "errors": ["слишком большой документ (больше 400 КБ)"]}
     uid = ident["uid"]
+    # Повторы при сбоях сети: явный idempotencyKey помнится сутки, а тот же
+    # документ, пока он ещё лежит во «входящих», второй раз не кладётся.
+    key = srv.clean_text(idem_key, 80) if isinstance(idem_key, str) and idem_key.strip() else None
+    digest = hashlib.sha256((kind + "\u0000" + raw).encode()).hexdigest()[:24]
+    if key:
+        with srv.meta_lock:
+            idem = _m("agent_idem")
+            now = _now()
+            for k in [k for k, v in idem.items() if now - v.get("t", 0) > IDEM_TTL]:
+                idem.pop(k, None)
+            hit = idem.get(f"{uid}:{key}")
+        if hit:
+            return {"ok": True, "inboxId": hit["id"], "duplicate": True, "message": "Уже отправлено раньше с этим idempotencyKey — повтор не создан."}
     item_id = "in_" + secrets.token_hex(8)
     item = {
         "id": item_id,
@@ -487,12 +503,16 @@ def submit(ident: dict, kind: str, doc, note=None) -> dict:
         "source": srv.clean_text(ident.get("name"), 40) or "ИИ",
         "note": srv.clean_text(note, 300) or None,
         "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "digest": digest,
     }
     with srv.lock:
         state = srv.load_state(uid)
         if state is None:
             state = {"epoch": secrets.token_hex(8), "rev": 0, "records": {}}
         pending = [r for r in state["records"].values() if r["c"] == "inbox" and r.get("data") is not None]
+        same = next((r for r in pending if isinstance(r["data"], dict) and r["data"].get("digest") == digest), None)
+        if same:
+            return {"ok": True, "inboxId": same["id"], "duplicate": True, "message": "Этот же документ уже ждёт во «входящих» — повтор не создан."}
         if len(pending) >= MAX_INBOX:
             return {"ok": False, "errors": ["во «входящих» уже 20 неразобранных — попроси человека открыть Repeat"]}
         state["rev"] += 1
@@ -501,11 +521,59 @@ def submit(ident: dict, kind: str, doc, note=None) -> dict:
         if len(raw_state) > srv.QUOTA_BYTES:
             raise srv.ApiError(413, "quota")
         srv.save_state(uid, state, raw_state)
+    if key:
+        with srv.meta_lock:
+            _m("agent_idem")[f"{uid}:{key}"] = {"id": item_id, "t": _now()}
+            srv.mark_dirty()
     srv.log_event("agent_submit", uid, kind, item["source"])
     return {
         "ok": True,
         "inboxId": item_id,
         "message": "Отправлено в Repeat. Человек увидит предпросмотр при следующем открытии приложения и подтвердит импорт.",
+    }
+
+
+def submit_archive(ident: dict, plan_id=None, name=None, note=None) -> dict:
+    """Просьба убрать план в архив (вместе с его программой) — во «входящие», с подтверждением."""
+    if ident.get("scope") != "write":
+        raise srv.ApiError(403, "read-only key")
+    uid = ident["uid"]
+    live = [p for p in _records(uid).get("plans", []) if isinstance(p, dict) and not p.get("archivedAt")]
+    hits = [p for p in live if (plan_id and p.get("id") == plan_id) or (not plan_id and isinstance(name, str) and p.get("name", "").strip().lower() == name.strip().lower())]
+    listing = [{"id": p["id"], "name": p.get("name"), "start": p.get("start"), "end": p.get("end")} for p in live]
+    if len(hits) != 1:
+        why = "план не найден среди активных" if not hits else "под это название подходит несколько планов — укажи planId"
+        return {"ok": False, "errors": [why], "activePlans": listing}
+    plan = hits[0]
+    item_id = "in_" + secrets.token_hex(8)
+    item = {
+        "id": item_id,
+        "type": "archive_plan",
+        "payload": {"planId": plan["id"], "name": plan.get("name")},
+        "source": srv.clean_text(ident.get("name"), 40) or "ИИ",
+        "note": srv.clean_text(note, 300) or None,
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "digest": "archive:" + plan["id"],
+    }
+    with srv.lock:
+        state = srv.load_state(uid)
+        if state is None:
+            return {"ok": False, "errors": ["у пользователя ещё нет данных"]}
+        pending = [r for r in state["records"].values() if r["c"] == "inbox" and r.get("data") is not None]
+        same = next((r for r in pending if isinstance(r["data"], dict) and r["data"].get("digest") == item["digest"]), None)
+        if same:
+            return {"ok": True, "inboxId": same["id"], "duplicate": True, "message": "Эта просьба уже ждёт во «входящих»."}
+        if len(pending) >= MAX_INBOX:
+            return {"ok": False, "errors": ["во «входящих» уже 20 неразобранных — попроси человека открыть Repeat"]}
+        state["rev"] += 1
+        state["records"][f"inbox\u0000{item_id}"] = {"c": "inbox", "id": item_id, "ts": int(time.time() * 1000), "rev": state["rev"], "data": item}
+        raw_state = json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode()
+        srv.save_state(uid, state, raw_state)
+    srv.log_event("agent_submit", uid, "archive_plan", item["source"])
+    return {
+        "ok": True,
+        "inboxId": item_id,
+        "message": f"Просьба убрать в архив «{plan.get('name')}» (с его программой) отправлена. Человек подтвердит в Repeat.",
     }
 
 
@@ -537,7 +605,7 @@ TOOLS = [
     {
         "name": "get_plan",
         "title": "План по датам",
-        "description": "Карточки плана (утро/день/вечер) со статусами planned/done/skipped/replaced. По умолчанию неделя назад и 4 недели вперёд.",
+        "description": "Карточки плана (утро/день/вечер) со статусами planned/done/skipped/replaced и точностью выполнения compliance 0–100 (время к цели, пульс в коридоре, доля подходов). По умолчанию неделя назад и 4 недели вперёд.",
         "inputSchema": {
             "type": "object",
             "properties": {"from": {"type": "string"}, "to": {"type": "string"}},
@@ -561,8 +629,23 @@ TOOLS = [
             "properties": {
                 "plan": {"type": "object", "description": "Документ repeat-plan версии 1"},
                 "note": {"type": "string", "description": "Короткое пояснение для человека"},
+                "idempotencyKey": {"type": "string", "description": "Ключ повтора: тот же ключ в течение суток не создаёт второе «входящее»"},
             },
             "required": ["plan"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
+        "name": "archive_plan",
+        "title": "Убрать план в архив",
+        "description": "Попросить убрать план в архив вместе с созданной им программой (например, дубль на те же даты). Попадает во «входящие» Repeat и выполняется после подтверждения; тренировки и история остаются. Укажи planId из get_plan (или точное name).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "planId": {"type": "string"},
+                "name": {"type": "string", "description": "Точное название, если planId неизвестен"},
+                "note": {"type": "string", "description": "Почему — для человека"},
+            },
         },
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
@@ -575,6 +658,7 @@ TOOLS = [
             "properties": {
                 "workouts": {"type": "array", "items": {"type": "object"}, "description": "Список тренировок repeat-workout"},
                 "note": {"type": "string"},
+                "idempotencyKey": {"type": "string", "description": "Ключ повтора: тот же ключ в течение суток не создаёт второе «входящее»"},
             },
             "required": ["workouts"],
         },
@@ -604,11 +688,19 @@ def call_tool(ident: dict, name: str, args: dict) -> dict:
         return _text(plan_view(uid, args))
     if name == "get_format":
         return _text(format_doc())
+    if name == "archive_plan":
+        if ident.get("scope") != "write":
+            return {**_text("Доступ только на чтение: попроси пользователя выдать доступ с записью."), "isError": True}
+        res = submit_archive(ident, args.get("planId"), args.get("name"), args.get("note"))
+        out = _text(res)
+        if not res.get("ok"):
+            out["isError"] = True
+        return out
     if name in ("submit_plan", "submit_workouts"):
         if ident.get("scope") != "write":
             return {**_text("Доступ только на чтение: попроси пользователя выдать доступ с записью."), "isError": True}
         res = submit(ident, "plan" if name == "submit_plan" else "workout",
-                     args.get("plan") if name == "submit_plan" else args.get("workouts"), args.get("note"))
+                     args.get("plan") if name == "submit_plan" else args.get("workouts"), args.get("note"), args.get("idempotencyKey"))
         out = _text(res)
         if not res.get("ok"):
             out["isError"] = True
@@ -1041,9 +1133,11 @@ def rest_get(ident: dict, path: str, query: dict):
 def rest_post(ident: dict, path: str, body):
     body = body if isinstance(body, dict) else {}
     if path == "/api/v1/plan":
-        return submit(ident, "plan", body.get("plan", body), body.get("note") if "plan" in body else None)
+        return submit(ident, "plan", body.get("plan", body), body.get("note") if "plan" in body else None, body.get("idempotencyKey"))
+    if path == "/api/v1/plan/archive":
+        return submit_archive(ident, body.get("planId"), body.get("name"), body.get("note"))
     if path == "/api/v1/workouts":
-        return submit(ident, "workout", body.get("workouts", body), body.get("note"))
+        return submit(ident, "workout", body.get("workouts", body), body.get("note"), body.get("idempotencyKey"))
     raise srv.ApiError(404, "not found")
 
 

@@ -5,9 +5,9 @@
 import { L } from "./i18n";
 import { sameActivity } from "./aiFormat";
 import { RECOVERY_ICONS, RECOVERY_LABELS } from "./recovery/catalog";
-import { CARDIO_ICONS, CARDIO_LABELS, MOBILITY_ICONS, MOBILITY_LABELS, sessionDurationSec } from "./types";
+import { CARDIO_ICONS, CARDIO_LABELS, MOBILITY_ICONS, MOBILITY_LABELS, sessionAvgHr, sessionDurationSec } from "./types";
 import type { IconKey } from "./icons";
-import type { CardioKind, Plan, PlannedSession, PlanSlot, Session } from "./types";
+import type { CardioKind, Plan, PlannedSession, PlanSlot, Session, TrainingProgram } from "./types";
 
 export const SLOT_ORDER: PlanSlot[] = ["morning", "day", "evening"];
 
@@ -35,6 +35,39 @@ export function sessionCounts(s: Session): boolean {
 }
 
 /**
+ * Точность выполнения карточки, 0–100 (null — не с чем сравнить). Среднее
+ * из того, что задано в плане: время к цели (больше цели — тоже 100), пульс
+ * в коридоре (за каждый удар мимо — минус, в пределах ширины коридора),
+ * доля рабочих подходов силовой от плановых.
+ */
+export function cardCompliance(p: PlannedSession, s: Session): number | null {
+  const parts: number[] = [];
+  const goal = p.durationMin != null ? (p.durationMaxMin != null ? (p.durationMin + p.durationMaxMin) / 2 : p.durationMin) : null;
+  if (goal && goal > 0) {
+    const min =
+      s.kind === "recovery" ? (s.recovery?.durationMin ?? 0) : ((s.cardio?.durationSec ?? sessionDurationSec(s) ?? 0) / 60);
+    parts.push(Math.min(1, min / goal));
+  }
+  if (p.hrMin != null || p.hrMax != null) {
+    const hr = sessionAvgHr(s);
+    if (hr != null) {
+      const lo = p.hrMin ?? -Infinity;
+      const hi = p.hrMax ?? Infinity;
+      const width = p.hrMin != null && p.hrMax != null ? Math.max(5, p.hrMax - p.hrMin) : 10;
+      const off = hr < lo ? lo - hr : hr > hi ? hr - hi : 0;
+      parts.push(Math.max(0, 1 - off / width));
+    }
+  }
+  if (s.kind === "strength" && s.plan?.length) {
+    const planned = s.plan.reduce((a, e) => a + (e.targetSets || 0), 0);
+    const done = s.exercises.reduce((a, e) => a + e.sets.filter((x) => x.done && !x.warmup).length, 0);
+    if (planned > 0) parts.push(Math.min(1, done / planned));
+  }
+  if (!parts.length) return null;
+  return Math.round((parts.reduce((a, b) => a + b, 0) / parts.length) * 100);
+}
+
+/**
  * Сверить карточки с тренировками. Возвращает новый список или тот же, если
  * менять нечего (чтобы не гонять лишний синк).
  */
@@ -58,9 +91,10 @@ export function reconcilePlanned(planned: PlannedSession[], sessions: Session[],
     } else if (s && (status === "done" || status === "replaced") && !sessionCounts(s)) {
       status = "planned";
     }
-    if (linked === (p.linkedSessionId ?? null) && status === p.status) return p;
+    const compliance = s && status === "done" ? cardCompliance(p, s) : null;
+    if (linked === (p.linkedSessionId ?? null) && status === p.status && compliance === (p.compliance ?? null)) return p;
     changed = true;
-    return { ...p, linkedSessionId: linked, status, updatedAt: now.toISOString() };
+    return { ...p, linkedSessionId: linked, status, compliance, updatedAt: now.toISOString() };
   });
   // Сделал вручную то же, что в плане (бег вместо карточки «Бег с клубом»), —
   // засчитываем сами, без лишних кнопок.
@@ -71,7 +105,7 @@ export function reconcilePlanned(planned: PlannedSession[], sessions: Session[],
     if (!s) return p;
     taken.add(s.id);
     changed = true;
-    return { ...p, linkedSessionId: s.id, status: "done" as const, updatedAt: now.toISOString() };
+    return { ...p, linkedSessionId: s.id, status: "done" as const, compliance: cardCompliance(p, s), updatedAt: now.toISOString() };
   });
   return changed ? auto : planned;
 }
@@ -156,6 +190,8 @@ export function slotState(cards: PlannedSession[]): SlotCell["state"] {
 export interface PeriodSummary {
   slots: number;
   slotsDone: number;
+  /** Средняя точность выполненных карточек, % (null — нечего считать). */
+  accuracy: number | null;
   minutes: Record<MinuteBucket, { plan: number; fact: number }>;
 }
 
@@ -186,7 +222,9 @@ export function periodSummary(cards: PlannedSession[], sessions: Session[], date
     minutes[b].plan = Math.round(minutes[b].plan);
     minutes[b].fact = Math.round(minutes[b].fact);
   }
-  return { slots: slots.size, slotsDone, minutes };
+  const acc = mine.map((c) => c.compliance).filter((x): x is number => typeof x === "number");
+  const accuracy = acc.length ? Math.round(acc.reduce((a, b) => a + b, 0) / acc.length) : null;
+  return { slots: slots.size, slotsDone, accuracy, minutes };
 }
 
 /** Активный план, покрывающий дату (или ближайший будущий). */
@@ -208,3 +246,28 @@ export function coldAfterStrength(date: string, sessions: Session[], planned: Pl
 }
 
 export const COLD_TYPES = new Set(["cold_plunge", "ice_bath", "cold_shower"]);
+
+/** Активные планы, которые пересекаются по датам с [start, end] (кроме exceptId). */
+export function overlappingPlans(plans: Plan[], start: string, end: string, exceptId?: string | null): Plan[] {
+  return plans.filter((p) => !p.archivedAt && p.id !== exceptId && p.start <= end && start <= p.end);
+}
+
+/**
+ * Убрать планы в архив вместе с их программами. Карточки остаются в данных
+ * (история статусов), но пропадают с экранов — их план в архиве.
+ */
+export function archivePlans(
+  planIds: string[],
+  cur: { plans: Plan[]; programs: TrainingProgram[] },
+  now = new Date(),
+): { plans: Plan[]; programs: TrainingProgram[]; archivedProgramIds: string[] } {
+  const iso = now.toISOString();
+  const ids = new Set(planIds);
+  const progIds = new Set(cur.plans.filter((p) => ids.has(p.id) && p.programId).map((p) => p.programId!));
+  const archivedProgramIds = cur.programs.filter((p) => progIds.has(p.id) && !p.archivedAt).map((p) => p.id);
+  return {
+    plans: cur.plans.map((p) => (ids.has(p.id) && !p.archivedAt ? { ...p, archivedAt: iso } : p)),
+    programs: cur.programs.map((p) => (archivedProgramIds.includes(p.id) ? { ...p, archivedAt: iso } : p)),
+    archivedProgramIds,
+  };
+}
