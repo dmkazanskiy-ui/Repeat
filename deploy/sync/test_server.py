@@ -410,13 +410,15 @@ class ServerTest(unittest.TestCase):
         server.sync("111", {"since": 0, "changes": [{"c": "sessions", "id": "x", "ts": 1, "data": {"id": "x", "date": "2026-11-20", "kind": "cardio"}}]})
         acts = [{"activityId": 25190042001, "activityName": "Убуд Бег", "startTimeLocal": "2026-11-25 06:02:59",
                  "activityType": {"typeKey": "running"}, "distance": 5009.97, "duration": 2355.7, "movingDuration": 2079.9, "averageHR": 151, "calories": 478},
-                {"activityId": 7, "activityName": None, "startTimeLocal": "2026-11-25 18:00:00", "activityType": {"typeKey": "walking"}, "duration": 1800}]
+                {"activityId": 7, "activityName": None, "startTimeLocal": "2026-11-25 18:00:00", "activityType": {"typeKey": "walking"}, "duration": 1800,
+                 "startLatitude": -8.5, "startLongitude": 115.26, "hasPolyline": True},
+                {"activityId": 8, "activityName": "Ходьба", "startTimeLocal": "2026-11-25 19:00:00", "activityType": {"typeKey": "walking"}, "duration": 3000, "distance": 3790}]
         morning.garmin_get = lambda path, params=None: acts
         def no_fit(path):
             raise RuntimeError("offline")
         morning.garmin_raw = no_fit
         r = morning.import_new("111")
-        self.assertEqual(r["added"], ["25190042001", "7"])
+        self.assertEqual(r["added"], ["25190042001", "7", "8"])
         inbox = [c["data"] for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["data"]]
         self.assertEqual(len(inbox), 1)  # один день — одна пачка
         ws = {w["source"]["externalId"]: w for w in inbox[0]["payload"]["workouts"]}
@@ -424,6 +426,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((run["kind"], run["cardioKind"], run["time"], run["summary"]["distanceM"], run["summary"]["movingSec"]), ("cardio", "run", "06:02", 5009.97, 2079.9))
         walk = ws["7"]
         self.assertEqual(walk["cardioKind"], "Прогулка")
+        self.assertEqual(ws["8"]["cardioKind"], "treadmill")  # «Ходьба» без GPS — дорожка
         self.assertEqual(morning.import_new("111")["added"], [])  # уже видели — без повтора
 
 

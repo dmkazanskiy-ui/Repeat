@@ -388,8 +388,11 @@ IMPORT_POLL_S = 300
 IMPORT_DAYS = 3
 
 
-def _kind(type_key: str):
+def _kind(type_key: str, act=None):
     k = (type_key or "").lower()
+    # Ходьба на дорожке на часах часто пишется обычной «Ходьбой» (не «в
+    # помещении»): без GPS-координат считаем её дорожкой, с маршрутом — прогулкой.
+    no_gps = act is not None and act.get("startLatitude") is None and not act.get("hasPolyline")
     if "run" in k and ("treadmill" in k or "indoor" in k):
         return {"kind": "cardio", "cardioKind": "treadmill_run"}
     if "run" in k:
@@ -412,7 +415,9 @@ def _kind(type_key: str):
         return {"kind": "mobility", "mobilityKind": "breathing"}
     if "walk" in k or "hik" in k:
         # Уличной ходьбы среди видов нет — свой вид «Прогулка» (дорожка — отдельно).
-        return {"kind": "cardio", "cardioKind": "treadmill" if "indoor" in k else ("Поход" if "hik" in k else "Прогулка")}
+        if "hik" in k:
+            return {"kind": "cardio", "cardioKind": "Поход"}
+        return {"kind": "cardio", "cardioKind": "treadmill" if ("indoor" in k or no_gps) else "Прогулка"}
     return {"kind": "cardio", "cardioKind": None}
 
 
@@ -430,7 +435,7 @@ def import_new(uid: str) -> dict:
         aid = str(act.get("activityId") or "")
         if not aid or aid in seen:
             continue
-        kind = _kind((act.get("activityType") or {}).get("typeKey"))
+        kind = _kind((act.get("activityType") or {}).get("typeKey"), act)
         name = (act.get("activityName") or "").strip()[:80] or None
         # Подробности из FIT (графики, маршрут, круги); без FIT — сводка из списка.
         res = {"ok": False}
