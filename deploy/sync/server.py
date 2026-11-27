@@ -55,6 +55,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent  # noqa: E402  ИИ-ассистенты: ключи, OAuth, MCP, REST
 import morning  # noqa: E402  утренняя сводка из Garmin
+import details  # noqa: E402  подробности тренировок (круги, ряды, маршрут)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 DATA_DIR = os.environ.get("DATA_DIR", "/var/lib/repeat-sync")
@@ -150,7 +151,7 @@ def load_meta() -> None:
         with open(meta_path(), encoding="utf-8") as f:
             data = json.load(f)
         META = {"admin": data.get("admin"), "users": data.get("users", {}), "sessions": data.get("sessions", {})}
-        for key in ("grants", "agent_tokens", "oauth_clients", "agent_idem", "morning"):  # доступы ИИ, утренняя сводка
+        for key in ("grants", "agent_tokens", "oauth_clients", "agent_idem", "morning", "fit_log", "garmin_import"):  # доступы ИИ, утренняя сводка
             if isinstance(data.get(key), dict):
                 META[key] = data[key]
     except FileNotFoundError:
@@ -801,6 +802,7 @@ def delete_account(uid: str) -> dict:
     forget_events(uid)
     forget_social(uid)
     agent.forget_user(uid)
+    details.forget(uid)
     log_event("account_deleted")  # без id: человек отозвал согласие
     return {"deleted": True}
 
@@ -1435,6 +1437,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._handle(lambda: {"ok": bool(self._auth())})
         if path == "/api/agent/keys":
             return self._handle(lambda: agent.list_grants(self._auth()["uid"]))
+        if path == "/api/activity/detail":
+            def get_detail():
+                q = urllib.parse.parse_qs(qs)
+                doc = details.load(self._auth()["uid"], (q.get("source") or [""])[0], (q.get("id") or [""])[0])
+                if doc is None:
+                    raise ApiError(404, "no detail")
+                return doc
+            return self._handle(get_detail)
         if path == "/api/morning/status":
             return self._handle(lambda: morning_status(self._auth()["uid"]))
         if path == "/api/v1/openapi.json":
@@ -1556,6 +1566,7 @@ class Handler(BaseHTTPRequestHandler):
 
 agent.bind(sys.modules[__name__])
 morning.bind(sys.modules[__name__], agent)
+details.bind(sys.modules[__name__], agent)
 
 if __name__ == "__main__":
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -1566,4 +1577,5 @@ if __name__ == "__main__":
         threading.Thread(target=bot_loop, daemon=True).start()
     if morning.configured():
         threading.Thread(target=morning.loop, daemon=True).start()
+        threading.Thread(target=morning.import_loop, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

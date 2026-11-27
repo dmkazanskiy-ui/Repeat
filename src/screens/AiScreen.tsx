@@ -97,6 +97,8 @@ export default function AiScreen({ authed, sessions, exercises, programs, plans,
 
       {authed && morning && onChangeMorning && <Morning value={morning} onChange={onChangeMorning} />}
 
+      <WatchHistory sessions={sessions} />
+
       {imports.length > 0 && (
         <Section title={t("Последние импорты", "Recent imports")}>
           <Card sx={{ display: "grid", gap: 1.25 }}>
@@ -332,6 +334,18 @@ function Morning({ value, onChange }: { value: MorningSettings; onChange: (v: Mo
           control={<Switch checked={value.hideNumbers} disabled={!value.telegram} onChange={(e) => onChange({ ...value, hideNumbers: e.target.checked })} />}
           label={<Typography variant="body2">{t("Без цифр здоровья в сообщении", "No health numbers in the message")}</Typography>}
         />
+        <FormControlLabel
+          control={<Switch checked={value.watchImport !== false} onChange={(e) => onChange({ ...value, watchImport: e.target.checked })} />}
+          label={
+            <Box>
+              <Typography variant="body2">{t("Тренировки с часов — сами", "Workouts from the watch — automatically")}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {t("Новая тренировка в Garmin через пару минут появится во «входящих» с графиками и маршрутом; уже записанную дополнит, а не задвоит.", "A new Garmin workout appears in your inbox within minutes with charts and route; an existing one gets completed, not duplicated.")}
+              </Typography>
+            </Box>
+          }
+          sx={{ alignItems: "flex-start", mt: 0.5, "& .MuiSwitch-root": { mt: -0.5 } }}
+        />
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
           <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
             {st.lastDate ? t(`Последняя: ${st.lastDate}${st.sent ? " · отправлена" : ""}`, `Last: ${st.lastDate}${st.sent ? " · sent" : ""}`) : t("Ещё не приходила", "Not sent yet")}
@@ -363,6 +377,43 @@ function Morning({ value, onChange }: { value: MorningSettings; onChange: (v: Mo
         {msg && (
           <Typography variant="caption" color="text.secondary">
             {msg}
+          </Typography>
+        )}
+      </Card>
+    </Section>
+  );
+}
+
+/** Прогресс догрузки подробностей из часов: сколько тренировок уже с графиками. */
+function WatchHistory({ sessions }: { sessions: Session[] }) {
+  const t = useT();
+  const linked = sessions.filter((s) => s.source);
+  if (!linked.length) return null;
+  const by = (lv: string | null) => linked.filter((s) => (s.source?.detail ?? null) === lv).length;
+  const providers = [...new Set(linked.map((s) => s.source!.provider.toUpperCase()))].join(", ");
+  const streams = by("streams");
+  const laps = by("laps") + by("summary");
+  const none = by(null);
+  const pct = Math.round((streams / linked.length) * 100);
+  return (
+    <Section title={t("История с часов", "Watch history")}>
+      <Card sx={{ display: "grid", gap: 1 }}>
+        <Typography variant="body2">
+          {providers}: {t(`связано тренировок ${linked.length}`, `${linked.length} linked workouts`)}
+        </Typography>
+        <Box sx={{ height: 8, borderRadius: 4, bgcolor: "action.hover", overflow: "hidden", display: "flex" }}>
+          <Box sx={{ width: `${pct}%`, bgcolor: "primary.main" }} />
+          <Box sx={{ width: `${Math.round((laps / linked.length) * 100)}%`, bgcolor: "primary.dark", opacity: 0.5 }} />
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
+          {t(`с графиками и маршрутом ${streams} · только сводка и круги ${laps} · ждут ${none}`, `charts & route ${streams} · summary & laps ${laps} · waiting ${none}`)}
+        </Typography>
+        {none + laps > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            {t(
+              "Попроси ИИ-помощника с доступом к часам: «догрузи подробности тренировок в Repeat». Он возьмёт очередь (enrich_queue) и будет присылать пачками в пределах лимита FIT — у COROS 50 файлов в сутки.",
+              "Ask an AI assistant with watch access: “load workout details into Repeat”. It uses enrich_queue and sends batches within the FIT limit (COROS: 50 files/day).",
+            )}
           </Typography>
         )}
       </Card>

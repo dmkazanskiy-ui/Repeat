@@ -442,8 +442,9 @@ export interface Plan {
 export interface InboxItem {
   id: string;
   /** «plan», «workout» — документ для импорта; «archive_plan» — просьба убрать план в архив ({ planId });
-      «checkin» — утренние данные с часов ({ days: [...] }), применяются сразу. */
-  type: "plan" | "workout" | "archive_plan" | "checkin";
+      «checkin» — утренние данные с часов ({ days: [...] }), применяются сразу;
+      «enrich» — подробности уже записанной тренировки (обновление по подтверждению). */
+  type: "plan" | "workout" | "archive_plan" | "checkin" | "enrich";
   payload: unknown;
   /** Кто прислал: «Claude», «ChatGPT», имя ключа. */
   source?: string | null;
@@ -521,6 +522,52 @@ export interface CardioData {
   segments?: CardioSegment[];
 }
 
+/** Откуда тренировка: часы/сервис и ID активности там (строкой — у COROS ID больше 2^53). */
+export interface ActivitySource {
+  provider: string;
+  externalId: string;
+  sportType?: number | string | null;
+  /** Что есть на сервере: сводка, круги или секундные ряды с маршрутом. */
+  detail?: "summary" | "laps" | "streams" | null;
+  /** Связь подтверждена обогащением (а не только найдена в старой заметке). */
+  verified?: boolean;
+  updatedAt?: string | null;
+}
+
+/** Расширенная сводка тренировки с часов. Отсутствующее — нет поля (не 0). */
+export interface ActivityStats {
+  timezone?: string;
+  /** Длительность по часам — у силовой своё время в дневнике главнее. */
+  watchTimerSec?: number;
+  elapsedSec?: number;
+  movingSec?: number;
+  maxHr?: number;
+  avgCadence?: number;
+  maxCadence?: number;
+  avgStrideM?: number;
+  avgPower?: number;
+  maxPower?: number;
+  ascentM?: number;
+  descentM?: number;
+  minAltM?: number;
+  maxAltM?: number;
+  avgAltM?: number;
+  trainingLoad?: number;
+  aerobicTE?: number;
+  anaerobicTE?: number;
+  trainingFocus?: string;
+  avgPaceSec?: number;
+  movingPaceSec?: number;
+  effortPaceSec?: number;
+  bestKmSec?: number;
+  avgStanceTimeMs?: number;
+  avgVerticalRatio?: number;
+  avgVerticalOscillationCm?: number;
+  efficiencyPct?: number;
+  efficiencyLabel?: string;
+  performanceLabel?: string;
+}
+
 /** Короткая заметка-дело к тренировке: «взять ремни», «снять технику». */
 export interface TodoItem {
   id: string;
@@ -555,6 +602,10 @@ export interface Session {
   programCycleNumber?: number | null;
   /** Карточка плана, из которой начата (или которую закрыла) тренировка. */
   plannedSessionId?: string | null;
+  /** Источник (часы): COROS, Garmin… — связь по ID активности и уровень подробностей. */
+  source?: ActivitySource | null;
+  /** Расширенная сводка с часов: три времени, пульс, каденс, мощность, нагрузка… */
+  stats?: ActivityStats | null;
   /** Снапшот плановых упражнений на момент старта — история не меняется
       при последующей правке шаблона программы. */
   plan?: PlannedExercise[] | null;

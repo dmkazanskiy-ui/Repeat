@@ -39,7 +39,7 @@ export default function AiImportDialog({ inboxItem, ctx, onApply, onClose }: Pro
   }, [inboxItem, text, source]);
   const prep = result?.ok ? result.prep : null;
   const nothingNew =
-    prep != null && !prep.program && !prep.plan && prep.planned.length === 0 && prep.sessions.length === 0 && prep.links.length === 0;
+    prep != null && !prep.program && !prep.plan && prep.planned.length === 0 && prep.sessions.length === 0 && prep.links.length === 0 && prep.merges.length === 0;
   // Новый план на те же даты, что и активный, — спросить: заменить или рядом.
   const overlaps = prep?.kind === "plan" && prep.plan && prep.range ? overlappingPlans(ctxRef.current.plans, prep.range.start, prep.range.end, prep.plan.id) : [];
   const replaced = mode === "replace" ? overlaps : [];
@@ -179,6 +179,7 @@ export default function AiImportDialog({ inboxItem, ctx, onApply, onClose }: Pro
                       {prep.sessions.some((s) => !s.endedAt) ? ` · ${t("будущие — в календаре", "future ones go to the calendar")}` : ""}
                     </Line>
                     {prep.links.length > 0 && <Line>{t(`Закроют карточек плана: ${prep.links.length}`, `Will close plan cards: ${prep.links.length}`)}</Line>}
+                    {prep.merges.length > 0 && <Line>{t(`Дополнят уже записанные: ${prep.merges.length} — без дублей`, `Will complete existing: ${prep.merges.length}`)}</Line>}
                   </>
                 )}
                 {prep.newExercises.length > 0 && (

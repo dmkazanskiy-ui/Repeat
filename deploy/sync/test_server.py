@@ -326,6 +326,105 @@ class ServerTest(unittest.TestCase):
         inbox = [c for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["data"]]
         self.assertEqual(inbox[0]["data"]["type"], "checkin")
         self.assertEqual(len(inbox[0]["data"]["payload"]["days"]), 21)  # первый раз — месяц для нормы
+        # Heartbeat: окно закрылось без отправки — одна строка «часы не синхронизировались», не чаще раза в день.
+        server.META["morning"]["111"]["date"] = "2000-01-01"
+        real_now = morning.local_now
+        late = real_now().replace(hour=11, minute=5)
+        morning.local_now = lambda: late
+        try:
+            before = len(sent)
+            morning.tick()
+            morning.tick()
+            self.assertEqual(len(sent), before + 1)
+            self.assertIn("не отдали ночь", sent[-1]["text"])
+        finally:
+            morning.local_now = real_now
+
+    def test_details_enrich_from_fit(self):
+        import base64, struct
+        agent = server.agent
+        server.hello(self.ident(ADMIN), {})
+        server.sync("111", {"since": 0, "changes": [{"c": "sessions", "id": "s1", "ts": 1, "data": {"id": "s1", "date": "2026-11-25", "kind": "cardio"}}]})
+
+        def defn(local, num, fields):
+            b = bytes([0x40 | local, 0, 0]) + struct.pack("<HB", num, len(fields))
+            return b + b"".join(bytes([f, size, bt]) for f, size, bt in fields)
+
+        T0 = 1100000000
+        body = b""
+        body += defn(0, 20, [(253, 4, 0x86), (5, 4, 0x86), (3, 1, 0x02), (0, 4, 0x85), (1, 4, 0x85)])
+        for i in range(0, 1300, 10):  # 13 км за 1300 с, пауза 600–700
+            if 600 < i < 700:
+                continue
+            body += bytes([0]) + struct.pack("<IIBii", T0 + i, i * 1000, 150, int(55.75 / 180 * 2**31), int(37.6 / 180 * 2**31))
+        body += defn(1, 21, [(253, 4, 0x86), (0, 1, 0x00), (1, 1, 0x00)])
+        body += bytes([1]) + struct.pack("<IBB", T0 + 600, 0, 1) + bytes([1]) + struct.pack("<IBB", T0 + 700, 0, 0)
+        body += defn(2, 19, [(2, 4, 0x86), (7, 4, 0x86), (8, 4, 0x86), (9, 4, 0x86), (15, 1, 0x02)])
+        body += bytes([2]) + struct.pack("<IIIIB", T0, 1290000, 1190000, 1290000, 150)
+        body += defn(3, 18, [(2, 4, 0x86), (7, 4, 0x86), (8, 4, 0x86), (9, 4, 0x86), (16, 1, 0x02), (17, 1, 0x02), (5, 1, 0x00)])
+        body += bytes([3]) + struct.pack("<IIIIBBB", T0, 1290000, 1190000, 1290000, 150, 170, 1)
+        fit = struct.pack("<BBHI4s", 12, 0x20, 2100, len(body), b".FIT") + body + b"\x00\x00"
+
+        w = {"uid": "111", "scope": "write", "name": "Claude"}
+        self.assertFalse(server.details.enrich(w, {"source": "coros", "externalActivityId": 482013868569166128})["ok"])  # ID — только строкой
+        args = {"source": "coros", "externalActivityId": "482013868569166128", "sportType": 100,
+                "summary": {"trainingLoad": 199, "aerobicTE": 3.3, "anaerobicTE": 3.5, "elapsedSec": 5485, "bogus": 1},
+                "laps": [{"group": "recorded", "index": 1, "distanceM": 0.0, "timerSec": 1.98, "avgHr": 107}],
+                "fitBase64": base64.b64encode(fit).decode()}
+        r = server.details.enrich(w, args)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["level"], "streams")
+        doc = server.details.load("111", "coros", "482013868569166128")
+        self.assertEqual(doc["summary"]["timerSec"], 1190)       # из FIT
+        self.assertEqual(doc["summary"]["elapsedSec"], 5485)     # сводка источника поверх FIT
+        self.assertEqual(doc["summary"]["trainingLoad"], 199)
+        self.assertNotIn("bogus", doc["summary"])
+        self.assertEqual(doc["pauses"], [[600, 700]])
+        self.assertEqual([lp["group"] for lp in doc["laps"] if lp["group"] == "recorded"], ["recorded"])  # круги источника заменили FIT-круги
+        km = [lp for lp in doc["laps"] if lp["group"] == "km"]
+        self.assertTrue(km and all(lp["timerSec"] < 200 for lp in km))  # отрезки по активному времени, пауза не внутри
+        self.assertAlmostEqual(doc["streams"]["lat"][0], 55.75, places=4)
+        # Повтор того же — один документ и одно «входящее»; чужой не видит.
+        server.details.enrich(w, args)
+        inbox = [c for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["data"] and c["data"]["type"] == "enrich"]
+        self.assertEqual(len(inbox), 1)
+        self.assertIsNone(server.details.load("222", "coros", "482013868569166128"))
+        # Очередь: связанная тренировка уже с рядами, лимит FIT уменьшился.
+        server.sync("111", {"since": 0, "changes": [
+            {"c": "sessions", "id": "s2", "ts": 5, "data": {"id": "s2", "date": "2026-11-26", "kind": "cardio", "source": {"provider": "coros", "externalId": "999"}}},
+            {"c": "sessions", "id": "s3", "ts": 5, "data": {"id": "s3", "date": "2026-11-24", "kind": "cardio", "source": {"provider": "coros", "externalId": "482013868569166128"}}},
+        ]})
+        q = server.details.queue("111")
+        self.assertEqual((q["total"], q["counts"]["streams"], q["counts"]["none"]), (2, 1, 1))
+        self.assertEqual(q["next"]["fit"][0]["externalActivityId"], "999")
+        self.assertEqual(q["fitLeftToday"], 43)  # два FIT за сутки
+        # Ссылка на FIT — только https и хранилища источника.
+        bad = server.details.enrich(w, {"source": "coros", "externalActivityId": "1", "summary": {"timerSec": 10}, "fitUrl": "http://127.0.0.1/x.fit"})
+        self.assertIn("warnings", bad)
+        server.delete_account("111")
+        self.assertIsNone(server.details.load("111", "coros", "482013868569166128"))
+
+    def test_garmin_auto_import(self):
+        morning = server.morning
+        server.hello(self.ident(ADMIN), {})
+        server.sync("111", {"since": 0, "changes": [{"c": "sessions", "id": "x", "ts": 1, "data": {"id": "x", "date": "2026-11-20", "kind": "cardio"}}]})
+        acts = [{"activityId": 25190042001, "activityName": "Убуд Бег", "startTimeLocal": "2026-11-25 06:02:59",
+                 "activityType": {"typeKey": "running"}, "distance": 5009.97, "duration": 2355.7, "movingDuration": 2079.9, "averageHR": 151, "calories": 478},
+                {"activityId": 7, "activityName": None, "startTimeLocal": "2026-11-25 18:00:00", "activityType": {"typeKey": "walking"}, "duration": 1800}]
+        morning.garmin_get = lambda path, params=None: acts
+        def no_fit(path):
+            raise RuntimeError("offline")
+        morning.garmin_raw = no_fit
+        r = morning.import_new("111")
+        self.assertEqual(r["added"], ["25190042001", "7"])
+        inbox = [c["data"] for c in server.sync("111", {"since": 0, "changes": []})["changes"] if c["c"] == "inbox" and c["data"]]
+        self.assertEqual(len(inbox), 1)  # один день — одна пачка
+        ws = {w["source"]["externalId"]: w for w in inbox[0]["payload"]["workouts"]}
+        run = ws["25190042001"]
+        self.assertEqual((run["kind"], run["cardioKind"], run["time"], run["summary"]["distanceM"], run["summary"]["movingSec"]), ("cardio", "run", "06:02", 5009.97, 2079.9))
+        walk = ws["7"]
+        self.assertEqual(walk["cardioKind"], "Прогулка")
+        self.assertEqual(morning.import_new("111")["added"], [])  # уже видели — без повтора
 
 
 if __name__ == "__main__":

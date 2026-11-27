@@ -14,6 +14,8 @@ import { Edit as EditIcon } from "../ui/icons";
 import WorkoutActions from "../components/WorkoutActions";
 import WorkoutPhotos from "../components/social/WorkoutPhotos";
 import TodoList from "../components/TodoList";
+import ActivityDetail from "../components/ActivityDetail";
+import { clock } from "../lib/activityDetail";
 import { ActivityIcon } from "../lib/icons";
 import {
   formatDateFull,
@@ -136,7 +138,7 @@ export default function SessionView({
           {(duration != null || sessionAvgHr(session) != null) && (
             <Typography variant="body2" color="text.secondary">
               {[
-                duration != null ? formatDuration(duration) : null,
+                duration != null ? (session.source ? clock(duration) : formatDuration(duration)) : null,
                 sessionAvgHr(session) != null ? `${sessionAvgHr(session)} ${t("уд/мин", "bpm")}` : null,
                 session.autoEnded ? t("завершена автоматически", "closed automatically") : null,
               ]
@@ -268,7 +270,8 @@ export default function SessionView({
         </>
       )}
 
-      {session.kind === "cardio" && session.cardio && (
+      {/* С подробностями часов сводку показывает ActivityDetail — без дубля. */}
+      {session.kind === "cardio" && session.cardio && !session.source?.detail && (
         <Card sx={{ mb: 2 }}>
           {/* Крупно — то, что важно этому виду: у степпера дистанции нет,
               у ходьбы вместо темпа скорость. */}
@@ -279,7 +282,11 @@ export default function SessionView({
                 value={formatDistance(session.cardio.distanceM, session.cardioKind)}
               />
             )}
-            <ViewStat label={t("Время", "Time")} value={formatDuration(session.cardio.durationSec)} />
+            <ViewStat
+              label={session.source ? t("Активное время", "Active time") : t("Время", "Time")}
+              value={session.source ? clock(session.cardio.durationSec) : formatDuration(session.cardio.durationSec)}
+            />
+            {session.stats?.elapsedSec != null && <ViewStat label={t("Полное время", "Elapsed")} value={clock(session.stats.elapsedSec)} />}
             {profile.rate && (
               <ViewStat
                 label={rateLabel(profile.rate) ?? ""}
@@ -302,8 +309,16 @@ export default function SessionView({
               {cardioExtras.join(" · ")}
             </Typography>
           )}
+          {session.source && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.25 }}>
+              {session.source.provider.toUpperCase()}
+              {session.source.detail === "streams" ? t(" · графики и маршрут ниже", " · charts and route below") : session.source.detail ? t(" · подробности ниже", " · details below") : t(" · подробности ещё не загружены", " · details not loaded yet")}
+            </Typography>
+          )}
         </Card>
       )}
+
+      {session.source?.detail && <ActivityDetail session={session} />}
 
       {(session.todos?.length ?? 0) > 0 && (
         <Box sx={{ mb: 2 }}>

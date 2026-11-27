@@ -69,7 +69,10 @@ export function toRecords(d: BackupData): Map<string, Rec> {
   for (const i of d.inbox ?? []) put("inbox", i.id, i);
   if (d.focusGoal != null) put("settings", "focusGoal", d.focusGoal);
   if (d.consent != null) put("settings", "consent", d.consent);
-  if (d.morning != null) put("settings", "morning", d.morning);
+  if (d.morning != null) {
+    put("settings", "morning", d.morning);
+    put("settings", "watchImport", { enabled: d.morning.watchImport !== false });
+  }
   for (const [id, u] of Object.entries(d.exerciseUnits ?? {})) put("settings", `unit:${id}`, u);
   return out;
 }

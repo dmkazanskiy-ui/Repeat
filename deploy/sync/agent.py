@@ -699,6 +699,45 @@ TOOLS = [
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
     },
     {
+        "name": "enrich_queue",
+        "title": "Что догрузить из часов",
+        "description": "Очередь обогащения истории: тренировки Repeat, связанные с источником (COROS и т. п.), у которых ещё нет кругов или секундных рядов, свежие первыми; счётчики по уровням и сколько FIT ещё можно взять сегодня (лимит COROS 50 файлов/сутки, Repeat считает 45). Зови перед enrich_activity и после каждой пачки.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"source": {"type": "string", "description": "coros по умолчанию"}, "limit": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": True},
+    },
+    {
+        "name": "enrich_activity",
+        "title": "Подробности тренировки",
+        "description": (
+            "Обогатить УЖЕ записанную в Repeat тренировку подробностями из часов: точная сводка (три времени: timerSec — таймер, "
+            "elapsedSec — с паузами, movingSec; дистанция в метрах; темпы в с/км; пульс; каденс шаг/мин; мощность Вт; высоты м; "
+            "нагрузка и эффекты источника), круги и группы отрезков, зоны, и FIT-файл (fitBase64 или fitUrl на скачивание) — из него "
+            "сервер сам достанет секундные ряды, маршрут и записанные круги. Связь — по source + externalActivityId (строкой). "
+            "Новых тренировок не создаёт: человек подтверждает обновление в Repeat. Масштабы источника переводи в единицы контракта "
+            "(например, у COROS дистанция круга в сантиметрах, strideRatio 73 → 7.3 %, avgStrideLength 126 → 1.26 м). "
+            "Отсутствующее не присылай (не ставь 0). FIT по лимиту COROS: 50 файлов в сутки — сначала сводка и круги, FIT очередью."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string", "enum": ["coros", "garmin", "strava", "polar", "suunto", "other"]},
+                "externalActivityId": {"type": "string", "description": "ID активности источника строкой (у COROS — labelId)"},
+                "sportType": {"type": ["integer", "string"]},
+                "summary": {"type": "object", "description": "startedAt/endedAt (ISO UTC), timezone, timerSec, elapsedSec, movingSec, distanceM, calories, avgPaceSec, movingPaceSec, effortPaceSec, bestKmSec, avgHr, maxHr, avgCadence, maxCadence, avgStrideM, avgPower, maxPower, minAltM, maxAltM, avgAltM, ascentM, descentM, trainingLoad, aerobicTE, anaerobicTE, trainingFocus, avgStanceTimeMs, avgVerticalRatio, avgVerticalOscillationCm, efficiencyPct, efficiencyLabel, performanceLabel"},
+                "laps": {"type": "array", "items": {"type": "object"}, "description": "Отрезки с group: recorded (записанные круги), km, km5, km10 и т. п.; поля index, timerSec, distanceM, avgPaceSec, avgHr, maxHr, avgCadence, avgPower, partial"},
+                "zones": {"type": "array", "items": {"type": "object"}, "description": "metric hr|pace|power, seconds[], upperBounds[], names[], origin"},
+                "fitBase64": {"type": "string"},
+                "fitUrl": {"type": "string", "description": "https-ссылка на FIT из хранилища источника (одноразовая)"},
+            },
+            "required": ["source", "externalActivityId"],
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    },
+    {
         "name": "submit_checkin",
         "title": "Утренние данные с часов",
         "description": "Записать в самочувствие Repeat объективные данные по дням: ночной HRV (мс), пульс покоя, сон (минуты, оценка 0–100), Body Battery. Возьми их из Garmin (garmin_hrv, garmin_sleep, garmin_daily_summaries). Repeat сравнит с личной нормой: HRV ниже нормы 2 дня или пульс покоя +5 — предложит облегчить силовую по плану. Применяется без подтверждения, только дополняет.",
@@ -779,6 +818,18 @@ def call_tool(ident: dict, name: str, args: dict) -> dict:
         return _text(plan_view(uid, args))
     if name == "get_format":
         return _text(format_doc())
+    if name == "enrich_queue":
+        src = str(args.get("source") or "coros").lower()
+        lim = args.get("limit") if isinstance(args.get("limit"), int) else 20
+        return _text(srv.details.queue(uid, src, lim))
+    if name == "enrich_activity":
+        if ident.get("scope") != "write":
+            return {**_text("Доступ только на чтение: попроси пользователя выдать доступ с записью."), "isError": True}
+        res = srv.details.enrich(ident, args)
+        out = _text(res)
+        if not res.get("ok"):
+            out["isError"] = True
+        return out
     if name == "submit_checkin":
         if ident.get("scope") != "write":
             return {**_text("Доступ только на чтение: попроси пользователя выдать доступ с записью."), "isError": True}

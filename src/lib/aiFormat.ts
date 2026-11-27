@@ -7,6 +7,7 @@
 // перезаписываем: id выводятся из содержимого, поэтому повторная вставка того
 // же плана находит уже созданное, а не плодит дубли.
 import { newId } from "./id";
+import { applyEnrich, findBySource, type EnrichPayload } from "./activityDetail";
 import { CATALOG } from "./catalog";
 import { L } from "./i18n";
 import type {
@@ -255,6 +256,8 @@ export interface PreparedImport {
   sessions: Session[];
   /** Связи «сделанная тренировка закрыла карточку плана». */
   links: { plannedId: string; sessionId: string }[];
+  /** Тренировки с часов, которые дополнят уже записанные (а не создадут новые). */
+  merges: { sessionId: string; payload: EnrichPayload }[];
   counts: {
     workouts: number;
     exercises: number;
@@ -263,6 +266,7 @@ export interface PreparedImport {
     plannedKept: number;
     sessionsNew: number;
     sessionsKnown: number;
+    sessionsMerged: number;
   };
   range: { start: string; end: string } | null;
   warnings: string[];
@@ -497,7 +501,8 @@ function preparePlan(d: Record<string, unknown>, ctx: ImportContext): PreparedIm
     planned,
     sessions: [],
     links: [],
-    counts: { workouts: workoutCount, exercises: exerciseCount, plannedNew, plannedUpdated, plannedKept, sessionsNew: 0, sessionsKnown: 0 },
+    merges: [],
+    counts: { workouts: workoutCount, exercises: exerciseCount, plannedNew, plannedUpdated, plannedKept, sessionsNew: 0, sessionsKnown: 0, sessionsMerged: 0 },
     range: { start: plan.start, end: plan.end },
     warnings,
   };
@@ -541,6 +546,8 @@ function prepareWorkouts(d: Record<string, unknown>, ctx: ImportContext): Prepar
   const sessions: Session[] = [];
   const links: { plannedId: string; sessionId: string }[] = [];
   const usedPlanned = new Set<string>();
+  const merges: { sessionId: string; payload: EnrichPayload }[] = [];
+  const pairing = pairWithDiary(list, ctx.sessions);
   const warnings: string[] = [];
   let known = 0;
   let minDate = "";
@@ -556,7 +563,25 @@ function prepareWorkouts(d: Record<string, unknown>, ctx: ImportContext): Prepar
       return;
     }
     const title = str(w.title, 80);
-    const id = `ai_${stableHash(`${date}|${time ?? ""}|${act.kind}|${act.cardioKind ?? act.recoveryType ?? act.mobilityKind ?? ""}|${title ?? ""}|${idx}`)}`;
+    // С часов: источник и ID — по ним без дублей; похожая уже записанная — дополнить.
+    const srcRaw = w.source as { provider?: unknown; externalId?: unknown; detail?: unknown } | undefined;
+    const source =
+      srcRaw && typeof srcRaw.provider === "string" && (typeof srcRaw.externalId === "string" || typeof srcRaw.externalId === "number")
+        ? { provider: srcRaw.provider.toLowerCase().slice(0, 20), externalId: String(srcRaw.externalId).slice(0, 64), detail: (["summary", "laps", "streams"].includes(String(srcRaw.detail)) ? srcRaw.detail : "summary") as "summary" | "laps" | "streams" }
+        : null;
+    const summary = w.summary && typeof w.summary === "object" ? (w.summary as Record<string, number | string>) : null;
+    if (source) {
+      if (findBySource(ctx.sessions, source.provider, source.externalId)) {
+        known++;
+        return;
+      }
+      const twinId = pairing.get(idx);
+      if (twinId) {
+        merges.push({ sessionId: twinId, payload: { source: source.provider, externalActivityId: source.externalId, level: source.detail, summary: summary ?? {} } });
+        return;
+      }
+    }
+    const id = source ? `${source.provider}_${source.externalId}` : `ai_${stableHash(`${date}|${time ?? ""}|${act.kind}|${act.cardioKind ?? act.recoveryType ?? act.mobilityKind ?? ""}|${title ?? ""}|${idx}`)}`;
     if (have.has(id)) {
       known++;
       return;
@@ -643,6 +668,12 @@ function prepareWorkouts(d: Record<string, unknown>, ctx: ImportContext): Prepar
         links.push({ plannedId: card.id, sessionId: id });
       }
     }
+    if (source) {
+      session.source = { provider: source.provider, externalId: source.externalId };
+      const enriched = applyEnrich(session, { source: source.provider, externalActivityId: source.externalId, level: source.detail, summary: summary ?? {} });
+      sessions.push(enriched);
+      return;
+    }
     sessions.push(session);
   });
 
@@ -657,10 +688,65 @@ function prepareWorkouts(d: Record<string, unknown>, ctx: ImportContext): Prepar
     planned: [],
     sessions,
     links,
-    counts: { workouts: 0, exercises: 0, plannedNew: 0, plannedUpdated: 0, plannedKept: 0, sessionsNew: sessions.length, sessionsKnown: known },
+    merges,
+    counts: { workouts: 0, exercises: 0, plannedNew: 0, plannedUpdated: 0, plannedKept: 0, sessionsNew: sessions.length, sessionsKnown: known, sessionsMerged: merges.length },
     range: minDate ? { start: minDate, end: maxDate } : null,
     warnings,
   };
+}
+
+/** Группа для сопоставления часов с дневником: бег (улица и дорожка) — одно, вело — одно и т. д. */
+function matchGroup(kind: string, cardioKind?: string | null): string {
+  if (kind !== "cardio") return kind;
+  if (cardioKind === "run" || cardioKind === "treadmill_run") return "cardio:run";
+  return `cardio:${cardioKind ?? "other"}`;
+}
+
+const minutesOf = (hm?: string | null) => (hm && /^\d{1,2}:\d{2}/.test(hm) ? Number(hm.split(":")[0]) * 60 + Number(hm.split(":")[1]) : null);
+
+/**
+ * Сопоставление тренировок с часов с записанными в дневнике (record linkage):
+ * по дню и виду, а не по точному времени — время в дневнике часто ставят на
+ * глаз. Внутри дня и вида пары подбираются по ближайшему времени (жадно по
+ * наименьшей разнице); тренировки без времени — в последнюю очередь. Лишние
+ * тренировки часов (две пробежки при одной в дневнике) станут новыми.
+ * → номер тренировки в пачке → id записи дневника.
+ */
+export function pairWithDiary(list: unknown[], sessions: Session[]): Map<number, string> {
+  type W = { idx: number; key: string; min: number | null };
+  const ws: W[] = [];
+  list.forEach((raw, idx) => {
+    const w = (raw ?? {}) as Record<string, unknown>;
+    const src = w.source as { provider?: unknown; externalId?: unknown } | undefined;
+    if (!src || typeof src.provider !== "string" || src.externalId == null || typeof w.date !== "string") return;
+    if (sessions.some((s) => s.source?.provider === String(src.provider).toLowerCase() && s.source.externalId === String(src.externalId))) return;
+    const act = activityOf(w.kind, w);
+    if (!act) return;
+    ws.push({ idx, key: `${w.date}|${matchGroup(act.kind, act.cardioKind)}`, min: minutesOf(typeof w.time === "string" ? w.time : null) });
+  });
+  const out = new Map<number, string>();
+  const keys = new Set(ws.map((w) => w.key));
+  for (const key of keys) {
+    const [date, group] = [key.slice(0, 10), key.slice(11)];
+    const cands = sessions.filter((s) => !s.source && s.date === date && matchGroup(s.kind, s.cardioKind) === group);
+    const mine = ws.filter((w) => w.key === key);
+    const pairs: { w: number; s: string; d: number }[] = [];
+    for (const w of mine)
+      for (const c of cands) {
+        const cm = minutesOf(c.time);
+        pairs.push({ w: w.idx, s: c.id, d: w.min != null && cm != null ? Math.abs(w.min - cm) : 24 * 60 });
+      }
+    pairs.sort((a, b) => a.d - b.d);
+    const usedW = new Set<number>();
+    const usedS = new Set<string>();
+    for (const p of pairs) {
+      if (usedW.has(p.w) || usedS.has(p.s)) continue;
+      usedW.add(p.w);
+      usedS.add(p.s);
+      out.set(p.w, p.s);
+    }
+  }
+  return out;
 }
 
 /** Та же активность: вид и подвид (бег = бег, баня = баня). */
@@ -704,7 +790,8 @@ export function applyImport(prep: PreparedImport, cur: ImportTarget, archiveProg
   });
   plannedSessions = [...plannedSessions, ...incoming.values()];
   const sIds = new Set(cur.sessions.map((s) => s.id));
-  const sessions = [...cur.sessions, ...prep.sessions.filter((s) => !sIds.has(s.id))];
+  const merge = new Map(prep.merges.map((m) => [m.sessionId, m.payload]));
+  const sessions = [...cur.sessions.map((s) => (merge.has(s.id) ? applyEnrich({ ...s, source: { provider: merge.get(s.id)!.source, externalId: merge.get(s.id)!.externalActivityId } }, merge.get(s.id)!) : s)), ...prep.sessions.filter((s) => !sIds.has(s.id))];
   return { exercises, programs, plans, plannedSessions, sessions };
 }
 

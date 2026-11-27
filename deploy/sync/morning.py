@@ -120,6 +120,19 @@ def garmin_get(path: str, params=None):
     return None
 
 
+def garmin_raw(path: str) -> bytes:
+    for attempt in range(2):
+        req = urllib.request.Request(GARMIN + path, headers={"Authorization": f"Bearer {_token(force=attempt == 1)}", "User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                return r.read(9 * 1024 * 1024)
+        except urllib.error.HTTPError as e:
+            if e.code == 401 and attempt == 0:
+                continue
+            raise
+    return b""
+
+
 def night_ready(day: str) -> bool:
     """Лёгкая проверка: за эту ночь в Garmin уже есть сон и HRV."""
     sleep = garmin_get("/sleep-service/sleep/dailySleepSummariesByDate", {"startDate": day, "endDate": day}) or []
@@ -313,14 +326,44 @@ def run(uid: str, force: bool = False) -> dict:
     return {"ok": True, "status": "sent" if sent else "saved", "summary": sig}
 
 
+def notify_once(uid: str, kind: str, text: str) -> bool:
+    """Служебное сообщение не чаще раза в день на вид (heartbeat)."""
+    day = local_now().date().isoformat()
+    with state_lock:
+        rec = srv.META.setdefault("morning", {}).setdefault(uid, {})
+        alerts = rec.setdefault("alerts", {})
+        if alerts.get(kind) == day:
+            return False
+        alerts[kind] = day
+        srv.save_meta()
+    if not settings(uid)["telegram"]:
+        return False
+    try:
+        srv.bot_api("sendMessage", {"chat_id": int(uid), "text": text, "reply_markup": {"inline_keyboard": [[{"text": "Открыть Repeat", "web_app": {"url": srv.APP_URL}}]]}})
+        log("alert", kind)
+        return True
+    except Exception as e:
+        log("telegram_error", type(e).__name__)
+        return False
+
+
 def tick() -> None:
     uid = owner()
     if not uid or not configured():
         return
     now = local_now()
-    if (now.hour, now.minute) < (START_HOUR, START_MIN) or now.hour >= END_HOUR:
+    day = now.date().isoformat()
+    if (now.hour, now.minute) < (START_HOUR, START_MIN):
         return
-    run(uid)
+    sent_today = srv.META.get("morning", {}).get(uid, {}).get("date") == day
+    if now.hour >= END_HOUR:
+        # Окно закрылось, а ночи так и нет — одна строка вместо тишины.
+        if not sent_today and now.hour < END_HOUR + 2:
+            notify_once(uid, "missing", "Часы не отдали ночь в Garmin Connect — утренней сводки сегодня не будет. Открой Garmin Connect на телефоне, чтобы синхронизировать.")
+        return
+    res = run(uid)
+    if res.get("error") == "garmin_key_rejected":
+        notify_once(uid, "key", "Garmin отклонил ключ — утренняя сводка не работает. Создай новый ключ в Garmin Connect и пришли его, я положу на сервер.")
 
 
 def loop() -> None:
@@ -331,3 +374,137 @@ def loop() -> None:
         except Exception as e:
             log("tick_error", type(e).__name__)
         time.sleep(POLL_S)
+
+
+# ───────────── Автоимпорт тренировок Garmin ─────────────
+#
+# Раз в 5 минут смотрим новые активности в Garmin за последние 3 дня, скачиваем
+# FIT, раскладываем подробности (details.py) и кладём тренировку во «входящие»
+# (тип workout, с source=garmin и сводкой). Приложение не создаст дубль: та же
+# активность по source+ID — пропуск, похожая тренировка того же вида в пределах
+# 15 минут — дополнение, а не новая. Импортированные ID помним в meta.json.
+
+IMPORT_POLL_S = 300
+IMPORT_DAYS = 3
+
+
+def _kind(type_key: str):
+    k = (type_key or "").lower()
+    if "run" in k and ("treadmill" in k or "indoor" in k):
+        return {"kind": "cardio", "cardioKind": "treadmill_run"}
+    if "run" in k:
+        return {"kind": "cardio", "cardioKind": "run"}
+    if "cycl" in k or "bik" in k or "ride" in k:
+        return {"kind": "cardio", "cardioKind": "bike"}
+    if "swim" in k:
+        return {"kind": "cardio", "cardioKind": "swim"}
+    if k in ("treadmill_walking", "indoor_walking"):
+        return {"kind": "cardio", "cardioKind": "treadmill"}
+    if "elliptical" in k:
+        return {"kind": "cardio", "cardioKind": "elliptical"}
+    if "stair" in k:
+        return {"kind": "cardio", "cardioKind": "stairs"}
+    if "strength" in k:
+        return {"kind": "strength"}
+    if "yoga" in k:
+        return {"kind": "mobility", "mobilityKind": "yoga"}
+    if "breath" in k:
+        return {"kind": "mobility", "mobilityKind": "breathing"}
+    if "walk" in k or "hik" in k:
+        # Уличной ходьбы среди видов нет — свой вид «Прогулка» (дорожка — отдельно).
+        return {"kind": "cardio", "cardioKind": "treadmill" if "indoor" in k else ("Поход" if "hik" in k else "Прогулка")}
+    return {"kind": "cardio", "cardioKind": None}
+
+
+def import_new(uid: str) -> dict:
+    day = local_now().date()
+    a = (day - timedelta(days=IMPORT_DAYS)).isoformat()
+    with state_lock:
+        st = srv.META.setdefault("garmin_import", {}).setdefault(uid, {"seen": []})
+        seen = set(st.get("seen", []))
+    acts = garmin_get("/activitylist-service/activities/search/activities", {"start": 0, "limit": 20, "startDate": a, "endDate": day.isoformat()})
+    acts = acts if isinstance(acts, list) else (acts or {}).get("activityList") or []
+    added = []
+    by_date: dict = {}
+    for act in sorted(acts, key=lambda x: x.get("startTimeLocal") or ""):
+        aid = str(act.get("activityId") or "")
+        if not aid or aid in seen:
+            continue
+        kind = _kind((act.get("activityType") or {}).get("typeKey"))
+        name = (act.get("activityName") or "").strip()[:80] or None
+        # Подробности из FIT (графики, маршрут, круги); без FIT — сводка из списка.
+        res = {"ok": False}
+        try:
+            fit = garmin_raw(f"/download-service/files/activity/{aid}")
+            import base64
+
+            res = srv.details.enrich({"uid": uid, "scope": "write", "name": "Garmin"},
+                                     {"source": "garmin", "externalActivityId": aid, "sportType": (act.get("activityType") or {}).get("typeKey"),
+                                      "fitBase64": base64.b64encode(fit).decode()}, with_inbox=False)
+        except Exception as e:
+            log("garmin_fit_error", type(e).__name__)
+        summary = dict(res.get("summary") or {}) if res.get("ok") else {}
+        for k, src in (("distanceM", "distance"), ("elapsedSec", "duration"), ("movingSec", "movingDuration"), ("avgHr", "averageHR"),
+                       ("maxHr", "maxHR"), ("calories", "calories"), ("ascentM", "elevationGain")):
+            if summary.get(k) is None and isinstance(act.get(src), (int, float)):
+                summary[k] = act[src]
+        start_local = act.get("startTimeLocal") or ""
+        date = start_local[:10] or day.isoformat()
+        time_hm = start_local[11:16] or None
+        timer = summary.get("timerSec") or summary.get("movingSec") or summary.get("elapsedSec")
+        w = {
+            "date": date,
+            "time": time_hm,
+            "kind": kind["kind"],
+            "title": name,
+            "done": True,
+            "durationMin": round(timer / 60, 2) if timer else None,
+            "source": {"provider": "garmin", "externalId": aid, "detail": res.get("level") if res.get("ok") else "summary"},
+            "summary": {k: v for k, v in summary.items() if not isinstance(v, (dict, list))},
+        }
+        if kind.get("cardioKind"):
+            w["cardioKind"] = kind["cardioKind"]
+        if kind.get("mobilityKind"):
+            w["mobilityKind"] = kind["mobilityKind"]
+        if summary.get("distanceM"):
+            w["distanceKm"] = round(summary["distanceM"] / 1000, 3)
+        if summary.get("avgHr"):
+            w["avgHr"] = summary["avgHr"]
+        if summary.get("calories"):
+            w["calories"] = summary["calories"]
+        by_date.setdefault(date, []).append((aid, w))
+    # Одна пачка на день: приложение сопоставит все тренировки дня с дневником
+    # сразу (две пробежки на часах при одной в дневнике — пара по времени + новая).
+    for date, items in sorted(by_date.items()):
+        doc = {"format": "repeat-workout", "version": 1, "workouts": [w for _, w in items]}
+        ids = [aid for aid, _ in items]
+        r = agent.submit({"uid": uid, "scope": "write", "name": "Garmin"}, "workout", doc, None, "garmin-" + "-".join(ids))
+        if r.get("ok"):
+            added.extend(ids)
+            seen.update(ids)
+    with state_lock:
+        st = srv.META.setdefault("garmin_import", {}).setdefault(uid, {"seen": []})
+        st["seen"] = (st.get("seen", []) + [x for x in added if x not in st.get("seen", [])])[-500:]
+        srv.save_meta()
+    if added:
+        log("garmin_import", f"{len(added)}")
+    return {"ok": True, "added": added}
+
+
+def import_settings(uid: str) -> dict:
+    st = srv.load_state(uid) or {"records": {}}
+    rec = st["records"].get("settings\u0000watchImport")
+    data = rec.get("data") if rec else None
+    return {"enabled": True, **(data if isinstance(data, dict) else {})}
+
+
+def import_loop() -> None:
+    time.sleep(60)
+    while True:
+        try:
+            uid = owner()
+            if uid and configured() and import_settings(uid).get("enabled", True):
+                import_new(uid)
+        except Exception as e:
+            log("import_error", type(e).__name__)
+        time.sleep(IMPORT_POLL_S)

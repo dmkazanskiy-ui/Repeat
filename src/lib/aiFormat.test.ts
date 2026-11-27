@@ -260,6 +260,94 @@ describe("план ⇄ тренировки", () => {
   });
 });
 
+describe("тренировки с часов (автоимпорт)", () => {
+  const w = (extra: Record<string, unknown> = {}) => ({
+    format: "repeat-workout", version: 1,
+    workouts: [{ date: "2026-11-25", time: "06:02", kind: "cardio", cardioKind: "run", done: true, durationMin: 34.66,
+      source: { provider: "garmin", externalId: "25190042001", detail: "streams" },
+      summary: { startedAt: "2026-11-24T22:02:59Z", timerSec: 2079.9, elapsedSec: 2355.7, distanceM: 5009.97, avgHr: 151, maxHr: 166 }, ...extra }],
+  });
+  it("новая — со связью с источником и точной сводкой; повтор — без дубля", () => {
+    const r = prepareImport(w(), empty());
+    if (!r.ok) throw new Error(r.error);
+    const s = r.prep.sessions[0];
+    expect(s.id).toBe("garmin_25190042001");
+    expect(s.source).toMatchObject({ provider: "garmin", externalId: "25190042001", detail: "streams" });
+    expect(s.cardio?.durationSec).toBe(2079.9);
+    expect(s.stats?.elapsedSec).toBe(2355.7);
+    const t = applyImport(r.prep, empty());
+    const again = prepareImport(w(), t);
+    expect(again.ok && [again.prep.sessions.length, again.prep.counts.sessionsKnown]).toEqual([0, 1]);
+  });
+  it("та же пробежка, записанная вручную или из другого источника без связи, — дополняется, а не дублируется", () => {
+    const manual = newSession("2026-11-25", "cardio", { cardioKind: "run" });
+    manual.time = "06:00";
+    manual.notes = "моя заметка";
+    const cur = { ...empty(), sessions: [manual] };
+    const r = prepareImport(w(), cur);
+    if (!r.ok) throw new Error(r.error);
+    expect([r.prep.sessions.length, r.prep.merges.length]).toEqual([0, 1]);
+    const next = applyImport(r.prep, cur);
+    expect(next.sessions).toHaveLength(1);
+    expect(next.sessions[0]).toMatchObject({ id: manual.id, notes: "моя заметка", source: { provider: "garmin", externalId: "25190042001" } });
+    expect(next.sessions[0].cardio?.distanceM).toBe(5009.97);
+  });
+});
+
+describe("часы ⇄ дневник: по дню и виду", () => {
+  const run = (id: string, time: string, km: number) => ({
+    date: "2026-11-25", time, kind: "cardio", cardioKind: "run", done: true, durationMin: 30,
+    source: { provider: "garmin", externalId: id, detail: "streams" },
+    summary: { timerSec: 1800, distanceM: km * 1000, avgHr: 150 },
+  });
+  const doc = (...workouts: unknown[]) => ({ format: "repeat-workout", version: 1, workouts });
+
+  it("время в дневнике на глаз (разница 3 часа) — всё равно та же пробежка, данные часов точнее", () => {
+    const mine = newSession("2026-11-25", "cardio", { cardioKind: "run" });
+    mine.time = "09:00";
+    mine.cardio = { durationSec: 1500, distanceM: 4000, avgHr: null };
+    const cur = { ...empty(), sessions: [mine] };
+    const r = prepareImport(doc(run("a", "06:02", 5.01)), cur);
+    if (!r.ok) throw new Error(r.error);
+    const next = applyImport(r.prep, cur);
+    expect(next.sessions).toHaveLength(1);
+    expect(next.sessions[0].cardio).toMatchObject({ durationSec: 1800, distanceM: 5010 });
+  });
+
+  it("две пробежки на часах, одна в дневнике — пара по ближайшему времени и +1 новая", () => {
+    const mine = newSession("2026-11-25", "cardio", { cardioKind: "run" });
+    mine.time = "18:30";
+    const cur = { ...empty(), sessions: [mine] };
+    const r = prepareImport(doc(run("am", "06:00", 5), run("pm", "18:10", 8)), cur);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.prep.merges.map((m) => [m.sessionId, m.payload.externalActivityId])).toEqual([[mine.id, "pm"]]);
+    expect(r.prep.sessions.map((s) => s.source?.externalId)).toEqual(["am"]);
+    const next = applyImport(r.prep, cur);
+    expect(next.sessions).toHaveLength(2);
+  });
+
+  it("силовая — монумент: упражнения, подходы и время дневника не трогаются, с часов только пульс", () => {
+    const gym = newSession("2026-11-25", "strength");
+    gym.time = "10:00";
+    gym.startedAt = "2026-11-25T02:00:00.000Z";
+    gym.endedAt = "2026-11-25T03:10:00.000Z";
+    const ex = newSessionExercise("base:Жим штанги лёжа");
+    ex.sets = ex.sets.map((x) => ({ ...x, weight: 90, reps: 8, done: true }));
+    gym.exercises = [ex];
+    const cur = { ...empty(), sessions: [gym] };
+    const watch = { date: "2026-11-25", time: "10:49", kind: "strength", title: "Силовая тренировка", done: true,
+      source: { provider: "garmin", externalId: "g1", detail: "streams" },
+      summary: { startedAt: "2026-11-25T02:49:00Z", timerSec: 3097, elapsedSec: 3097, avgHr: 119, maxHr: 150, calories: 300 } };
+    const r = prepareImport(doc(watch), cur);
+    if (!r.ok) throw new Error(r.error);
+    const after = applyImport(r.prep, cur).sessions[0];
+    expect(after.exercises).toEqual(gym.exercises);
+    expect([after.startedAt, after.endedAt, after.title]).toEqual([gym.startedAt, gym.endedAt, gym.title]);
+    expect(after).toMatchObject({ avgHr: 119, calories: 300, source: { provider: "garmin", externalId: "g1" } });
+    expect(after.stats).toMatchObject({ watchTimerSec: 3097, maxHr: 150 });
+  });
+});
+
 // Реальный план на декабрь, если файл лежит в репозитории (plans/ не коммитится).
 const REAL = Object.values(
   import.meta.glob<string>("../../plans/repeat-plan-2026-12.json", { eager: true, query: "?raw", import: "default" }),

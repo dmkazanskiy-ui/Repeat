@@ -24,6 +24,7 @@ import {
 } from "../lib/types";
 import type { Exercise, PlannedSession, Session } from "../lib/types";
 import { plannedIcon } from "../lib/plan";
+import { clock } from "../lib/activityDetail";
 import {
   formatDistance,
   formatDuration,
@@ -174,7 +175,8 @@ function SessionCard({
   const start = session.time ?? hhmm(session.startedAt) ?? null;
   // Конец = начало + длительность, чтобы «маршрут» и длительность не спорили
   // (у кардио длительность часто введена руками, а «Завершить» нажато позже).
-  const end = running ? null : start && dur ? addClock(start, dur) : hhmm(session.endedAt);
+  // Тренировка с часов: конец — реальный (с паузами), а не начало + активное время.
+  const end = running ? null : session.source && session.endedAt ? hhmm(session.endedAt) : start && dur ? addClock(start, dur) : hhmm(session.endedAt);
 
   return (
     <Box role="button" tabIndex={0} onClick={() => onOpen(session.id)} sx={{ cursor: "pointer" }}>
@@ -196,7 +198,7 @@ function SessionCard({
         to={{ big: running ? elapsedText(dur ?? 0) : (end ?? "—"), small: running ? L("идёт", "elapsed") : L("конец", "end") }}
         middle={
           // Общее время тренировки — между началом и концом у всех видов.
-          running ? L("идёт", "live") : !dur ? L("без времени", "no time") : dur < 60 ? L("< 1 мин", "< 1 min") : formatDuration(dur)
+          running ? L("идёт", "live") : !dur ? L("без времени", "no time") : session.source ? clock(dur) : dur < 60 ? L("< 1 мин", "< 1 min") : formatDuration(dur)
         }
         fields={planPct != null ? [{ label: L("План", "Plan"), value: `${planPct}%` }, ...ticketFields(session)].slice(0, 4) : ticketFields(session)}
         note={description(session, exercises) || undefined}

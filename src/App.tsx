@@ -61,6 +61,8 @@ import { applyImport, importRecord, undoImport, type ImportRecord, type Prepared
 import { activityLabel, archivePlans, coldAfterStrength, COLD_TYPES, goalLine, reconcilePlanned } from "./lib/plan";
 import ArchivePlanDialog from "./components/ArchivePlanDialog";
 import { applyCheckins, bodySignals, parseCheckinDays } from "./lib/bodySignals";
+import { applyEnrich, findBySource, migrateSourceNotes, type EnrichPayload } from "./lib/activityDetail";
+import EnrichDialog from "./components/EnrichDialog";
 import { lastWorkingWeight } from "./lib/exerciseSuggest";
 import PlanScreen from "./screens/PlanScreen";
 import AiScreen from "./screens/AiScreen";
@@ -218,7 +220,9 @@ export default function App() {
     void dbGet<ExerciseUnits>(EXERCISE_UNITS_KEY).then((u) => setExerciseUnits(u ?? {}));
     load().then((data) => {
       // Зависшие таймеры: разово чиним историю и закрываем брошенные тренировки.
-      const fixedOld = fixDurationOutliers(data.sessions);
+      // Первый импорт COROS положил ID в заметку — переносим в связь с источником.
+      const linked = migrateSourceNotes(data.sessions);
+      const fixedOld = fixDurationOutliers(linked.sessions);
       const stale = autoFinishStale(fixedOld.sessions, Date.now());
       const loaded = withCalorieEstimates(stale.sessions, data.bodyEntries);
       setSessions(loaded);
@@ -228,7 +232,7 @@ export default function App() {
       if (takeLogoutNotice()) {
         setToast(L("Вы вышли — история осталась в аккаунте", "Signed out — your history stays in the account"));
       }
-      if (fixedOld.fixed || stale.closed) {
+      if (fixedOld.fixed || stale.closed || linked.changed) {
         void saveSessions(loaded);
         setToast(staleToast(fixedOld.fixed + stale.closed));
       }
@@ -1583,7 +1587,26 @@ export default function App() {
           onClose={() => commitInbox(inbox.slice(1))}
         />
       )}
-      {ready && (aiImportOpen || (inbox.length > 0 && inbox[0].type !== "archive_plan" && isConsentValid(consent))) && (
+      {ready && !aiImportOpen && inbox[0]?.type === "enrich" && isConsentValid(consent) && (
+        <EnrichDialog
+          items={inbox.filter((i) => i.type === "enrich")}
+          sessions={sessions}
+          onApply={() => {
+            const items = inbox.filter((i) => i.type === "enrich");
+            let next = sessions;
+            for (const it of items) {
+              const p = it.payload as EnrichPayload;
+              const s = findBySource(next, p.source, p.externalActivityId);
+              if (s) next = next.map((x) => (x.id === s.id ? applyEnrich(x, p) : x));
+            }
+            commit(next);
+            commitInbox(inbox.filter((i) => i.type !== "enrich"));
+            setToast(L(`Обновлено тренировок: ${items.length}`, `Workouts updated: ${items.length}`));
+          }}
+          onDecline={() => commitInbox(inbox.filter((i) => i.type !== "enrich"))}
+        />
+      )}
+      {ready && (aiImportOpen || (inbox.length > 0 && !["archive_plan", "enrich", "checkin"].includes(inbox[0].type) && isConsentValid(consent))) && (
         <AiImportDialog
           key={aiImportOpen ? "manual" : inbox[0]?.id}
           inboxItem={aiImportOpen ? null : inbox[0]}

@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 npm run build
 # Сначала сервер синка (новый клиент зовёт его новые ручки), потом статика.
 python3 -m unittest deploy/sync/test_server.py
-rsync -az deploy/sync/server.py deploy/sync/agent.py deploy/sync/morning.py deploy/sync/ai_format.md root@194.226.125.120:/opt/repeat-sync/
+rsync -az deploy/sync/server.py deploy/sync/agent.py deploy/sync/morning.py deploy/sync/details.py deploy/sync/fitparse.py deploy/sync/ai_format.md root@194.226.125.120:/opt/repeat-sync/
 # Юнит systemd — только если поменялся.
 if ! ssh root@194.226.125.120 'cat /etc/systemd/system/repeat-sync.service' | cmp -s - deploy/sync/repeat-sync.service; then
   rsync -az deploy/sync/repeat-sync.service root@194.226.125.120:/etc/systemd/system/repeat-sync.service

@@ -80,6 +80,8 @@ export interface BackupData {
 export interface MorningSettings {
   telegram: boolean;
   hideNumbers: boolean;
+  /** Автоимпорт тренировок с часов (Garmin) на сервере. По умолчанию включён. */
+  watchImport?: boolean;
 }
 
 interface BackupFile {
